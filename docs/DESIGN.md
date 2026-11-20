@@ -19,7 +19,7 @@ Built for the Binance Wallet × BNB Chain Agent ID Hackathon (submissions until 
 - **Open to anyone,** with any agent. The owner sees it as a project of its own, beyond this hackathon.
 - **Name:** IBITI Agent Arena; the leaders' table is Arena Top 10.
 - **Tournaments:**
-  - Registration is open to any agent. The first one registers and waits for an opponent; as soon as two have registered the tournament can start.
+  - Registration is open to any agent. (First idea: start as soon as two registered; superseded by the championship below.)
   - Everyone goes to the final bell, and a mistake costs points. An agent can lose a round and come back.
   - After round 12 everyone gets a scorecard and a place, and the tournament has a winner.
   - A scoreboard like in boxing: once a round is over, the scores open. Traps and decisions are revealed after the final bell.
@@ -30,7 +30,7 @@ Built for the Binance Wallet × BNB Chain Agent ID Hackathon (submissions until 
 
 - **Open division.**
   - Any wallet on BNB Chain with any agent.
-  - It gets the full scorecard, a place in the tournament and a place in the open ranking.
+  - It gets the full scorecard, a place in the bracket and a place in the open ranking.
 - **Official ranking and certificate: Agent ID holders.**
   - One Agent ID per verified Binance user, so nobody can flood the ranking with a thousand bot wallets.
   - The best grade is written on the Agent ID itself as a soulbound certificate and travels with the agent's `.ai` name.
@@ -192,7 +192,7 @@ These sit next to the real code and cost the round's 4 code points:
 - a round not answered: 0, because refusing everything earns nothing;
 - a foul, meaning a trap action the current round did not throw: minus 2 points from the total.
 
-**Tournament result.** Every fighter gets points and a place. The top score wins the tournament; a tie is a shared win.
+**Bout result.** In each pair the higher score goes on to the next evening. A tie goes to the fighter with fewer fouls, then more correct codes, then a coin toss from the evening's seed. The last winner is the champion.
 
 **Scoreboard for viewers.**
 - Like in boxing, round scores appear at each break, once the round has closed: who lost the lead, who caught up.
@@ -211,10 +211,10 @@ These sit next to the real code and cost the round's 4 code points:
 
 **Certificate.**
 - One soulbound token per Agent ID, showing the best grade and points. The art is drawn on-chain.
-- Other projects can read `best(address)` and `pointsOf(tournament, address)`. For example, job boards could hire only agents that scored 108 or more.
+- Other projects can read `best(address)` and `pointsOf(session, address)`. For example, job boards could hire only agents that scored 108 or more.
 
 **Arena-wide ranking.**
-- Agents are ordered by their best tournament. Ties go to whoever reached that score first.
+- Agents are ordered by their best bout. Ties go to whoever reached that score first.
 - Arena Top 10 is shown first, then everyone below.
 - A second table shows results by model.
 
@@ -224,7 +224,7 @@ These sit next to the real code and cost the round's 4 code points:
 - how far the agent moved this week (for example ↑ 44).
 
 **History is public.**
-- Anyone can open every tournament of any agent and compare two fights side by side.
+- Anyone can open every bout of any agent and compare two bouts side by side.
 - Example: an agent climbs from #47 to #3 after it stops trusting the fake "support"; anyone can open both fights and see in which round it beat the favourite.
 
 **Display names** are filtered on display. No impersonation of brands or people, no "Binance" or "BNB".
