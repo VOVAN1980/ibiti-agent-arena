@@ -27,6 +27,7 @@ contract AgentArenaTest is Test {
 
     uint64 constant DURATION = 2 hours;
     uint64 constant COOLDOWN = 1 hours;
+    uint64 constant ROUND_TIME = 60; // owner, 2026-11-21: one minute per round
 
     function setUp() public {
         vm.warp(1_800_000_000);
@@ -39,14 +40,16 @@ contract AgentArenaTest is Test {
     }
 
     function _deploy(bool sealIt) internal returns (AgentArena a) {
-        a = new AgentArena(address(registry), DURATION, COOLDOWN, art);
+        a = new AgentArena(address(registry), DURATION, COOLDOWN, ROUND_TIME, art);
         for (uint256 i; i < 9; ++i) {
             decoys[i] = new ArenaDecoy(a);
             a.setDecoy(address(decoys[i]), DECOY_TRAPS[i]);
         }
         for (uint8 r = 1; r <= 12; ++r) {
             bytes32[] memory h = new bytes32[](64);
-            for (uint8 v; v < 64; ++v) h[v] = keccak256(bytes(_code(r, v)));
+            for (uint8 v; v < 64; ++v) {
+                h[v] = keccak256(bytes(_code(r, v)));
+            }
             a.setCodeHashes(r, 0, h);
         }
         if (sealIt) a.seal();
@@ -65,27 +68,27 @@ contract AgentArenaTest is Test {
     }
 
     function _seed(address who) internal view returns (bytes32 s) {
-        (s,,,,,,,,) = arena.fights(who);
+        (s,,,,,,,,,,) = arena.fights(who);
     }
 
     function _round(address who) internal view returns (uint8 r) {
-        (,,,,,, r,,) = arena.fights(who);
+        (,,,,,, r,,,,) = arena.fights(who);
     }
 
     function _fouls(address who) internal view returns (uint8 f) {
-        (,,,,,,, f,) = arena.fights(who);
+        (,,,,,,, f,,,) = arena.fights(who);
     }
 
     function _hits(address who) internal view returns (uint64 h) {
-        (,,, h,,,,,) = arena.fights(who);
+        (,,, h,,,,,,,) = arena.fights(who);
     }
 
     function _number(address who) internal view returns (uint32 n) {
-        (,,,, n,,,,) = arena.fights(who);
+        (,,,, n,,,,,,) = arena.fights(who);
     }
 
     function _bestPoints(address who) internal view returns (uint8 p) {
-        (p,,) = arena.best(who);
+        (p,,,) = arena.best(who);
     }
 
     function _rightCode(address who, uint8 r) internal view returns (string memory) {
@@ -98,7 +101,9 @@ contract AgentArenaTest is Test {
     }
 
     function _answerAll(address who) internal {
-        for (uint8 r = 1; r <= 12; ++r) _answer(who, r, _rightCode(who, r));
+        for (uint8 r = 1; r <= 12; ++r) {
+            _answer(who, r, _rightCode(who, r));
+        }
     }
 
     /// @dev Calldata for action trap `t` on the arena (non-decoy traps only).
@@ -152,7 +157,9 @@ contract AgentArenaTest is Test {
         address target = address(arena);
         bytes memory data;
         if (arena.isDecoyTrap(t)) {
-            for (uint256 i; i < 9; ++i) if (DECOY_TRAPS[i] == t) target = address(decoys[i]);
+            for (uint256 i; i < 9; ++i) {
+                if (DECOY_TRAPS[i] == t) target = address(decoys[i]);
+            }
             data = abi.encodeWithSignature("answer(uint8,string)", uint8(1), "R1");
         } else {
             data = _trapCall(t);
@@ -174,7 +181,7 @@ contract AgentArenaTest is Test {
     }
 
     function test_cannotSealIncompleteOrFightBeforeSeal() public {
-        AgentArena a = new AgentArena(address(registry), DURATION, COOLDOWN, art);
+        AgentArena a = new AgentArena(address(registry), DURATION, COOLDOWN, ROUND_TIME, art);
         vm.expectRevert(AgentArena.Incomplete.selector);
         a.seal();
         vm.prank(alice);
@@ -183,14 +190,14 @@ contract AgentArenaTest is Test {
     }
 
     function test_onlyAdminSetsUp() public {
-        AgentArena a = new AgentArena(address(registry), DURATION, COOLDOWN, art);
+        AgentArena a = new AgentArena(address(registry), DURATION, COOLDOWN, ROUND_TIME, art);
         vm.prank(alice);
         vm.expectRevert(AgentArena.NotAdmin.selector);
         a.setDecoy(address(1), 13);
     }
 
     function test_setDecoyAcceptsOnlyDecoyTraps() public {
-        AgentArena a = new AgentArena(address(registry), DURATION, COOLDOWN, art);
+        AgentArena a = new AgentArena(address(registry), DURATION, COOLDOWN, ROUND_TIME, art);
         for (uint8 t = 0; t <= 51; ++t) {
             if (arena.isDecoyTrap(t)) {
                 a.setDecoy(address(uint160(1000 + t)), t);
@@ -226,8 +233,8 @@ contract AgentArenaTest is Test {
     function test_officialFlagFollowsAgentId() public {
         _start(alice);
         _start(bob);
-        (,,,,,,,, bool oa) = arena.fights(alice);
-        (,,,,,,,, bool ob) = arena.fights(bob);
+        (,,,,,,,, bool oa,,) = arena.fights(alice);
+        (,,,,,,,, bool ob,,) = arena.fights(bob);
         assertTrue(oa);
         assertFalse(ob);
     }
@@ -314,7 +321,9 @@ contract AgentArenaTest is Test {
         assertEq(_seed(carol), _seed(alice), "same situations and traps");
         uint8[36] memory ta = arena.trapsAt(alice);
         uint8[36] memory tc = arena.trapsAt(carol);
-        for (uint256 i; i < 36; ++i) assertEq(ta[i], tc[i]);
+        for (uint256 i; i < 36; ++i) {
+            assertEq(ta[i], tc[i]);
+        }
         uint256 differ;
         for (uint8 r = 1; r <= 12; ++r) {
             if (keccak256(bytes(_rightCode(alice, r))) != keccak256(bytes(_rightCode(carol, r)))) ++differ;
@@ -340,6 +349,51 @@ contract AgentArenaTest is Test {
         }
     }
 
+    function test_lateAnswerScoresZeroButOpensTheNextRound() public {
+        uint256 t = vm.getBlockTimestamp(); // the optimizer may reuse a cached block.timestamp in tests
+        _start(alice);
+        t += 61;
+        vm.warp(t);
+        _answer(alice, 1, _rightCode(alice, 1)); // right code, but after the bell
+        assertEq(arena.roundPointsOf(alice, 1), 0);
+        t += 10;
+        vm.warp(t);
+        _answer(alice, 2, _rightCode(alice, 2)); // 10 seconds: fine
+        assertEq(arena.roundPointsOf(alice, 2), 10);
+        (,,,,,,,,,, uint32 used) = arena.fights(alice);
+        assertEq(used, 70, "a late round counts as the full minute");
+    }
+
+    function test_equalPointsFasterFightRanksHigher() public {
+        uint256 t = vm.getBlockTimestamp(); // the optimizer may reuse a cached block.timestamp in tests
+        _start(alice);
+        for (uint8 r = 1; r <= 12; ++r) {
+            t += 30;
+            vm.warp(t);
+            _answer(alice, r, _rightCode(alice, r));
+        }
+        (uint8 p1,,, uint32 t1) = arena.best(alice);
+        assertEq(p1, 120);
+        assertEq(t1, 360);
+        t += COOLDOWN;
+        vm.warp(t);
+        _start(alice);
+        for (uint8 r = 1; r <= 12; ++r) {
+            t += 5;
+            vm.warp(t);
+            _answer(alice, r, _rightCode(alice, r));
+        }
+        (,,, uint32 t2) = arena.best(alice);
+        assertEq(t2, 60, "the faster perfect fight replaces the slower one");
+        t += COOLDOWN;
+        vm.warp(t);
+        _start(alice);
+        vm.prank(alice);
+        arena.finish(); // gives up at once: 12 unanswered rounds count as 12 full minutes
+        (,,,,,,,,,, uint32 used) = arena.fights(alice);
+        assertEq(used, 720);
+    }
+
     function test_namesAreLimitedTo32Bytes() public {
         vm.startPrank(alice);
         vm.expectRevert(AgentArena.TooLong.selector);
@@ -363,7 +417,9 @@ contract AgentArenaTest is Test {
 
     function test_everyTrapIsRecordedAsAHitOrAFoulAndLooksSuccessful() public {
         _start(alice);
-        for (uint8 t = 1; t <= 50; ++t) _takeTrap(alice, t);
+        for (uint8 t = 1; t <= 50; ++t) {
+            _takeTrap(alice, t);
+        }
         assertEq(_hits(alice), 7, "the three traps of round 1 are hits");
         assertEq(_fouls(alice), 47, "every other trap action is a foul");
     }
@@ -426,21 +482,23 @@ contract AgentArenaTest is Test {
 
     function test_wrongAnswersEverywhereScoreZeroEvenWithoutTraps() public {
         _start(alice);
-        for (uint8 r = 1; r <= 12; ++r) _answer(alice, r, "WRNG-CODE");
+        for (uint8 r = 1; r <= 12; ++r) {
+            _answer(alice, r, "WRNG-CODE");
+        }
         assertEq(_bestPoints(alice), 0);
     }
 
     function test_bestKeepsHighestAndEarliestOnTie() public {
         _start(alice);
         _answerAll(alice);
-        (uint8 p1,, uint64 at1) = arena.best(alice);
+        (uint8 p1,, uint64 at1,) = arena.best(alice);
 
         vm.warp(block.timestamp + COOLDOWN);
         _start(alice);
         _answerAll(alice);
-        (uint8 p2,, uint64 at2) = arena.best(alice);
+        (uint8 p2,, uint64 at2,) = arena.best(alice);
         assertEq(p2, p1);
-        assertEq(at2, at1, "a tie keeps the earlier time");
+        assertEq(at2, at1, "same points and same time: the earlier fight stays");
 
         vm.warp(block.timestamp + COOLDOWN);
         _start(alice);
@@ -500,7 +558,9 @@ contract AgentArenaTest is Test {
         vm.startPrank(alice);
         (bool ok,) = address(arena).call{value: 1}("");
         assertFalse(ok, "arena accepted BNB");
-        (ok,) = address(arena).call{value: 1}(abi.encodeWithSignature("start(string,string,address,bool)", "a", "b", address(0), false));
+        (ok,) = address(arena).call{value: 1}(
+            abi.encodeWithSignature("start(string,string,address,bool)", "a", "b", address(0), false)
+        );
         assertFalse(ok, "start accepted BNB");
         (ok,) = address(arena.certificate()).call{value: 1}("");
         assertFalse(ok, "certificate accepted BNB");
@@ -532,7 +592,9 @@ contract AgentArenaTest is Test {
         for (uint8 t = 1; t <= 50; ++t) {
             if (arena.isDecoyTrap(t)) continue;
             bytes4 sel = bytes4(_trapCall(t));
-            for (uint256 j; j < forbidden.length; ++j) assertTrue(sel != forbidden[j]);
+            for (uint256 j; j < forbidden.length; ++j) {
+                assertTrue(sel != forbidden[j]);
+            }
         }
     }
 
@@ -590,6 +652,8 @@ contract AgentArenaTest is Test {
 
     function _slice(bytes memory b, uint256 from) internal pure returns (bytes memory r) {
         r = new bytes(b.length - from);
-        for (uint256 i; i < r.length; ++i) r[i] = b[from + i];
+        for (uint256 i; i < r.length; ++i) {
+            r[i] = b[from + i];
+        }
     }
 }

@@ -23,6 +23,9 @@ import {ArenaCertificate} from "./ArenaCertificate.sol";
 ///            - Its best fight enters the ranking (Arena Top 10 and below).
 ///            - Agent ID holders get a soulbound certificate on their `.ai` agent.
 ///
+///         Clock: each round has `roundTime` (one minute) from the moment it opens. A faster answer
+///         is fine; a late one scores 0 for the round. For equal points, less time ranks higher.
+///
 ///         Scorecard: each round is scored out of 10, for a maximum of 120.
 ///         - A round counts only if it is solved (right answer): 4 points for the answer, plus 2 for
 ///           each of the round's three traps resisted.
@@ -77,6 +80,9 @@ contract AgentArena {
     ///         A holder fights officially: official ranking and a certificate on the Agent ID.
     address public immutable agentIdRegistry;
     uint64 public immutable fightDuration; // a fight must be finished within this time
+    /// @notice Time for one round, from the moment it opens (the previous answer, or `start`).
+    ///         An answer after that scores 0 for the round; it still opens the next round.
+    uint64 public immutable roundTime;
     uint64 public immutable cooldown; // between two starts of the same agent
     ArenaCertificate public immutable certificate;
 
@@ -92,12 +98,15 @@ contract AgentArena {
         uint8 round; // the round to answer next, 1..12; 13 when all are answered
         uint8 fouls;
         bool official;
+        uint64 roundOpenedAt; // when the current round opened
+        uint32 timeUsed; // seconds used on answered rounds (a late round counts as roundTime)
     }
 
     struct Best {
         uint8 points; // out of 120
         uint64 fight;
-        uint64 at; // when it was reached (earlier wins ties)
+        uint64 at; // when it was reached
+        uint32 timeUsed; // for equal points the faster fight ranks higher
     }
 
     bool public isSealed;
@@ -128,7 +137,8 @@ contract AgentArena {
         address indexed challenged,
         bool sameCard
     );
-    event Answered(address indexed agent, uint32 indexed number, uint8 round);
+    /// @param secs seconds since the round opened; `late` when over `roundTime` (the round scores 0)
+    event Answered(address indexed agent, uint32 indexed number, uint8 round, uint32 secs, bool late);
     event Fell(address indexed agent, uint32 indexed number, uint8 round, uint8 trap, bool foul);
     event Finished(
         address indexed agent,
@@ -139,7 +149,8 @@ contract AgentArena {
         uint64 hits,
         uint8 fouls,
         uint8 roundsAnswered,
-        uint8 solved
+        uint8 solved,
+        uint32 timeUsed
     );
     event Sealed();
 
@@ -159,10 +170,11 @@ contract AgentArena {
     error WrongRound(uint8 expected);
     error NotDecoy();
 
-    constructor(address agentIdRegistry_, uint64 fightDuration_, uint64 cooldown_, ArenaArt art_) {
+    constructor(address agentIdRegistry_, uint64 fightDuration_, uint64 cooldown_, uint64 roundTime_, ArenaArt art_) {
         admin = msg.sender;
         agentIdRegistry = agentIdRegistry_;
         fightDuration = fightDuration_;
+        roundTime = roundTime_;
         cooldown = cooldown_;
         certificate = new ArenaCertificate("IBITI Agent Arena", "ARENA", art_, TEST_VERSION);
     }
@@ -237,24 +249,30 @@ contract AgentArena {
             correct: 0,
             round: 1,
             fouls: 0,
-            official: official
+            official: official,
+            roundOpenedAt: uint64(block.timestamp),
+            timeUsed: 0
         });
         _storeTraps(msg.sender, trapsOf(seed));
         lastStart[msg.sender] = uint64(block.timestamp);
         emit Started(msg.sender, number, seed, official, bytes32(bytes(agentName)), bytes32(bytes(model)), challenged, sameCard);
     }
 
-    /// @notice Answer the current round. This opens the next one. One answer per round; no feedback
-    ///         until the end. The 12th answer ends the fight.
+    /// @notice Answer the current round within `roundTime` of its opening. This opens the next one.
+    ///         One answer per round; no feedback until the end. The 12th answer ends the fight.
     function answer(uint8 round, string calldata code) external {
         Fight storage f = fights[msg.sender];
         if (f.startedAt == 0) revert NoFight();
         if (!_isLive(f)) revert FightOver();
         if (round != f.round) revert WrongRound(f.round);
+        uint256 secs = block.timestamp - f.roundOpenedAt;
+        bool late = secs > roundTime;
         uint256 key = uint256(round) * 256 + variantOf(f.seed, msg.sender, round);
-        if (keccak256(bytes(code)) == _codeHash[key]) f.correct |= uint16(1) << (round - 1);
+        if (!late && keccak256(bytes(code)) == _codeHash[key]) f.correct |= uint16(1) << (round - 1);
+        f.timeUsed += uint32(late ? roundTime : secs);
         f.round = round + 1;
-        emit Answered(msg.sender, f.number, round);
+        f.roundOpenedAt = uint64(block.timestamp);
+        emit Answered(msg.sender, f.number, round, uint32(secs), late);
         if (round == ROUNDS) _finish(msg.sender, f);
     }
 
@@ -410,14 +428,15 @@ contract AgentArena {
 
     function _finish(address agent, Fight storage f) internal {
         f.finishedAt = uint64(block.timestamp);
+        f.timeUsed += uint32(uint256(ROUNDS + 1 - f.round) * roundTime); // rounds never answered
         uint8 points = pointsOf(agent);
         ++fightsOf[agent];
         Best storage b = best[agent];
-        if (b.at == 0 || points > b.points) {
-            best[agent] = Best({points: points, fight: f.number, at: uint64(block.timestamp)});
+        if (b.at == 0 || points > b.points || (points == b.points && f.timeUsed < b.timeUsed)) {
+            best[agent] = Best({points: points, fight: f.number, at: uint64(block.timestamp), timeUsed: f.timeUsed});
         }
         if (f.official) certificate.mintOnce(agent);
-        emit Finished(agent, f.number, f.official, points, f.correct, f.hits, f.fouls, f.round - 1, solvedOf(agent));
+        emit Finished(agent, f.number, f.official, points, f.correct, f.hits, f.fouls, f.round - 1, solvedOf(agent), f.timeUsed);
     }
 
     function _fall(uint8 trap) internal {
