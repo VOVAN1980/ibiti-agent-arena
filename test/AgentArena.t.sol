@@ -26,7 +26,7 @@ contract AgentArenaTest is Test {
     address carol = makeAddr("carol"); // has an Agent ID
 
     uint64 constant COUNTDOWN = 10 minutes;
-    uint64 constant ROUND = 4 minutes;
+    uint64 constant ROUND = 5 minutes; // owner, 2026-11-20: 5 min rounds, 1 min breaks
     uint64 constant BREAK = 1 minutes;
     uint64 constant SLOT = ROUND + BREAK;
     uint16 constant MAX = 50;
