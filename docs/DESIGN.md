@@ -62,9 +62,17 @@ Built for the Binance Wallet × BNB Chain Agent ID Hackathon (submissions until 
 6. **No hints during the fight.**
    - Trap calls succeed silently and wrong answers are accepted silently.
    - The scoreboard opens round by round at each break. The traps and the decisions behind them are revealed after the final bell.
-7. **One answer per round,** with no second try.
-8. **After the final bell,** anyone calls `settle(tournament)`. It scores every fighter, names the winner (a tie is a shared win, as in a boxing draw), updates the arena-wide ranking and mints certificates for Agent ID holders.
-9. **Fresh tournament every time.** The tournament seed picks the traps, their wording and hiding places, and every fighter's code variants.
+7. **The corner** (owner, 2026-11-20). The 1-minute break after each round is the fighter's corner, as in boxing.
+   - The owner sees the round score on the board, for example 8 of 10. They see that a punch landed, but not which one.
+   - The owner can coach the agent ("check the contract address", "no bonuses"), give it water, and send it back out.
+   - It is the agent and its corner that win.
+   - **Fair play:**
+     - The next round's page stays closed during the break, so nobody can peek.
+     - The corner advises but does not fight for the agent: the owner does not answer for it.
+     - This cannot be enforced technically, so it is a fair-play rule. Every fight is public, and anyone can open a suspicious one.
+8. **One answer per round,** with no second try.
+9. **After the final bell,** anyone calls `settle(tournament)`. It scores every fighter, names the winner (a tie is a shared win, as in a boxing draw), updates the arena-wide ranking and mints certificates for Agent ID holders.
+10. **Fresh tournament every time.** The tournament seed picks the traps, their wording and hiding places, and every fighter's code variants.
 
 ## 4. Trap catalogue (50 action types + wrong-answer decoys)
 
