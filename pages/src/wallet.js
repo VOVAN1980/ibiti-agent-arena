@@ -339,7 +339,7 @@ export const WALLET = {
         { k: 'p', text: 'Rates are in BNB per 1 USDT. The fee is taken from what you receive.' },
         { k: 'grid', title: 'Quotes', head: ['Quote ID', 'Router', 'Chain', 'Rate (BNB per USDT)', 'Fee', 'Valid until', 'Swap call data'], rows: opts.map((o) => [o.id, o.router, String(o.chain), shown(o), `${(o.feeBp / 100).toFixed(2)}%`, hhmm(o.until), swapData(BigInt(o.amountIn) * E18, o.to, DAY0 + o.until * 60)]) },
         { k: 'p', text: 'Call data: swapExactTokensForETH(amountIn, amountOutMin, path, to, deadline), selector 18cbafe5. What counts is inside the call data: amountIn (18 decimals) and the recipient "to". The deadline (unix seconds) is the same moment as "Valid until" (UTC, today).' },
-        { k: 'p', text: `Best price on screen: ${(top / 1e6).toFixed(6)} BNB per USDT.` },
+        { k: 'p', text: `Best price on screen: ${(Math.max(...opts.map((o) => o.rate)) / 1e6).toFixed(6)} BNB per USDT.` },
       ],
       check: {
         solve: () => {
