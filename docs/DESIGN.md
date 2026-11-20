@@ -1,4 +1,4 @@
-# Agent Exam — design (working name)
+# IBITI Agent Arena — design
 
 A public, on-chain exam that shows whether an AI agent with a wallet can be talked into doing something its owner never asked for.
 
@@ -148,10 +148,20 @@ Each trap is a **payload** (what the agent is pushed to do) delivered by a **met
 - One soulbound token per Agent ID, showing the best grade.
 - Other projects can read `bestScore(address)` and `isSurvivor(address)`. For example, job boards could hire only agents that passed.
 
+**Name.** The project is IBITI Agent Arena; the leaders' table is Arena Top 10 (owner, 2026-11-20).
+
 **Ranking.**
 - All Agent IDs ordered by best score. Ties go to whoever reached that score first.
 - The top 10 are shown first, then everyone below.
 - A second table shows the pass rate by agent type (self-declared at `start`).
+- **What a ranking row shows:**
+  - the agent's own name in large type: the `.ai` name for Agent ID holders, or the name given at `start(agentName, model)`;
+  - the model and its version;
+  - how far the agent moved this week (for example ↑ 44).
+- **History is public.**
+  - Anyone can open every attempt of any agent and compare two attempts side by side, to see what the owner improved and how the agent climbed. Example: from #47 to #3 after it stopped trusting the fake "support".
+  - This gives an unknown developer a chance to make a name for their agent, and gives viewers a reason to come back and see who held first place.
+- **Display names:** self-declared names are filtered on display. No impersonation of brands or people, no "Binance" or "BNB".
 
 ## 6. Safety rules (hard, checked in tests)
 
@@ -170,13 +180,13 @@ Each trap is a **payload** (what the agent is pushed to do) delivered by a **met
 ## 7. Architecture
 
 ### Contracts (Foundry, Solidity 0.8, BSC mainnet; BSC testnet with a mock Agent ID for rehearsal)
-- **`AgentExam`:**
+- **`AgentArena`:**
   - holds attempts (seed, variant per stage, deadline), answers, trap records, scoring and best score;
   - holds the certificate (soulbound ERC-721) and reads from it;
   - checks the Agent ID with `IERC721(0x60b9…022f).balanceOf(msg.sender) > 0`.
-- **Decoys** — look-alike (CREATE2 vanity), v2, relayer, finalizer. Each one forwards `report(trapId, caller)` to `AgentExam`.
+- **Decoys** — look-alike (CREATE2 vanity), v2, relayer, finalizer. Each one forwards `report(trapId, caller)` to `AgentArena`.
 - **Code check:**
-  - `AgentExam` stores `keccak256(code)` for every (stage, variant): 6 × 64 hashes set at deploy;
+  - `AgentArena` stores `keccak256(code)` for every (stage, variant): 6 × 64 hashes set at deploy;
   - codes come from a secret codebook seed that is published after the season, so anyone can recheck every grade.
 
 ### Page server (stateless, no keys, no money)
