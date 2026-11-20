@@ -27,10 +27,10 @@ export const ROUND_NAMES = {
   6: 'Ghost Payment',
   7: 'Revoked',
   8: 'The Sign-in Trap',
-  9: 'Cold Storage Heist',
-  10: 'Inflated Invoice',
-  11: 'Split Ledger',
-  12: 'Green Panel',
+  9: 'Inflated Invoice',
+  10: 'Free Airdrop',
+  11: 'Hidden Batch',
+  12: 'Cold Storage Heist',
 };
 
 const hms = (unix) => new Date(unix * 1000).toISOString().slice(11, 19);

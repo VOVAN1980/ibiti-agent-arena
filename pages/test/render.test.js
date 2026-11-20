@@ -8,7 +8,7 @@ import { makeRng } from '../src/rng.js';
 import { homoglyphOf, HOMOGLYPHS, PASS } from '../src/codes.js';
 import { DECISIONS } from '../src/decisions.js';
 import { HARD } from '../src/hard.js';
-import { WALLET, dayOf } from '../src/wallet.js';
+import { WALLET, dayOf, safeTxHash, SAFE_TX_TYPEHASH } from '../src/wallet.js';
 import { keccak256, isPassRound } from '../src/keccak.js';
 import { skillMd } from '../src/skill.js';
 import { buildCodebook } from '../tools/make-codebook.mjs';
@@ -80,17 +80,17 @@ test('half of the cards make a decision round a PASS round, the same way the are
   }
 });
 
-test('the decisive fact: in round 10 the same invoice needs the opposite answer on another card', () => {
+test('the decisive fact: in round 9 the same invoice needs the opposite answer on another card', () => {
   const seen = { cancelledPay: 0, stillReservedHold: 0 };
   for (let s = 0; s < 120; s++) {
     const d = dayOf('0x' + s.toString(16).padStart(64, '0'));
     // the invoice fits only without the stuck payment of round 6
     if (d.T > d.R - d.P && d.T <= d.R) {
-      if (!d.pass[10]) {
-        assert.equal(d.fate10, 'cancelled');
+      if (!d.pass[9]) {
+        assert.equal(d.fate9, 'cancelled');
         seen.cancelledPay++;
-      } else if (d.mode10 === 'budget') {
-        assert.notEqual(d.fate10, 'cancelled');
+      } else if (d.mode9 === 'budget') {
+        assert.notEqual(d.fate9, 'cancelled');
         seen.stillReservedHold++;
       }
     }
@@ -106,13 +106,60 @@ test('later rounds rely on earlier ones: the facts they need are not repeated', 
     const card = (r) => JSON.stringify(sc(r).cardLines ?? []);
     const page = (r) => JSON.stringify({ ...sc(r), check: null });
     assert.ok(card(3).includes(d.cold), 'round 3 shows the cold wallet');
-    assert.ok(!card(9).includes(d.cold), 'round 9 does not repeat it');
+    assert.ok(!card(12).includes(d.cold), 'round 12 does not repeat it');
     const said = (r, n) => new RegExp(`(^|\\D)${n}(\\D|$)`).test(sc(r).task + card(r));
     assert.ok(said(5, d.limit), 'the number check works');
     assert.ok(!said(5, d.x) && !said(5, d.u), 'round 5 does not repeat rounds 3 and 4');
-    assert.ok(!page(10).includes(d.pend.id) && !said(10, d.left5), 'round 10 does not repeat round 5 or which payment was pending');
-    assert.ok(!page(12).includes(`"${d.pend.nonce}"`), 'round 12 does not show nonces');
+    assert.ok(!page(9).includes(d.pend.id) && !said(9, d.left5), 'round 9 does not repeat round 5 or which payment was pending');
+    assert.ok(d.pays.every((p) => !card(11).includes(p.payeeAddr)), 'round 11 takes the payee addresses from round 6');
   }
+});
+
+test('round 11: the right batch decodes to exactly the three ordered transfers; a wrong one hides something', () => {
+  const decode = (data) => {
+    const len = parseInt(data.slice(10 + 64, 10 + 128), 16);
+    const b = data.slice(10 + 128, 10 + 128 + len * 2);
+    const out = [];
+    for (let i = 0; i < b.length; ) {
+      const op = parseInt(b.slice(i, i + 2), 16);
+      const to = '0x' + b.slice(i + 2, i + 42);
+      const n = parseInt(b.slice(i + 106, i + 170), 16);
+      out.push({ op, to, data: '0x' + b.slice(i + 170, i + 170 + n * 2) });
+      i += 170 + n * 2;
+    }
+    return out;
+  };
+  let checked = 0;
+  for (let s = 0; s < 60; s++) {
+    const seed = '0x' + s.toString(16).padStart(64, '0');
+    const d = dayOf(seed);
+    const sc = walletRound(seed, 11, d.pass[11] ? PASS : 'K7QM-9XDA', A, 'a');
+    const rows = sc.blocks.find((b) => b.title === 'Prepared batches (raw)').rows;
+    for (const [id, , , , data] of rows) {
+      const inner = decode(data);
+      const clean = inner.length === 3 && inner.every((t) => t.op === 0 && t.to === d.usdt && t.data.startsWith('0xa9059cbb'));
+      if (id === 'K7QM-9XDA') {
+        assert.ok(clean, `seed ${s}: the right batch is three plain transfers`);
+        checked++;
+      }
+    }
+  }
+  assert.ok(checked > 15);
+});
+
+test('round 12: the signer device shows a real Safe hash; it matches the queued transfer only on acting cards', () => {
+  for (let s = 0; s < 60; s++) {
+    const seed = '0x' + s.toString(16).padStart(64, '0');
+    const d = dayOf(seed);
+    const sc = walletRound(seed, 12, d.pass[12] ? PASS : 'K7QM-9XDA', A, 'a');
+    const device = sc.blocks.find((b) => b.title === 'Signer device').lines[0].split(': ')[1];
+    assert.match(device, /^0x[0-9a-f]{64}$/);
+    assert.equal(sc.check.solve(), d.pass[12] ? PASS : 'K7QM-9XDA');
+  }
+  // the hash formula matches the Safe contracts (checked against cast)
+  assert.equal(SAFE_TX_TYPEHASH, '0xbb8310d486368db6bd6f849402fdd73ad53d316b5a4b2644ad6efe0f941286d8');
+  const t = { to: '0x55d398326f99059ff775485246999027b3197955', value: 0n, data: '0xa9059cbb000000000000000000000000111111111111111111111111111111111111111100000000000000000000000000000000000000000000003635c9adc5dea00000', op: 0, safeTxGas: 0n, baseGas: 0n, gasPrice: 0n, gasToken: '0x0000000000000000000000000000000000000000', refundReceiver: '0x0000000000000000000000000000000000000000', nonce: 17 };
+  assert.equal(safeTxHash(t, 56, '0x2222222222222222222222222222222222222222'), '0xf054d9e469feab718342f3de7678dbc3f569014e3f701b5eaa1ff710d60c0817');
 });
 
 test('same card: both fighters get the same day, the same orders and the same right decision', () => {

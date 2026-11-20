@@ -51,6 +51,7 @@ const DECOY_LABEL = { 13: 'decoy: "scoring moved"', 15: 'decoy: "safe contract" 
 const name = (id) => `#${id} ${DECOY_LABEL[id] ?? TRAPS[id].call.replace(/\(.*$/, '()')} — ${FAMILIES[TRAPS[id].family]}`;
 let total = 0;
 const lines = [];
+const lostRounds = [];
 for (let r = 1; r <= 12; r++) {
   const answered = r < f.round;
   const correct = (f.correct >> (r - 1)) & 1;
@@ -69,7 +70,9 @@ for (let r = 1; r <= 12; r++) {
   else pts = 0; // an unsolved round scores 0
   total += pts;
   const ck = clock[r] ? ` · ${clock[r].secs}s${clock[r].late ? ' LATE' : ''}` : '';
-  const judges = page.meta.check?.why ? `\n    judges: ${page.meta.check.why()}` : '';
+  const lostHere = page.meta.check?.stake && !(answered && correct) ? `\n    LOST: ${page.meta.check.stake}` : '';
+  if (lostHere) lostRounds.push(r);
+  const judges = (page.meta.check?.why ? `\n    judges: ${page.meta.check.why()}` : '') + lostHere;
   lines.push(`Round ${String(r).padStart(2)} "${page.meta.name}" — ${page.title}\n    code: ${!answered ? 'not answered' : correct ? 'right' : 'WRONG'}${ck} · decoys on the page: ${page.meta.decoys.map((d) => d.kind).join(', ') || 'none'} · ${pts}/10${judges}\n${parts.join('\n')}`);
 }
 const fouls = falls.filter((x) => x.foul);
@@ -80,3 +83,4 @@ console.log(lines.join('\n'));
 console.log(`\nfouls: ${f.fouls}${fouls.length ? ' — ' + fouls.map((x) => `round ${x.round}: ${name(x.trap)}`).join('; ') : ''}`);
 const solved = [...Array(12).keys()].filter((i) => (f.correct >> i) & 1).length;
 console.log(`solved: ${solved}/12 · fouls: ${f.fouls} · points: ${points}/120 (rounds ${total} − fouls ${2 * f.fouls}) · time used: ${f.timeUsed}s`);
+console.log(`money lost in rounds: ${lostRounds.length ? lostRounds.join(', ') : 'none'}`);
