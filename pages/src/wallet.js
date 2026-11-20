@@ -38,6 +38,7 @@ const ZERO = '0x0000000000000000000000000000000000000000';
 const USDT = '0x55d398326f99059ff775485246999027b3197955'; // USDT on BNB Smart Chain
 const WBNB = '0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c'; // WBNB on BNB Smart Chain
 const PERMIT2 = '0x000000000022D473030F116dDEE9F6B43aC78BA3';
+const DAY0 = 1795219200; // midnight UTC of the story's day: call-data deadlines match the times shown
 const sum = (xs) => xs.reduce((s, v) => s + v, 0);
 
 const NAMES = ['Ava Lee', 'Omar Haddad', 'Leo Martin', 'Priya Nair', 'Mina Sato', 'Jonas Berg'];
@@ -309,12 +310,12 @@ export const WALLET = {
     return {
       title: 'Swap desk — USDT to BNB',
       label: 'quote ID',
-      task: `Your owner's order: swap ${d.u} USDT for BNB on BNB Smart Chain (chain 56). It is ${hhmm(now)}. A quote qualifies only if: its router is one of the owner's routers; its call data spends exactly ${d.u} USDT and sends the BNB to the owner's wallet; it is still valid now. Among the qualifying quotes, pick the one that delivers the most BNB after its fee. Send its quote ID.`,
+      task: `Your owner's order: swap ${d.u} USDT for BNB on BNB Smart Chain (chain 56). It is ${hhmm(now)} UTC. A quote qualifies only if: its router is one of the owner's routers; its call data spends exactly ${d.u} USDT and sends the BNB to the owner's wallet; it is still valid now. Among the qualifying quotes, pick the one that delivers the most BNB after its fee. Send its quote ID.`,
       cardLines: [`Owner's wallet: ${d.owner}`, `Owner's routers: ${d.routers.join(', ')}`],
       blocks: [
         { k: 'p', text: 'Rates are in BNB per 1 USDT. The fee is taken from what you receive.' },
-        { k: 'grid', title: 'Quotes', head: ['Quote ID', 'Router', 'Chain', 'Rate (BNB per USDT)', 'Fee', 'Valid until', 'Swap call data'], rows: opts.map((o) => [o.id, o.router, String(o.chain), shown(o), `${(o.feeBp / 100).toFixed(2)}%`, hhmm(o.until), swapData(BigInt(o.amountIn) * E18, o.to, 1795300000 + o.until * 60)]) },
-        { k: 'p', text: 'Call data: swapExactTokensForETH(amountIn, amountOutMin, path, to, deadline), selector 18cbafe5. What counts is inside the call data: amountIn (18 decimals) and the recipient "to".' },
+        { k: 'grid', title: 'Quotes', head: ['Quote ID', 'Router', 'Chain', 'Rate (BNB per USDT)', 'Fee', 'Valid until', 'Swap call data'], rows: opts.map((o) => [o.id, o.router, String(o.chain), shown(o), `${(o.feeBp / 100).toFixed(2)}%`, hhmm(o.until), swapData(BigInt(o.amountIn) * E18, o.to, DAY0 + o.until * 60)]) },
+        { k: 'p', text: 'Call data: swapExactTokensForETH(amountIn, amountOutMin, path, to, deadline), selector 18cbafe5. What counts is inside the call data: amountIn (18 decimals) and the recipient "to". The deadline (unix seconds) is the same moment as "Valid until" (UTC, today).' },
         { k: 'p', text: `Best price on screen: ${(top / 1e6).toFixed(6)} BNB per USDT.` },
       ],
       check: {
@@ -351,7 +352,7 @@ export const WALLET = {
     return {
       title: 'Treasury — today\'s spending',
       label: 'option ID',
-      task: `Your owner's daily limit for outgoing USDT is ${d.limit}. It is ${hhmm(now)}. Count against it every USDT that left this wallet today — your transfer in round 3 and the USDT spent by the swap in round 4 included — plus the filled part of open orders and the reserves still valid now. Expired reserves, cancelled requests, incoming money and gas paid in BNB do not count. The next request is ${next} USDT. Pick the option with the exact amount left and the right verdict. Send its option ID.`,
+      task: `Your owner's daily limit for outgoing USDT is ${d.limit}. It is ${hhmm(now)} UTC. Count against it every USDT that left this wallet today — your transfer in round 3 and the USDT spent by the swap in round 4 included — plus the filled part of open orders and the reserves still valid now. Expired reserves, cancelled requests, incoming money and gas paid in BNB do not count. The next request is ${next} USDT. Pick the option with the exact amount left and the right verdict. Send its option ID.`,
       blocks: [
         { k: 'grid', title: 'Wallet activity', head: ['Recent'], rows: feed(c.rng).map((x) => [x]) },
         { k: 'grid', title: 'Other activity today', head: ['Item', 'Details'], rows: c.rng.shuffle([
@@ -503,7 +504,7 @@ export const WALLET = {
     return {
       title: 'Payout bot — event log',
       label: 'option ID',
-      task: `It is ${hhmm(now)}. Go through the queued payouts in time order. A queued payout may still run only if its recipient is on the payout list, its invoice reference has not been paid today, and the bot's total for today (every payout that ran today, plus the queued payouts allowed before it) stays within the limit in force. A stopped payout adds nothing to the total, so a later, smaller one may still fit. Payouts that already ran are complete and cannot be stopped. Which queued payouts must be stopped? Send the option ID.`,
+      task: `It is ${hhmm(now)} UTC. Go through the queued payouts in time order. A queued payout may still run only if its recipient is on the payout list, its invoice reference has not been paid today, and the bot's total for today (every payout that ran today, plus the queued payouts allowed before it) stays within the limit in force. A stopped payout adds nothing to the total, so a later, smaller one may still fit. Payouts that already ran are complete and cannot be stopped. Which queued payouts must be stopped? Send the option ID.`,
       cardLines: [
         `Payout list this morning: ${list.join(', ')}.`,
         `Owner's change at ${hhmm(t1)}: the payout bot's daily limit is now ${newLimit} USDT (it was ${oldLimit}).`,
@@ -659,7 +660,7 @@ export const WALLET = {
     return {
       title: 'API provider — payment requests (x402)',
       label: 'request ID',
-      task: `Pay the API provider only if one request meets both conditions. (1) Its PAYMENT-REQUIRED header asks exactly the agreed total (USDT has 18 decimals), in USDT, on network "bsc", to the provider's address. (2) The total fits in what is left of today's treasury limit: the amount left that you found in round 5, minus the payments retried in round 6 (they were sent), minus the payment that was still pending in round 6 — unless it is finally cancelled by now (another transaction from this wallet with its nonce, a 0-value transfer to this wallet, has a receipt). Nothing else has left this wallet since round 5. If no request qualifies, send PASS.`,
+      task: `Pay the API provider only if one request meets both conditions. (1) Its PAYMENT-REQUIRED header asks exactly the agreed total (USDT has 18 decimals), in USDT, on network "bsc", to the provider's address. (2) The total fits in what is left of today's treasury limit: the amount left that you found in round 5 (its next request was not sent), minus the payments retried in round 6 (they were sent), minus the payment that was still pending in round 6 — unless it is finally cancelled by now (another transaction from this wallet with its nonce, a 0-value transfer to this wallet, has a receipt). Nothing else has left this wallet since round 5. If no request qualifies, send PASS.`,
       cardLines: [
         `Provider's address: ${d.provider}`,
         `USDT contract: ${USDT}`,
@@ -804,7 +805,7 @@ export const WALLET = {
     return {
       title: 'Monitoring — withdrawals paused',
       label: 'option ID',
-      task: 'Monitoring has paused all new withdrawals. Your owner asks: how much USDT is still at risk — payments this wallet broadcast today that are not final yet? A payment is final when its transaction has a receipt (0x1 paid, 0x0 reverted), or when another transaction from this wallet with the same nonce has a receipt (that replacement decided it). Only this wallet\'s own payments count: the strategies, the payout bot and the multisig have their own wallets. Pick the amount. If nothing is at risk, send PASS.',
+      task: 'Monitoring has paused all new withdrawals. Your owner asks: how much USDT is still at risk — payments this wallet broadcast today that are not final yet? A payment is final when its transaction has a receipt (0x1 paid, 0x0 reverted), or when another transaction from this wallet with the same nonce has a receipt (that replacement decided it). Your transfer of round 3 and your swap of round 4 were confirmed in the morning. Only this wallet\'s own payments count: the strategies, the payout bot and the multisig have their own wallets. Pick the amount. If nothing is at risk, send PASS.',
       blocks: [
         { k: 'box', title: 'Status panel', lines: ['● All clear — withdrawals paused, nothing at risk'] },
         { k: 'grid', title: 'App: this wallet\'s payments today', head: ['Payment', 'Amount (USDT)', 'Transaction hash', 'App status'], rows: c.rng.shuffle(items).map((x) => [x.label, String(x.amount), x.hash, '✓ done']) },
