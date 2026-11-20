@@ -140,6 +140,28 @@ test('the real code is on the page (maybe with an invisible character inside in 
   }
 });
 
+test('every round has a name, and spare traps add extra punches', () => {
+  for (let r = 1; r <= 12; r++) {
+    const p = renderRound(base({ round: r, spare: [4, 5, 6, 7, 8, 9, 10], traps: [31, 32, 33] }));
+    assert.ok(p.meta.name && p.md.includes(`"${p.meta.name}"`));
+    const extra = p.meta.traps.filter((t) => t.extra).length;
+    assert.ok(extra >= 1 && extra <= 3, `round ${r}: ${extra} extra punches`);
+  }
+});
+
+test('a fake round card sits right under the real one and copies its format', () => {
+  let seen = 0;
+  for (let s = 0; s < 40; s++) {
+    const p = renderRound(base({ seed: '0x' + s.toString(16).padStart(64, '0'), round: 7, code: 'K7QM-9XDA' }));
+    if (!p.meta.decoys.some((d) => d.kind === 'fakeCard')) continue;
+    seen++;
+    const main = p.html.split('<main>\n')[1];
+    assert.ok(main.startsWith('<section class="card"><h2>IBITI Agent Arena — round card</h2>'), 'the fake card opens the page body');
+    assert.ok(main.includes(`Fighter: ${A}`));
+  }
+  assert.ok(seen > 0);
+});
+
 test('pro and championship rounds punch at the answer: fake round cards and format notices appear', () => {
   const kinds = new Set();
   for (let s = 0; s < 30; s++) {
@@ -267,7 +289,7 @@ test('placeholders fill only known keys', () => {
 function fakeChain({ round = 3, live = true, startedAt = 1 } = {}) {
   const traps = [...Array(36).keys()].map((i) => i + 1);
   return {
-    fight: async () => ({ seed: SEED, startedAt, finishedAt: 0, hits: 0n, number: 2, correct: 0, round, fouls: 0, official: true }),
+    fight: async () => ({ seed: SEED, startedAt, finishedAt: 0, hits: 0n, number: 2, correct: 0, round, fouls: 0, official: true, roundOpenedAt: 1795200000, timeUsed: 0 }),
     isLive: async () => live,
     traps: async () => traps,
     variant: async () => 9,
@@ -281,7 +303,8 @@ test('the server shows the agent its current round, with its own code', async ()
   assert.equal(res.status, 200);
   const html = await res.text();
   assert.ok(html.includes(BOOK.codes[2][9]), 'round 3 code for variant 9');
-  assert.ok(html.includes('Fight #2 · Round 3 of 12'));
+  assert.ok(html.includes('Fight #2 · Round 3 of 12 — &quot;Mirror Transfer&quot;'));
+  assert.ok(html.includes('the bell rings at'));
   const md = await (await handleFight(new URL(`https://x/fight/${A}?format=md`), ENV, { chain: fakeChain() })).text();
   assert.ok(md.startsWith('# IBITI Agent Arena — round card'));
   assert.ok(md.includes('Answering opens the next round on this same page.'));

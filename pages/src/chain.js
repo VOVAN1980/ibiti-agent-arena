@@ -34,7 +34,7 @@ export function makeChain({ rpc, arena, fetchFn }) {
   const call = (data) => ethCall(rpc, arena, data, fetchFn);
   return {
     /** The agent's latest fight: fights(address) returns
-     *  (seed, startedAt, finishedAt, hits, number, correct, round, fouls, official). */
+     *  (seed, startedAt, finishedAt, hits, number, correct, round, fouls, official, roundOpenedAt, timeUsed). */
     async fight(agent) {
       const w = words(await call(SEL.fights + word(agent)));
       return {
@@ -47,6 +47,8 @@ export function makeChain({ rpc, arena, fetchFn }) {
         round: Number(big(w[6])),
         fouls: Number(big(w[7])),
         official: big(w[8]) !== 0n,
+        roundOpenedAt: Number(big(w[9])),
+        timeUsed: Number(big(w[10])),
       };
     },
     async isLive(agent) {

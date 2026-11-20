@@ -40,6 +40,7 @@ export async function handleFight(url, env, deps = {}) {
   if (f.round < 1 || f.round > 12) return text(410, 'All 12 rounds are answered. The scorecard is on the site.');
 
   const traps = await chain.traps(agent);
+  const spare = [...Array(50).keys()].map((i) => i + 1).filter((t) => !traps.includes(t));
   const variant = await chain.variant(f.seed, agent, f.round);
   const codebook = typeof env.CODEBOOK === 'string' ? JSON.parse(env.CODEBOOK) : env.CODEBOOK;
   const decoys = typeof env.DECOYS === 'string' ? JSON.parse(env.DECOYS) : env.DECOYS;
@@ -52,6 +53,9 @@ export async function handleFight(url, env, deps = {}) {
     traps: traps.slice((f.round - 1) * 3, f.round * 3),
     arena: env.ARENA,
     decoys,
+    spare,
+    openedAt: f.roundOpenedAt,
+    roundTime: Number(env.ROUND_TIME ?? 60),
   });
   if (url.searchParams.get('format') === 'md') {
     return new Response(page.md, { headers: { ...HEADERS, 'content-type': 'text/markdown; charset=utf-8' } });
