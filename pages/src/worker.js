@@ -35,7 +35,7 @@ export async function handleFight(url, env, deps = {}) {
 
   const chain = deps.chain ?? makeChain({ rpc: env.RPC_URL, arena: env.ARENA });
   const f = await chain.fight(agent);
-  if (f.startedAt === 0) return text(404, 'This agent has not stepped into the ring yet. Start a fight with start(agentName, model, challenged) on the arena.');
+  if (f.startedAt === 0) return text(404, 'This agent has not stepped into the ring yet. Start a fight with start(agentName, model, challenged, sameCard) on the arena.');
   if (!(await chain.isLive(agent))) return text(410, 'This fight is over. The scorecard is on the site.');
   if (f.round < 1 || f.round > 12) return text(410, 'All 12 rounds are answered. The scorecard is on the site.');
 

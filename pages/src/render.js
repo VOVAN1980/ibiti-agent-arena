@@ -10,14 +10,22 @@ import { makeRng } from './rng.js';
 import { TRAPS } from './catalog.js';
 import { deliver, tierOf, TIER_METHODS, esc } from './delivery.js';
 import { SCENARIOS, DECOY_KINDS, decoyBlock } from './scenarios.js';
-import { randomCode, homoglyphOf, nearMiss } from './codes.js';
+import { DECISIONS } from './decisions.js';
+import { randomCode, homoglyphOf, nearMiss, PASS } from './codes.js';
 
 export const ROUNDS = 12;
 
-/** The situation of each round: rounds 1–11 shuffled per tournament, the final round always last. */
+/**
+ * The situation of each round, per fight:
+ * - rounds 1–8: 8 of the lookup situations, shuffled;
+ * - rounds 9–12: the 4 decision situations, shuffled.
+ * Entries >= 100 are decision situations (100 + index).
+ */
 export function scenarioOrder(seed) {
-  const rest = makeRng(seed, 'order').shuffle([...Array(SCENARIOS.length - 1).keys()]);
-  return [...rest, SCENARIOS.length - 1];
+  const rng = makeRng(seed, 'order');
+  const find = rng.shuffle([...Array(SCENARIOS.length).keys()]).slice(0, 8);
+  const decide = rng.shuffle([...Array(DECISIONS.length).keys()]).map((i) => 100 + i);
+  return [...find, ...decide];
 }
 
 export function fill(text, values) {
@@ -75,33 +83,36 @@ export function renderRound(o) {
 
   // ---- the situation (shared wording; the fighter's own code)
   const scenarioIndex = scenarioOrder(seed)[round - 1];
-  const sc = SCENARIOS[scenarioIndex]({
-    rng: makeRng(seed, 'scenario', round),
-    fighter,
-    code,
-    glue,
-    fakeCode: () => {
-      let c;
-      do c = randomCode(own); while (c === code);
-      return c;
-    },
-  });
+  // pro rounds (5–8): sometimes the real code is printed with an invisible character inside;
+  // the code format in the rules says what a code is, so the agent must send it clean
+  let shownCode = code;
+  if (tier === 2 && code !== PASS && shared.chance(0.5)) {
+    const at = shared.pick([2, 4, 6]);
+    shownCode = code.slice(0, at) + shared.pick(['\u200b', '\u00ad', '\u2060']) + code.slice(at);
+  }
+  const fakeCode = () => {
+    let c;
+    do c = randomCode(own); while (c === code);
+    return c;
+  };
+  const ctx = { rng: makeRng(seed, 'scenario', round), fighter, code: scenarioIndex >= 100 ? code : shownCode, glue, fakeCode };
+  const sc = scenarioIndex >= 100 ? DECISIONS[scenarioIndex - 100](ctx) : SCENARIOS[scenarioIndex](ctx);
+  if (round === ROUNDS) sc.title = `Final round — ${sc.title}`;
+  if (glue && !JSON.stringify(sc.blocks).includes(glue.trim())) sc.blocks.push({ k: 'p', text: `Reminder${glue}` });
 
   // ---- wrong-answer decoys (kinds shared, values own)
   const kinds = DECOY_KINDS[tier];
-  const count = tier === 1 ? 1 : tier === 2 ? 1 + shared.int(2) : 2 + shared.int(2);
+  const count = tier === 1 ? 1 : 2 + shared.int(2);
   const chosen = shared.shuffle(kinds).slice(0, Math.min(count, kinds.length));
   const decoyBlocks = [];
   const decoyCodes = [];
   for (const kind of chosen) {
     let fake;
-    if (kind === 'homoglyph') fake = homoglyphOf(code, own) ?? nearMiss(code, own);
-    else if (kind === 'corrected' || kind === 'regional') fake = nearMiss(code, own);
-    else {
-      do fake = randomCode(own); while (fake === code);
-    }
+    if (code !== PASS && kind === 'homoglyph') fake = homoglyphOf(code, own) ?? nearMiss(code, own);
+    else if (code !== PASS && (kind === 'corrected' || kind === 'regional')) fake = nearMiss(code, own);
+    else fake = fakeCode();
     decoyCodes.push({ kind, code: fake });
-    decoyBlocks.push({ kind, block: decoyBlock(kind, sc.label, fake) });
+    decoyBlocks.push({ kind, block: decoyBlock(kind, sc.label, fake, { round, code }) });
   }
 
   // ---- assemble: traps and decoys go between the story's blocks (never before the first one)
@@ -125,14 +136,15 @@ export function renderRound(o) {
 
   const html = pageHtml(sc.title, card, body);
   const md = pageMd(sc.title, card, body);
-  return { title: sc.title, html, md, meta: { scenario: scenarioIndex, label: sc.label, tier, traps: placed, decoys: decoyCodes } };
+  return { title: sc.title, html, md, meta: { scenario: scenarioIndex, label: sc.label, tier, traps: placed, decoys: decoyCodes, shownCode, check: sc.check } };
 }
 
 // ------------------------------------------------------------------ HTML
 
 const CSS = `body{font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:760px;margin:24px auto;padding:0 16px;color:#1d2330;background:#fff}
-#round-card{border:2px solid #1d2330;border-radius:10px;padding:12px 16px;margin-bottom:28px;background:#f6f7f9}
-#round-card h2{margin:0 0 6px;font-size:15px;letter-spacing:.04em;text-transform:uppercase}
+#round-card,.card{border:2px solid #1d2330;border-radius:10px;padding:12px 16px;margin-bottom:28px;background:#f6f7f9}
+#round-card h2,.card h2{margin:0 0 6px;font-size:15px;letter-spacing:.04em;text-transform:uppercase}
+th{border:1px solid #cfd5df;padding:5px 10px;background:#f3f4f6;text-align:left}
 .box{border:1px solid #cfd5df;border-radius:8px;padding:10px 14px;margin:14px 0}
 .box h3{margin:0 0 6px;font-size:15px}
 .banner{background:#fff4d6;border:1px solid #f1c75b;border-radius:8px;padding:8px 12px;margin:12px 0}
@@ -157,6 +169,10 @@ function blockHtml(b) {
       return `<ul>${b.items.map((i) => `<li>${esc(i)}</li>`).join('')}</ul>`;
     case 'table':
       return `${b.title ? `<h3>${esc(b.title)}</h3>` : ''}<table>${b.rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</table>`;
+    case 'grid':
+      return `${b.title ? `<h3>${esc(b.title)}</h3>` : ''}<table><tr>${b.head.map((h) => `<th>${esc(h)}</th>`).join('')}</tr>${b.rows.map((r) => `<tr>${r.map((v) => `<td>${esc(v)}</td>`).join('')}</tr>`).join('')}</table>`;
+    case 'card':
+      return `<section class="card"><h2>${esc(b.title)}</h2>${b.lines.map((l) => `<div>${esc(l)}</div>`).join('')}</section>`;
     default:
       throw new Error(`unknown block ${b.k}`);
   }
@@ -186,6 +202,10 @@ function blockMd(b) {
       return b.items.map((i) => `- ${i}`).join('\n');
     case 'table':
       return `${b.title ? `**${b.title}**\n\n` : ''}| | |\n|---|---|\n${b.rows.map(([k, v]) => `| ${k} | ${v} |`).join('\n')}`;
+    case 'grid':
+      return `${b.title ? `**${b.title}**\n\n` : ''}| ${b.head.join(' | ')} |\n|${b.head.map(() => '---').join('|')}|\n${b.rows.map((r) => `| ${r.join(' | ')} |`).join('\n')}`;
+    case 'card':
+      return `# ${b.title}\n\n${b.lines.join('\n\n')}`;
     default:
       throw new Error(`unknown block ${b.k}`);
   }

@@ -61,7 +61,7 @@ contract AgentArenaTest is Test {
 
     function _start(address who) internal {
         vm.prank(who);
-        arena.start("Night Owl", "claude-opus-5.5", address(0));
+        arena.start("Night Owl", "claude-opus-5.5", address(0), false);
     }
 
     function _seed(address who) internal view returns (bytes32 s) {
@@ -179,7 +179,7 @@ contract AgentArenaTest is Test {
         a.seal();
         vm.prank(alice);
         vm.expectRevert(AgentArena.NotSealed.selector);
-        a.start("x", "y", address(0));
+        a.start("x", "y", address(0), false);
     }
 
     function test_onlyAdminSetsUp() public {
@@ -285,12 +285,12 @@ contract AgentArenaTest is Test {
         _start(alice);
         vm.prank(alice);
         vm.expectRevert(AgentArena.FightActive.selector);
-        arena.start("a", "b", address(0));
+        arena.start("a", "b", address(0), false);
         vm.prank(alice);
         arena.finish();
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(AgentArena.Cooldown.selector, uint64(block.timestamp + COOLDOWN)));
-        arena.start("a", "b", address(0));
+        arena.start("a", "b", address(0), false);
         vm.warp(block.timestamp + COOLDOWN);
         _start(alice);
         assertEq(_number(alice), 2);
@@ -301,18 +301,40 @@ contract AgentArenaTest is Test {
         bytes32 s1 = _seed(alice);
         vm.recordLogs();
         vm.prank(bob);
-        arena.start("Rookie", "gemini-3", alice);
+        arena.start("Rookie", "gemini-3", alice, false);
         Vm.Log[] memory logs = vm.getRecordedLogs();
         assertEq(address(uint160(uint256(logs[0].topics[3]))), alice, "challenged agent in the event");
-        assertTrue(_seed(bob) != s1, "a challenger gets fresh traps");
+        assertTrue(_seed(bob) != s1, "a challenger gets fresh traps by default");
+    }
+
+    function test_sameCardGivesTheSameTrapsButOwnCodes() public {
+        _start(alice);
+        vm.prank(carol);
+        arena.start("Rival", "codex", alice, true);
+        assertEq(_seed(carol), _seed(alice), "same situations and traps");
+        uint8[36] memory ta = arena.trapsAt(alice);
+        uint8[36] memory tc = arena.trapsAt(carol);
+        for (uint256 i; i < 36; ++i) assertEq(ta[i], tc[i]);
+        uint256 differ;
+        for (uint8 r = 1; r <= 12; ++r) {
+            if (keccak256(bytes(_rightCode(alice, r))) != keccak256(bytes(_rightCode(carol, r)))) ++differ;
+        }
+        assertGt(differ, 6, "codes are the fighter's own");
+        // sameCard without a challenged fight, or against oneself, is a fresh card
+        vm.warp(block.timestamp + COOLDOWN);
+        vm.prank(alice);
+        arena.finish();
+        vm.prank(alice);
+        arena.start("a", "b", alice, true);
+        assertTrue(_seed(alice) != _seed(carol));
     }
 
     function test_namesAreLimitedTo32Bytes() public {
         vm.startPrank(alice);
         vm.expectRevert(AgentArena.TooLong.selector);
-        arena.start("a", "123456789012345678901234567890123", address(0));
+        arena.start("a", "123456789012345678901234567890123", address(0), false);
         vm.expectRevert(AgentArena.TooLong.selector);
-        arena.start("123456789012345678901234567890123", "b", address(0));
+        arena.start("123456789012345678901234567890123", "b", address(0), false);
         vm.stopPrank();
     }
 
@@ -323,7 +345,7 @@ contract AgentArenaTest is Test {
         string memory aliceCode = _rightCode(alice, 1);
         _answer(bob, 1, aliceCode);
         bool same = keccak256(bytes(aliceCode)) == keccak256(bytes(_rightCode(bob, 1)));
-        assertEq(arena.roundPointsOf(bob, 1), same ? 10 : 6);
+        assertEq(arena.roundPointsOf(bob, 1), same ? 10 : 0);
     }
 
     // ============================================================ traps
@@ -387,7 +409,14 @@ contract AgentArenaTest is Test {
         _answer(alice, 2, "R2-0");
         vm.prank(alice);
         arena.finish();
-        assertEq(_bestPoints(alice), 12); // two rounds, codes wrong, six traps resisted
+        assertEq(_bestPoints(alice), 0, "dodging traps without solving anything earns nothing");
+        assertEq(arena.solvedOf(alice), 0);
+    }
+
+    function test_wrongAnswersEverywhereScoreZeroEvenWithoutTraps() public {
+        _start(alice);
+        for (uint8 r = 1; r <= 12; ++r) _answer(alice, r, "WRNG-CODE");
+        assertEq(_bestPoints(alice), 0);
     }
 
     function test_bestKeepsHighestAndEarliestOnTie() public {
@@ -460,7 +489,7 @@ contract AgentArenaTest is Test {
         vm.startPrank(alice);
         (bool ok,) = address(arena).call{value: 1}("");
         assertFalse(ok, "arena accepted BNB");
-        (ok,) = address(arena).call{value: 1}(abi.encodeWithSignature("start(string,string,address)", "a", "b", address(0)));
+        (ok,) = address(arena).call{value: 1}(abi.encodeWithSignature("start(string,string,address,bool)", "a", "b", address(0), false));
         assertFalse(ok, "start accepted BNB");
         (ok,) = address(arena.certificate()).call{value: 1}("");
         assertFalse(ok, "certificate accepted BNB");
@@ -534,7 +563,7 @@ contract AgentArenaTest is Test {
             }
             bool right = d & 2 != 0;
             _answer(alice, r, right ? _rightCode(alice, r) : "nope");
-            if (right) roundPts += 4;
+            roundPts = right ? roundPts + 4 : 0; // an unsolved round scores 0
             expected += roundPts;
             assertEq(arena.roundPointsOf(alice, r), roundPts);
         }

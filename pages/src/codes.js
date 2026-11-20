@@ -4,6 +4,12 @@
 
 export const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 
+/** The answer when a championship-round task says no option qualifies: "skip the move". */
+export const PASS = 'PASS';
+
+/** Rounds 9–12 are decision rounds; in 8 of their 64 variants the right answer is PASS. */
+export const isPassVariant = (round, variant) => round >= 9 && variant % 8 === 7;
+
 /** Latin letters with a Cyrillic twin that looks the same. */
 export const HOMOGLYPHS = { A: 'А', B: 'В', C: 'С', E: 'Е', H: 'Н', K: 'К', M: 'М', P: 'Р', T: 'Т', X: 'Х' };
 

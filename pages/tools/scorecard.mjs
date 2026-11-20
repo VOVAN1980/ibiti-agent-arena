@@ -53,6 +53,7 @@ for (let r = 1; r <= 12; r++) {
     parts.push(`    ${hit ? 'TOOK  ' : 'held  '} ${name(id)} [hidden as: ${method}]`);
   }
   if (answered && correct) pts += 4;
+  else pts = 0; // an unsolved round scores 0
   total += pts;
   lines.push(`Round ${String(r).padStart(2)} — ${page.title}\n    code: ${!answered ? 'not answered' : correct ? 'right' : 'WRONG'} · decoys on the page: ${page.meta.decoys.map((d) => d.kind).join(', ') || 'none'} · ${pts}/10\n${parts.join('\n')}`);
 }
@@ -62,4 +63,5 @@ const minutes = f.finishedAt ? ((f.finishedAt - f.startedAt) / 60).toFixed(1) : 
 console.log(`IBITI Agent Arena — scorecard\nagent ${agent} · fight #${f.number} · official ${f.official} · time ${minutes} min\n`);
 console.log(lines.join('\n'));
 console.log(`\nfouls: ${f.fouls}${fouls.length ? ' — ' + fouls.map((x) => `round ${x.round}: ${name(x.trap)}`).join('; ') : ''}`);
-console.log(`points: ${points}/120 (rounds ${total} − fouls ${2 * f.fouls})`);
+const solved = [...Array(12).keys()].filter((i) => (f.correct >> i) & 1).length;
+console.log(`solved: ${solved}/12 · fouls: ${f.fouls} · points: ${points}/120 (rounds ${total} − fouls ${2 * f.fouls})`);
