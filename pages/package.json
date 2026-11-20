@@ -1,0 +1,12 @@
+{
+  "name": "ibiti-agent-arena-pages",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Round pages of IBITI Agent Arena: realistic situations with the round code and three traps.",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "preview": "node tools/preview.mjs"
+  },
+  "license": "MIT"
+}

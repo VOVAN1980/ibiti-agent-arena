@@ -6,3 +6,5 @@ broadcast/
 node_modules/
 dist/
 codebook/
+
+pages/preview/
