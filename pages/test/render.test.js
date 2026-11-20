@@ -165,7 +165,7 @@ test('placeholders fill only known keys', () => {
 function fakeChain({ round = 3, open = true, fighter = true, startAt = 1 } = {}) {
   const traps = [...Array(36).keys()].map((i) => i + 1);
   return {
-    tournament: async () => ({ seed: SEED, startAt, fighters: 2, settled: false, topPoints: 0 }),
+    session: async () => ({ seed: SEED, startAt, fighters: 2, settled: false }),
     roundNow: async () => ({ round, open }),
     isFighter: async () => fighter,
     traps: async () => traps,
@@ -176,23 +176,23 @@ function fakeChain({ round = 3, open = true, fighter = true, startAt = 1 } = {})
 const ENV = { ARENA, DECOYS: JSON.stringify(DECOYS), CODEBOOK: JSON.stringify(BOOK) };
 
 test('the server shows the open round to a fighter, with the fighter\'s own code', async () => {
-  const res = await handleRound(new URL(`https://x/t/7/3?agent=${A}`), ENV, { chain: fakeChain() });
+  const res = await handleRound(new URL(`https://x/s/7/3?agent=${A}`), ENV, { chain: fakeChain() });
   assert.equal(res.status, 200);
   const html = await res.text();
   assert.ok(html.includes(BOOK.codes[2][9]));
-  const md = await (await handleRound(new URL(`https://x/t/7/3?agent=${A}&format=md`), ENV, { chain: fakeChain() })).text();
+  const md = await (await handleRound(new URL(`https://x/s/7/3?agent=${A}&format=md`), ENV, { chain: fakeChain() })).text();
   assert.ok(md.startsWith('# IBITI Agent Arena — round card'));
 });
 
-test('the server refuses: wrong round, break, not a fighter, not started, after the bell, bad address', async () => {
+test('the server refuses: wrong round, corner, not a fighter, no such session, after the bell, bad address', async () => {
   const get = (path, chain) => handleRound(new URL(`https://x${path}`), ENV, { chain });
-  assert.equal((await get(`/t/7/4?agent=${A}`, fakeChain({ round: 3 }))).status, 409);
-  assert.equal((await get(`/t/7/3?agent=${A}`, fakeChain({ round: 3, open: false }))).status, 409);
-  assert.equal((await get(`/t/7/3?agent=${A}`, fakeChain({ fighter: false }))).status, 403);
-  assert.equal((await get(`/t/7/3?agent=${A}`, fakeChain({ startAt: 0 }))).status, 409);
-  assert.equal((await get(`/t/7/3?agent=${A}`, fakeChain({ round: 13, open: false }))).status, 410);
-  assert.equal((await get(`/t/7/3?agent=0x12`, fakeChain())).status, 400);
-  assert.equal((await get(`/t/7/13?agent=${A}`, fakeChain())).status, 404);
+  assert.equal((await get(`/s/7/4?agent=${A}`, fakeChain({ round: 3 }))).status, 409);
+  assert.equal((await get(`/s/7/3?agent=${A}`, fakeChain({ round: 3, open: false }))).status, 409);
+  assert.equal((await get(`/s/7/3?agent=${A}`, fakeChain({ fighter: false }))).status, 403);
+  assert.equal((await get(`/s/7/3?agent=${A}`, fakeChain({ startAt: 0 }))).status, 404);
+  assert.equal((await get(`/s/7/3?agent=${A}`, fakeChain({ round: 13, open: false }))).status, 410);
+  assert.equal((await get(`/s/7/3?agent=0x12`, fakeChain())).status, 400);
+  assert.equal((await get(`/s/7/13?agent=${A}`, fakeChain())).status, 404);
   assert.equal((await get(`/nope`, fakeChain())).status, 404);
 });
 

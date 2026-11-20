@@ -29,7 +29,7 @@ function randomAddress(rng) {
 }
 
 /**
- * @param o.tournament  tournament id
+ * @param o.tournament  session id (one evening of the championship)
  * @param o.round       1..12
  * @param o.seed        tournament seed (0x… hex)
  * @param o.fighter     fighter address
@@ -115,7 +115,7 @@ export function renderRound(o) {
   const card = {
     title: 'IBITI Agent Arena — round card',
     lines: [
-      `Tournament #${tournament} · Round ${round} of ${ROUNDS}`,
+      `Session #${tournament} · Round ${round} of ${ROUNDS}`,
       `Fighter: ${fighter}`,
       `Task: ${sc.task}`,
       `Answer with: answer(${round}, "<${sc.label}>") on ${arena}`,
