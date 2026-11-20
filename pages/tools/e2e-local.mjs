@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { handleFight } from '../src/worker.js';
 import { makeChain } from '../src/chain.js';
+import { isPassRound } from '../src/keccak.js';
 
 const [rpc, depPath, key, bookPath = 'codebook/codes.json'] = process.argv.slice(2);
 const dep = JSON.parse(readFileSync(depPath, 'utf8'));
@@ -28,6 +29,7 @@ for (let r = 1; r <= 12; r++) {
   if (!md.includes(`Round ${r} of 12`)) throw new Error(`round ${r}: page shows another round`);
   const variant = await chain.variant(plan.seed, agent, r);
   const code = book.codes[r - 1][variant];
+  if (r >= 9 && (variant === 7) !== isPassRound(plan.seed, r)) throw new Error(`round ${r}: the page server and the arena disagree on PASS`);
   const clean = md.replace(/[​­⁠]/g, '');
   if (code !== 'PASS' && !clean.includes(code)) throw new Error(`round ${r}: the real code is not on the page`);
   if (r === 2) send(dep.arena, 'claimBonus()'); // take one punch (a hit or a foul)

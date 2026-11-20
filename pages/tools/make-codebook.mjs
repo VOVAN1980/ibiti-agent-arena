@@ -1,5 +1,5 @@
 // Creates the secret codebook: 12 rounds x 64 variants of round codes. In rounds 9–12 (decision
-// rounds), 8 of the 64 variants are PASS: for those fighters no option on the page qualifies.
+// rounds), 8 of the 64 variants are PASS; the arena gives the PASS variant on half of the cards.
 //
 //   node tools/make-codebook.mjs            -> new random secret, writes ../codebook/
 //   node tools/make-codebook.mjs <hex>      -> rebuild from a known secret (e.g. after the season)

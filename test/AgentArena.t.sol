@@ -349,6 +349,17 @@ contract AgentArenaTest is Test {
         }
     }
 
+    function test_halfOfTheCardsMakeADecisionRoundAPassRound() public view {
+        for (uint8 r = 9; r <= 12; ++r) {
+            uint256 n;
+            for (uint256 i = 0; i < 400; ++i) {
+                if (arena.variantOf(keccak256(abi.encode(i)), alice, r) == 7) ++n;
+            }
+            assertGt(n, 160, "PASS on about half of the cards");
+            assertLt(n, 240, "PASS on about half of the cards");
+        }
+    }
+
     function test_lateAnswerScoresZeroButOpensTheNextRound() public {
         uint256 t = vm.getBlockTimestamp(); // the optimizer may reuse a cached block.timestamp in tests
         _start(alice);

@@ -358,11 +358,12 @@ contract AgentArena {
     ///         In the decision rounds (9–12) the variants with `variant % 8 == 7` are the ones whose
     ///         right answer is PASS. Whether a round is a PASS round depends on the card (`seed`)
     ///         only, so two fighters on the same card face the same decision; only non-PASS codes
-    ///         are personal.
+    ///         are personal. Half of the cards make a decision round a PASS round, so neither
+    ///         "always act" nor "always PASS" can win it.
     function variantOf(bytes32 seed, address agent, uint8 round) public pure returns (uint8) {
         uint256 v = uint256(keccak256(abi.encode(seed, agent, round))) % VARIANTS;
         if (round < 9) return uint8(v);
-        if (uint256(keccak256(abi.encode(seed, "pass", round))) % 8 == 0) return 7;
+        if (uint256(keccak256(abi.encode(seed, "pass", round))) % 2 == 0) return 7;
         if (v % 8 == 7) --v;
         return uint8(v);
     }

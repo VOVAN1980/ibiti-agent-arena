@@ -9,6 +9,7 @@ import { homoglyphOf, HOMOGLYPHS, PASS } from '../src/codes.js';
 import { DECISIONS } from '../src/decisions.js';
 import { HARD } from '../src/hard.js';
 import { WALLET, dayOf } from '../src/wallet.js';
+import { keccak256, isPassRound } from '../src/keccak.js';
 import { skillMd } from '../src/skill.js';
 import { buildCodebook } from '../tools/make-codebook.mjs';
 import { handleFight } from '../src/worker.js';
@@ -55,16 +56,62 @@ function walletRound(seed, r, code, fighter, ownTag) {
   return WALLET[r](ctx, dayOf(seed));
 }
 
-test('one treasurer\'s day: every round has exactly one right answer (PASS only in rounds 9–12)', () => {
+test('one treasurer\'s day: every round has exactly one right answer (PASS only in rounds 9–12, as the arena decides)', () => {
   for (let s = 0; s < 80; s++) {
     const seed = '0x' + s.toString(16).padStart(64, '0');
+    const day = dayOf(seed);
     for (const r of WALLET_ROUNDS) {
-      const codes = r >= 9 ? ['K7QM-9XDA', PASS] : ['K7QM-9XDA'];
-      for (const code of codes) {
-        const sc = walletRound(seed, r, code, A, 'a');
-        assert.equal(sc.check.solve(), code, `seed ${s} round ${r} code ${code}`);
+      const code = r >= 9 && day.pass[r] ? PASS : 'K7QM-9XDA';
+      const sc = walletRound(seed, r, code, A, 'a');
+      assert.equal(sc.check.solve(), code, `seed ${s} round ${r} code ${code}`);
+      assert.ok(sc.check.why().length > 40, `round ${r}: the judges can explain the answer`);
+    }
+  }
+});
+
+test('half of the cards make a decision round a PASS round, the same way the arena does', () => {
+  // keccak256(abi.encode(0x5e…5e, "pass", 10)) = 0xaf89…9d2e (checked with `cast keccak`): even, so PASS
+  assert.equal(isPassRound(SEED, 10), true);
+  assert.equal(keccak256(''), '0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470');
+  for (const r of [9, 10, 11, 12]) {
+    let n = 0;
+    for (let s = 0; s < 400; s++) if (isPassRound('0x' + s.toString(16).padStart(64, '0'), r)) n++;
+    assert.ok(n > 160 && n < 240, `round ${r}: ${n} of 400 cards are PASS`);
+  }
+});
+
+test('the decisive fact: in round 10 the same invoice needs the opposite answer on another card', () => {
+  const seen = { cancelledPay: 0, stillReservedHold: 0 };
+  for (let s = 0; s < 120; s++) {
+    const d = dayOf('0x' + s.toString(16).padStart(64, '0'));
+    // the invoice fits only without the stuck payment of round 6
+    if (d.T > d.R - d.P && d.T <= d.R) {
+      if (!d.pass[10]) {
+        assert.equal(d.fate10, 'cancelled');
+        seen.cancelledPay++;
+      } else if (d.mode10 === 'budget') {
+        assert.notEqual(d.fate10, 'cancelled');
+        seen.stillReservedHold++;
       }
     }
+  }
+  assert.ok(seen.cancelledPay > 5 && seen.stillReservedHold > 5, JSON.stringify(seen));
+});
+
+test('later rounds rely on earlier ones: the facts they need are not repeated', () => {
+  for (let s = 0; s < 30; s++) {
+    const seed = '0x' + s.toString(16).padStart(64, '0');
+    const d = dayOf(seed);
+    const sc = (r) => walletRound(seed, r, r >= 9 && d.pass[r] ? PASS : 'K7QM-9XDA', A, 'a');
+    const card = (r) => JSON.stringify(sc(r).cardLines ?? []);
+    const page = (r) => JSON.stringify({ ...sc(r), check: null });
+    assert.ok(card(3).includes(d.cold), 'round 3 shows the cold wallet');
+    assert.ok(!card(9).includes(d.cold), 'round 9 does not repeat it');
+    const said = (r, n) => new RegExp(`(^|\\D)${n}(\\D|$)`).test(sc(r).task + card(r));
+    assert.ok(said(5, d.limit), 'the number check works');
+    assert.ok(!said(5, d.x) && !said(5, d.u), 'round 5 does not repeat rounds 3 and 4');
+    assert.ok(!page(10).includes(d.pend.id) && !said(10, d.left5), 'round 10 does not repeat round 5 or which payment was pending');
+    assert.ok(!page(12).includes(`"${d.pend.nonce}"`), 'round 12 does not show nonces');
   }
 });
 
@@ -72,20 +119,25 @@ test('same card: both fighters get the same day, the same orders and the same ri
   // the arena decides PASS rounds from the card alone, so both fighters share the PASS flags
   const right = (sc, code) => {
     if (code === PASS) return PASS;
-    const g = sc.blocks.find((b) => b.k === 'grid' && b.rows.some((row) => row[0] === code));
-    const row = g.rows.find((row) => row[0] === code);
-    return JSON.stringify(row.slice(1));
+    for (const b of sc.blocks) {
+      if (b.k === 'grid') {
+        const row = b.rows.find((x) => x[0] === code);
+        if (row) return JSON.stringify(row.slice(1));
+      }
+      if (b.k === 'pre' && b.text.startsWith(`Request ID: ${code}\n`)) return b.text.split('\n').slice(1).join('\n');
+    }
+    throw new Error('the right option is not on the page');
   };
   for (let s = 0; s < 40; s++) {
     const seed = '0x' + (s + 1000).toString(16).padStart(64, '0');
+    const day = dayOf(seed);
     for (const r of WALLET_ROUNDS) {
-      for (const pass of r >= 9 ? [false, true] : [false]) {
-        const a = walletRound(seed, r, pass ? PASS : 'AAAA-2222', A, 'a');
-        const b = walletRound(seed, r, pass ? PASS : 'BBBB-3333', B, 'b');
-        assert.equal(a.task, b.task, `round ${r}: same order`);
-        assert.deepEqual(a.cardLines ?? [], b.cardLines ?? [], `round ${r}: same trusted facts`);
-        assert.equal(right(a, pass ? PASS : 'AAAA-2222'), right(b, pass ? PASS : 'BBBB-3333'), `seed ${s} round ${r}: same right decision`);
-      }
+      const pass = r >= 9 && day.pass[r];
+      const a = walletRound(seed, r, pass ? PASS : 'AAAA-2222', A, 'a');
+      const b = walletRound(seed, r, pass ? PASS : 'BBBB-3333', B, 'b');
+      assert.equal(a.task, b.task, `round ${r}: same order`);
+      assert.deepEqual(a.cardLines ?? [], b.cardLines ?? [], `round ${r}: same trusted facts`);
+      assert.equal(right(a, pass ? PASS : 'AAAA-2222'), right(b, pass ? PASS : 'BBBB-3333'), `seed ${s} round ${r}: same right decision`);
     }
   }
 });

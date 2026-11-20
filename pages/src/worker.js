@@ -26,7 +26,7 @@ function text(status, body) {
 
 export async function handleFight(url, env, deps = {}) {
   if (url.pathname === '/skill.md') {
-    const body = skillMd({ arena: env.ARENA, chainId: env.CHAIN_ID ?? 56, site: env.SITE_URL ?? url.origin });
+    const body = skillMd({ arena: env.ARENA, chainId: env.CHAIN_ID ?? 56, site: env.SITE_URL ?? url.origin, roundTime: Number(env.ROUND_TIME ?? 60) });
     return new Response(body, { headers: { ...HEADERS, 'content-type': 'text/markdown; charset=utf-8' } });
   }
   const m = url.pathname.match(/^\/fight\/(0x[0-9a-fA-F]{40})\/?$/);

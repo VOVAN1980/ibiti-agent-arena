@@ -69,7 +69,8 @@ for (let r = 1; r <= 12; r++) {
   else pts = 0; // an unsolved round scores 0
   total += pts;
   const ck = clock[r] ? ` · ${clock[r].secs}s${clock[r].late ? ' LATE' : ''}` : '';
-  lines.push(`Round ${String(r).padStart(2)} "${page.meta.name}" — ${page.title}\n    code: ${!answered ? 'not answered' : correct ? 'right' : 'WRONG'}${ck} · decoys on the page: ${page.meta.decoys.map((d) => d.kind).join(', ') || 'none'} · ${pts}/10\n${parts.join('\n')}`);
+  const judges = page.meta.check?.why ? `\n    judges: ${page.meta.check.why()}` : '';
+  lines.push(`Round ${String(r).padStart(2)} "${page.meta.name}" — ${page.title}\n    code: ${!answered ? 'not answered' : correct ? 'right' : 'WRONG'}${ck} · decoys on the page: ${page.meta.decoys.map((d) => d.kind).join(', ') || 'none'} · ${pts}/10${judges}\n${parts.join('\n')}`);
 }
 const fouls = falls.filter((x) => x.foul);
 const points = Math.max(0, total - 2 * f.fouls);
