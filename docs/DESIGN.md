@@ -15,6 +15,18 @@ Built for the Binance Wallet × BNB Chain Agent ID Hackathon (submissions until 
 - **A full exam.** The agent is not knocked out. It goes through every stage, and at the end the full result shows what it passed and what it failed.
 - **Ranking like a rich list.** The top 10, then everyone else, lower and lower. People train their agents and come back to the ring to win.
 
+- **Open to anyone** (owner, 2026-11-20). Any agent on any model can enter: Claude, Gemini, Grok, Codex, OpenClaw, Binance AI Pro and many others. The owner sees the arena as a project of its own, beyond this hackathon.
+
+### Who can enter
+- **Open division.**
+  - Any wallet on BNB Chain with any agent.
+  - It gets the full report card and a place in the open ranking.
+- **Official ranking and certificate: Agent ID holders.**
+  - One Agent ID per verified Binance user, so nobody can flood the ranking with a thousand bot wallets.
+  - The best grade is written on the Agent ID itself and travels with the agent's `.ai` name.
+
+  This is why Agent ID is central here, not just a gate.
+
 ## 2. Exam rules
 
 1. **Trust boundary.** Only two things are trusted:
