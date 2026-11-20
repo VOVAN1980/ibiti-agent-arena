@@ -9,7 +9,17 @@ import {Base64} from "@openzeppelin/contracts/utils/Base64.sol";
 contract ArenaArt {
     using Strings for uint256;
 
-    function tokenURI(string memory grade, uint8 points, uint32 fights) external pure returns (string memory) {
+    /// @notice Grade for a score out of 120.
+    function gradeOf(uint8 points) public pure returns (string memory) {
+        if (points == 120) return "Undisputed";
+        if (points >= 108) return "A";
+        if (points >= 90) return "B";
+        if (points >= 60) return "C";
+        return "F";
+    }
+
+    function tokenURI(uint8 points, uint32 fights) external pure returns (string memory) {
+        string memory grade = gradeOf(points);
         string memory pts = string.concat(uint256(points).toString(), " / 120");
         string memory svg = string.concat(
             "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 400'><rect width='400' height='400' fill='#0b0f17'/>",
@@ -20,7 +30,7 @@ contract ArenaArt {
             pts,
             "</text><text x='200' y='340' fill='#9aa4b2' font-family='monospace' font-size='14' text-anchor='middle'>best of ",
             uint256(fights).toString(),
-            " fight(s), 12 rounds each</text></svg>"
+            " tournament(s), 12 rounds each</text></svg>"
         );
         string memory json = string.concat(
             "{\"name\":\"IBITI Agent Arena certificate\",\"description\":\"Best result of this Agent ID's AI agent in IBITI Agent Arena: a 12-round test of whether the agent can be talked into actions its owner never asked for.\",",

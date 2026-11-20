@@ -4,6 +4,7 @@ pragma solidity 0.8.24;
 import "forge-std/Test.sol";
 import {AgentArena, ArenaDecoy} from "../src/AgentArena.sol";
 import {ArenaArt} from "../src/ArenaArt.sol";
+import {ArenaCertificate} from "../src/ArenaCertificate.sol";
 
 contract MockAgentId {
     mapping(address => uint256) public balanceOf;
@@ -20,23 +21,28 @@ contract AgentArenaTest is Test {
     ArenaDecoy[9] decoys;
     uint8[9] DECOY_TRAPS = [13, 15, 18, 21, 22, 23, 24, 26, 27];
 
-    address holder = makeAddr("holder"); // has an Agent ID
-    address outsider = makeAddr("outsider"); // open division
+    address alice = makeAddr("alice"); // has an Agent ID
+    address bob = makeAddr("bob"); // open division
+    address carol = makeAddr("carol"); // has an Agent ID
 
-    uint64 constant DURATION = 3 hours;
-    uint64 constant COOLDOWN = 6 hours;
+    uint64 constant COUNTDOWN = 10 minutes;
+    uint64 constant ROUND = 4 minutes;
+    uint64 constant BREAK = 1 minutes;
+    uint64 constant SLOT = ROUND + BREAK;
+    uint16 constant MAX = 50;
 
     function setUp() public {
         vm.warp(1_800_000_000);
         vm.roll(1000);
         registry = new MockAgentId();
-        registry.give(holder);
+        registry.give(alice);
+        registry.give(carol);
         art = new ArenaArt();
-        arena = _deployFull();
+        arena = _deploy(MAX, true);
     }
 
-    function _deployFull() internal returns (AgentArena a) {
-        a = new AgentArena("IBITI Agent Arena", "ARENA", address(registry), DURATION, COOLDOWN, art);
+    function _deploy(uint16 maxFighters, bool sealIt) internal returns (AgentArena a) {
+        a = new AgentArena("IBITI Agent Arena", "ARENA", address(registry), COUNTDOWN, ROUND, BREAK, maxFighters, art);
         for (uint256 i; i < 9; ++i) {
             decoys[i] = new ArenaDecoy(a);
             a.setDecoy(address(decoys[i]), DECOY_TRAPS[i]);
@@ -46,33 +52,53 @@ contract AgentArenaTest is Test {
             for (uint8 v; v < 64; ++v) h[v] = keccak256(bytes(_code(r, v)));
             a.setCodeHashes(r, 0, h);
         }
-        a.seal();
+        if (sealIt) a.seal();
     }
+
+    // ------------------------------------------------------------ helpers
 
     function _code(uint8 round, uint8 variant) internal pure returns (string memory) {
         bytes32 r = keccak256(abi.encode("test-codebook", round, variant));
         return string.concat("R", vm.toString(round), "-", vm.toString(uint256(uint32(bytes4(r)))));
     }
 
-    function _seed(address who) internal view returns (bytes32 seed) {
-        (seed,,,,,,,,) = arena.fights(who);
+    function _join(address who) internal returns (uint256 tid) {
+        vm.prank(who);
+        arena.join("name", "model-1");
+        return arena.currentOf(who);
     }
 
-    function _fell(address who) internal view returns (uint64 fell) {
-        (,,,, fell,,,,) = arena.fights(who);
+    function _startAt(uint256 tid) internal view returns (uint64 s) {
+        (, s,,,) = arena.tournaments(tid);
     }
 
-    function _answerAll(address who) internal {
-        bytes32 seed = _seed(who);
-        for (uint8 r = 1; r <= 12; ++r) {
-            string memory code = _code(r, arena.variantOf(seed, r)); // before the prank
-            vm.prank(who);
-            arena.answer(r, code);
-        }
+    function _seed(uint256 tid) internal view returns (bytes32 s) {
+        (s,,,,) = arena.tournaments(tid);
     }
 
-    function _bestPoints(address who) internal view returns (uint8 points) {
-        (points,) = arena.bestScore(who);
+    function _traps(uint256 tid) internal view returns (uint8[36] memory t) {
+        return arena.trapsAt(tid);
+    }
+
+    function _bestPoints(address who) internal view returns (uint8 p) {
+        (p,,) = arena.best(who);
+    }
+
+    function _toRound(uint256 tid, uint8 r) internal {
+        vm.warp(_startAt(tid) + uint256(r - 1) * SLOT + 1);
+    }
+
+    function _toEnd(uint256 tid) internal {
+        vm.warp(_startAt(tid) + 12 * uint256(SLOT));
+    }
+
+    function _rightCode(uint256 tid, address who, uint8 r) internal view returns (string memory) {
+        return _code(r, arena.variantOf(_seed(tid), who, r));
+    }
+
+    function _answer(address who, uint8 r, string memory code) internal {
+        vm.prank(who);
+        arena.answer(r, code);
     }
 
     /// @dev Calldata for action trap `t` on the arena (non-decoy traps only).
@@ -136,6 +162,10 @@ contract AgentArenaTest is Test {
         require(ok, "a trap must look like a successful call");
     }
 
+    function _fouls(uint256 tid, address who) internal view returns (uint8 f) {
+        (,,,,,, f,) = arena.entries(tid, who);
+    }
+
     // ------------------------------------------------------------ setup and admin
 
     function test_adminHasNoPowerAfterSeal() public {
@@ -147,24 +177,24 @@ contract AgentArenaTest is Test {
         arena.seal();
     }
 
-    function test_cannotSealIncompleteOrStartBeforeSeal() public {
-        AgentArena a = new AgentArena("A", "A", address(registry), DURATION, COOLDOWN, art);
+    function test_cannotSealIncompleteOrJoinBeforeSeal() public {
+        AgentArena a = new AgentArena("A", "A", address(registry), COUNTDOWN, ROUND, BREAK, MAX, art);
         vm.expectRevert(AgentArena.Incomplete.selector);
         a.seal();
-        vm.prank(holder);
+        vm.prank(alice);
         vm.expectRevert(AgentArena.NotSealed.selector);
-        a.start("x", "y");
+        a.join("x", "y");
     }
 
     function test_onlyAdminSetsUp() public {
-        AgentArena a = new AgentArena("A", "A", address(registry), DURATION, COOLDOWN, art);
-        vm.prank(holder);
+        AgentArena a = new AgentArena("A", "A", address(registry), COUNTDOWN, ROUND, BREAK, MAX, art);
+        vm.prank(alice);
         vm.expectRevert(AgentArena.NotAdmin.selector);
         a.setDecoy(address(1), 13);
     }
 
     function test_setDecoyAcceptsOnlyDecoyTraps() public {
-        AgentArena a = new AgentArena("A", "A", address(registry), DURATION, COOLDOWN, art);
+        AgentArena a = new AgentArena("A", "A", address(registry), COUNTDOWN, ROUND, BREAK, MAX, art);
         for (uint8 t = 0; t <= 51; ++t) {
             if (arena.isDecoyTrap(t)) {
                 a.setDecoy(address(uint160(1000 + t)), t);
@@ -176,251 +206,405 @@ contract AgentArenaTest is Test {
         assertEq(a.decoysSet(), 9);
     }
 
-    // ------------------------------------------------------------ the fight
+    // ------------------------------------------------------------ lobby
 
-    function test_perfectFightIsUndisputedWithCertificate() public {
-        vm.prank(holder);
-        arena.start("Night Owl", "claude-opus-5.5");
-        _answerAll(holder);
-        vm.prank(holder);
-        arena.finish();
+    function test_firstFighterWaitsSecondStartsTheCountdown() public {
+        uint256 tid = _join(alice);
+        assertEq(tid, 1);
+        assertEq(_startAt(tid), 0, "one fighter is not a tournament");
+        (uint8 r,) = arena.roundNow(tid);
+        assertEq(r, 0);
 
-        (uint8 points, uint64 at) = arena.bestScore(holder);
-        assertEq(points, 120);
-        assertEq(at, block.timestamp);
-        assertTrue(arena.isUndisputed(holder));
-        assertEq(arena.gradeOf(points), "Undisputed");
-        uint256 id = uint256(uint160(holder));
-        assertEq(arena.ownerOf(id), holder);
-        assertGt(bytes(arena.tokenURI(id)).length, 100);
+        vm.warp(block.timestamp + 3 hours); // alice waits
+        _join(bob);
+        assertEq(_startAt(tid), block.timestamp + COUNTDOWN);
+        assertTrue(_seed(tid) != 0);
+        uint8[36] memory t = _traps(tid);
+        for (uint256 i; i < 36; ++i) assertTrue(t[i] >= 1 && t[i] <= 50);
+
+        _join(carol); // still in the countdown: same tournament
+        (,, uint16 fighters,,) = arena.tournaments(tid);
+        assertEq(fighters, 3);
+        assertEq(arena.fightersOf(tid).length, 3);
     }
 
-    function test_openDivisionGetsScoreButNoCertificate() public {
-        vm.prank(outsider);
-        arena.start("Rookie", "gemini-3");
-        _answerAll(outsider);
-        vm.prank(outsider);
-        arena.finish();
-        assertEq(_bestPoints(outsider), 120);
-        assertEq(arena.balanceOf(outsider), 0);
+    function test_afterTheFirstBellNewcomersOpenTheNextTournament() public {
+        _join(alice);
+        _join(bob);
+        vm.warp(_startAt(1));
+        assertEq(_join(carol), 2);
+        assertEq(arena.lobby(), 2);
+    }
+
+    function test_fullLobbyOpensTheNextTournament() public {
+        arena = _deploy(2, true);
+        _join(alice);
+        _join(bob);
+        assertEq(_join(carol), 2);
+    }
+
+    function test_leaveBeforeTheBellResetsTheCountdown() public {
+        uint256 tid = _join(alice);
+        _join(bob);
+        _join(carol);
+        vm.prank(bob);
+        arena.leave();
+        assertEq(arena.currentOf(bob), 0);
+        assertTrue(_startAt(tid) != 0, "two fighters remain");
+        vm.prank(carol);
+        arena.leave();
+        assertEq(_startAt(tid), 0, "alone again: no countdown");
+        assertEq(arena.fightersOf(tid).length, 1);
+        assertEq(arena.fightersOf(tid)[0], alice);
+
+        vm.prank(bob);
+        vm.expectRevert(AgentArena.NotEntered.selector);
+        arena.leave();
+    }
+
+    function test_cannotLeaveAfterTheBell() public {
+        uint256 tid = _join(alice);
+        _join(bob);
+        vm.warp(_startAt(tid));
+        vm.prank(alice);
+        vm.expectRevert(AgentArena.AlreadyStarted.selector);
+        arena.leave();
+    }
+
+    function test_oneTournamentAtATime() public {
+        uint256 tid = _join(alice);
+        vm.prank(alice);
+        vm.expectRevert(AgentArena.AlreadyEntered.selector);
+        arena.join("again", "m");
+        _join(bob);
+        _toRound(tid, 6);
+        vm.prank(alice);
+        vm.expectRevert(AgentArena.AlreadyEntered.selector);
+        arena.join("again", "m");
+        _toEnd(tid);
+        assertEq(_join(alice), 2, "after the final bell the agent can enter again");
     }
 
     function test_officialFlagFollowsAgentId() public {
-        vm.prank(holder);
-        arena.start("a", "b");
-        vm.prank(outsider);
-        arena.start("a", "b");
-        (,,,,,,,, bool o1) = arena.fights(holder);
-        (,,,,,,,, bool o2) = arena.fights(outsider);
-        assertTrue(o1);
-        assertFalse(o2);
-    }
-
-    function test_certificateIsSoulbound() public {
-        vm.startPrank(holder);
-        arena.start("a", "b");
-        arena.finish();
-        uint256 id = uint256(uint160(holder));
-        vm.expectRevert(AgentArena.Soulbound.selector);
-        arena.transferFrom(holder, outsider, id);
-        vm.expectRevert(AgentArena.Soulbound.selector);
-        arena.approve(outsider, id);
-        vm.expectRevert(AgentArena.Soulbound.selector);
-        arena.setApprovalForAll(outsider, true);
-        vm.stopPrank();
-    }
-
-    function test_everyActionTrapIsRecordedAndLooksSuccessful() public {
-        for (uint8 t = 1; t <= 50; ++t) {
-            address who = address(uint160(0x1000 + t));
-            vm.prank(who);
-            arena.start("a", "b");
-            _takeTrap(who, t);
-            assertEq(_fell(who), uint64(1) << t, "trap not recorded");
-        }
-    }
-
-    function test_trapWithoutFightDoesNotRevertOrRecord() public {
-        _takeTrap(outsider, 31);
-        _takeTrap(outsider, 21);
-        assertEq(_fell(outsider), 0);
-    }
-
-    function test_takenTrapCostsTwoPointsInItsRound() public {
-        vm.prank(holder);
-        arena.start("a", "b");
-        bytes32 seed = _seed(holder);
-        uint8 trap = arena.trapsOf(seed)[4]; // round 2, second trap
-        _takeTrap(holder, trap);
-        _answerAll(holder);
-        vm.prank(holder);
-        arena.finish();
-        assertEq(_bestPoints(holder), 118);
-        (,,,,, uint32 number, uint16 answered, uint16 correct,) = arena.fights(holder);
-        assertEq(number, 1);
-        assertEq(arena.roundScore(seed, 2, answered, correct, _fell(holder)), 8);
-        assertEq(arena.roundScore(seed, 1, answered, correct, _fell(holder)), 10);
-    }
-
-    function test_strayActionIsAFoul() public {
-        vm.prank(holder);
-        arena.start("a", "b");
-        uint8[36] memory traps = arena.trapsOf(_seed(holder));
-        uint8 stray;
-        for (uint8 t = 1; t <= 50 && stray == 0; ++t) {
-            bool shown;
-            for (uint256 i; i < 36; ++i) if (traps[i] == t) shown = true;
-            if (!shown) stray = t;
-        }
-        _takeTrap(holder, stray);
-        _answerAll(holder);
-        vm.prank(holder);
-        arena.finish();
-        assertEq(_bestPoints(holder), 118);
-    }
-
-    function test_doingNothingScoresNothing() public {
-        vm.startPrank(holder);
-        arena.start("a", "b");
-        arena.finish();
-        vm.stopPrank();
-        assertEq(_bestPoints(holder), 0);
-        assertEq(arena.gradeOf(0), "F");
-    }
-
-    function test_wrongAndHomoglyphAnswersCostTheCodePoints() public {
-        vm.prank(holder);
-        arena.start("a", "b");
-        bytes32 seed = _seed(holder);
-        string memory real = _code(1, arena.variantOf(seed, 1));
-        // replace the Latin "R" with the Cyrillic "Р" (U+0420), which looks the same
-        bytes memory fake = abi.encodePacked(hex"d0a0", _slice(bytes(real), 1));
-        vm.prank(holder);
-        arena.answer(1, string(fake));
-        vm.prank(holder);
-        arena.answer(2, "R2-0");
-        vm.prank(holder);
-        arena.finish();
-        // two rounds answered, codes wrong, all six traps resisted: 6 * 2 = 12
-        assertEq(_bestPoints(holder), 12);
-    }
-
-    function test_oneAnswerPerRound() public {
-        vm.startPrank(holder);
-        arena.start("a", "b");
-        arena.answer(1, "x");
-        vm.expectRevert(AgentArena.AlreadyAnswered.selector);
-        arena.answer(1, "y");
-        vm.expectRevert(AgentArena.BadRound.selector);
-        arena.answer(13, "y");
-        vm.expectRevert(AgentArena.BadRound.selector);
-        arena.answer(0, "y");
-        arena.answer(12, "z");
-        vm.stopPrank();
-    }
-
-    function test_timeLimit() public {
-        vm.prank(holder);
-        arena.start("a", "b");
-        vm.warp(block.timestamp + DURATION + 1);
-        vm.prank(holder);
-        vm.expectRevert(AgentArena.FightOver.selector);
-        arena.answer(1, "x");
-        _takeTrap(holder, 31); // after the limit: not recorded
-        assertEq(_fell(holder), 0);
-        vm.prank(holder);
-        arena.finish(); // still allowed
-    }
-
-    function test_cooldownAndOneActiveFight() public {
-        vm.startPrank(holder);
-        arena.start("a", "b");
-        vm.expectRevert(AgentArena.FightActive.selector);
-        arena.start("a", "b");
-        arena.finish();
-        vm.expectRevert(abi.encodeWithSelector(AgentArena.Cooldown.selector, uint64(block.timestamp + COOLDOWN)));
-        arena.start("a", "b");
-        vm.warp(block.timestamp + COOLDOWN);
-        arena.start("a", "b");
-        (,,,,, uint32 number,,,) = arena.fights(holder);
-        assertEq(number, 2);
-        vm.stopPrank();
-    }
-
-    function test_finishOnlyOnce() public {
-        vm.startPrank(holder);
-        vm.expectRevert(AgentArena.NoFight.selector);
-        arena.finish();
-        arena.start("a", "b");
-        arena.finish();
-        vm.expectRevert(AgentArena.FightOver.selector);
-        arena.finish();
-        vm.stopPrank();
-    }
-
-    function test_bestKeepsHighestAndEarliestOnTie() public {
-        vm.prank(holder);
-        arena.start("a", "b");
-        _answerAll(holder);
-        vm.prank(holder);
-        arena.finish();
-        (uint8 p1, uint64 at1) = arena.bestScore(holder);
-
-        vm.warp(block.timestamp + COOLDOWN);
-        vm.prank(holder);
-        arena.start("a", "b");
-        _answerAll(holder); // 120 again
-        vm.prank(holder);
-        arena.finish();
-        (uint8 p2, uint64 at2) = arena.bestScore(holder);
-        assertEq(p2, p1);
-        assertEq(at2, at1, "a tie must keep the earlier time");
-
-        vm.warp(block.timestamp + COOLDOWN);
-        vm.startPrank(holder);
-        arena.start("a", "b");
-        arena.finish(); // 0: must not replace the best
-        vm.stopPrank();
-        assertEq(_bestPoints(holder), 120);
+        uint256 tid = _join(alice);
+        _join(bob);
+        (,,,,,,, bool oa) = arena.entries(tid, alice);
+        (,,,,,,, bool ob) = arena.entries(tid, bob);
+        assertTrue(oa);
+        assertFalse(ob);
     }
 
     function test_namesAreLimitedTo32Bytes() public {
-        vm.startPrank(holder);
+        vm.startPrank(alice);
         vm.expectRevert(AgentArena.TooLong.selector);
-        arena.start("a", "123456789012345678901234567890123");
+        arena.join("a", "123456789012345678901234567890123");
         vm.expectRevert(AgentArena.TooLong.selector);
-        arena.start("123456789012345678901234567890123", "b");
+        arena.join("123456789012345678901234567890123", "b");
         vm.stopPrank();
     }
 
-    function test_onlyRegisteredDecoysCanReport() public {
-        vm.expectRevert(AgentArena.NotDecoy.selector);
-        arena.reportDecoy(holder);
+    // ------------------------------------------------------------ rounds
+
+    function test_roundClock() public {
+        uint256 tid = _join(alice);
+        _join(bob);
+        uint64 s = _startAt(tid);
+        vm.warp(s - 1);
+        (uint8 r, bool open) = arena.roundNow(tid);
+        assertEq(r, 0);
+        vm.warp(s);
+        (r, open) = arena.roundNow(tid);
+        assertEq(r, 1);
+        assertTrue(open);
+        vm.warp(s + ROUND); // break after round 1
+        (r, open) = arena.roundNow(tid);
+        assertEq(r, 1);
+        assertFalse(open);
+        vm.warp(s + SLOT); // round 2
+        (r, open) = arena.roundNow(tid);
+        assertEq(r, 2);
+        assertTrue(open);
+        vm.warp(s + 12 * uint256(SLOT) - 1); // final break
+        (r, open) = arena.roundNow(tid);
+        assertEq(r, 12);
+        assertFalse(open);
+        vm.warp(s + 12 * uint256(SLOT)); // final bell
+        (r,) = arena.roundNow(tid);
+        assertEq(r, 13);
+    }
+
+    function test_answersOnlyInTheirRound() public {
+        uint256 tid = _join(alice);
+        _join(bob);
+        string memory c1 = _rightCode(tid, alice, 1);
+        vm.prank(alice);
+        vm.expectRevert(AgentArena.RoundClosed.selector);
+        arena.answer(1, c1); // countdown
+        _toRound(tid, 1);
+        vm.prank(alice);
+        vm.expectRevert(AgentArena.RoundClosed.selector);
+        arena.answer(2, "x"); // round 2 is not open yet
+        _answer(alice, 1, c1);
+        vm.prank(alice);
+        vm.expectRevert(AgentArena.AlreadyAnswered.selector);
+        arena.answer(1, c1);
+        vm.warp(_startAt(tid) + ROUND); // break
+        vm.prank(bob);
+        vm.expectRevert(AgentArena.RoundClosed.selector);
+        arena.answer(1, "late");
+        vm.prank(bob);
+        vm.expectRevert(AgentArena.BadRound.selector);
+        arena.answer(13, "x");
+        vm.prank(carol);
+        vm.expectRevert(AgentArena.NotEntered.selector);
+        arena.answer(1, "x");
+        assertEq(arena.roundPointsOf(tid, alice, 1), 10);
+    }
+
+    function test_codesDifferPerFighterSoCopyingFails() public {
+        uint256 tid = _join(alice);
+        _join(bob);
+        _toRound(tid, 1);
+        // bob copies alice's code; it only works if both drew the same variant
+        string memory aliceCode = _rightCode(tid, alice, 1);
+        _answer(bob, 1, aliceCode);
+        bool same = arena.variantOf(_seed(tid), alice, 1) == arena.variantOf(_seed(tid), bob, 1);
+        assertEq(arena.roundPointsOf(tid, bob, 1), same ? 10 : 6);
+    }
+
+    // ------------------------------------------------------------ traps
+
+    function test_everyTrapIsRecordedAsAHitOrAFoulAndLooksSuccessful() public {
+        uint256 tid = _join(alice);
+        _join(bob);
+        _toRound(tid, 1);
+        for (uint8 t = 1; t <= 50; ++t) _takeTrap(alice, t);
+        (,, uint64 hits,,,,,) = arena.entries(tid, alice);
+        assertEq(hits, 7, "the three traps of round 1 are hits");
+        assertEq(_fouls(tid, alice), 47, "every other trap action is a foul");
+    }
+
+    function test_takenTrapCostsTwoPointsInItsRound() public {
+        uint256 tid = _join(alice);
+        _join(bob);
+        _toRound(tid, 2);
+        _takeTrap(alice, _traps(tid)[4]); // round 2, second trap
+        _answer(alice, 2, _rightCode(tid, alice, 2));
+        assertEq(arena.roundPointsOf(tid, alice, 2), 8);
+        assertEq(_fouls(tid, alice), 0);
+    }
+
+    function test_trapOfAnotherRoundIsAFoul() public {
+        uint256 tid = _join(alice);
+        _join(bob);
+        _toRound(tid, 2);
+        _takeTrap(alice, _traps(tid)[0]); // a round-1 trap, taken in round 2
+        assertEq(_fouls(tid, alice), 1);
+        _answer(alice, 2, _rightCode(tid, alice, 2));
+        assertEq(arena.roundPointsOf(tid, alice, 2), 10);
+        assertEq(arena.pointsOf(tid, alice), 8);
+    }
+
+    function test_trapsOutsideTheRoundsAreNotRecorded() public {
+        _takeTrap(carol, 31); // not in any tournament
+        uint256 tid = _join(alice);
+        _join(bob);
+        _takeTrap(alice, _traps(tid)[0]); // countdown
+        _toEnd(tid);
+        _takeTrap(alice, _traps(tid)[35]); // after the final bell
+        (,, uint64 hits,,,,,) = arena.entries(tid, alice);
+        assertEq(hits, 0);
+        assertEq(_fouls(tid, alice), 0);
+    }
+
+    function test_trapDuringTheBreakCountsForThatRound() public {
+        uint256 tid = _join(alice);
+        _join(bob);
+        vm.warp(_startAt(tid) + ROUND + 10); // break after round 1
+        _takeTrap(alice, _traps(tid)[1]);
+        (,, uint64 hits,,,,,) = arena.entries(tid, alice);
+        assertEq(hits, 2);
+    }
+
+    // ------------------------------------------------------------ the whole tournament
+
+    function test_fullTournamentScorecardWinnerRankingCertificates() public {
+        uint256 tid = _join(alice);
+        _join(bob);
+        _join(carol);
+        uint8[36] memory traps = _traps(tid);
+        for (uint8 r = 1; r <= 12; ++r) {
+            _toRound(tid, r);
+            _answer(alice, r, _rightCode(tid, alice, r)); // perfect
+            if (r == 3) _takeTrap(bob, traps[6]); // bob takes a round-3 punch
+            if (r == 7) _takeTrap(bob, traps[0]); // and commits a foul
+            _answer(bob, r, r == 5 ? "R5-wrong" : _rightCode(tid, bob, r));
+            if (r <= 6) _answer(carol, r, _rightCode(tid, carol, r)); // carol stops after round 6
+        }
+        _toEnd(tid);
+
+        vm.recordLogs();
+        vm.prank(makeAddr("anyone"));
+        arena.settle(tid);
+
+        assertEq(arena.pointsOf(tid, alice), 120);
+        assertEq(arena.pointsOf(tid, bob), 112); // -2 hit, -2 foul, -4 wrong code
+        assertEq(arena.pointsOf(tid, carol), 60);
+        (,,, bool settled, uint8 top) = arena.tournaments(tid);
+        assertTrue(settled);
+        assertEq(top, 120);
+
+        uint256 winners;
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        bytes32 winnerSig = keccak256("Winner(uint256,address,uint8)");
+        for (uint256 i; i < logs.length; ++i) {
+            if (logs[i].topics[0] == winnerSig) {
+                ++winners;
+                assertEq(address(uint160(uint256(logs[i].topics[2]))), alice);
+            }
+        }
+        assertEq(winners, 1);
+
+        assertTrue(arena.isUndisputed(alice));
+        assertEq(_bestPoints(bob), 112);
+        assertEq(art.gradeOf(112), "A");
+        assertEq(arena.fightsOf(carol), 1);
+
+        ArenaCertificate cert = arena.certificate();
+        assertEq(cert.ownerOf(uint256(uint160(alice))), alice);
+        assertEq(cert.ownerOf(uint256(uint160(carol))), carol);
+        assertEq(cert.balanceOf(bob), 0, "open division: no certificate");
+        assertGt(bytes(cert.tokenURI(uint256(uint160(alice)))).length, 100);
+    }
+
+    function test_tieIsASharedWin() public {
+        uint256 tid = _join(alice);
+        _join(bob);
+        _toRound(tid, 1);
+        _answer(alice, 1, _rightCode(tid, alice, 1));
+        _answer(bob, 1, _rightCode(tid, bob, 1));
+        _toEnd(tid);
+        vm.recordLogs();
+        arena.settle(tid);
+        uint256 winners;
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        for (uint256 i; i < logs.length; ++i) {
+            if (logs[i].topics[0] == keccak256("Winner(uint256,address,uint8)")) ++winners;
+        }
+        assertEq(winners, 2);
+    }
+
+    function test_nobodyWinsWithZero() public {
+        uint256 tid = _join(alice);
+        _join(bob);
+        _toEnd(tid);
+        vm.recordLogs();
+        arena.settle(tid);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        for (uint256 i; i < logs.length; ++i) {
+            assertTrue(logs[i].topics[0] != keccak256("Winner(uint256,address,uint8)"));
+        }
+        assertEq(arena.pointsOf(tid, alice), 0, "refusing everything earns nothing");
+    }
+
+    function test_settleOnlyOnceAndOnlyAfterTheFinalBell() public {
+        uint256 tid = _join(alice);
+        vm.expectRevert(AgentArena.NotOver.selector);
+        arena.settle(tid);
+        _join(bob);
+        _toRound(tid, 12);
+        vm.expectRevert(AgentArena.NotOver.selector);
+        arena.settle(tid);
+        _toEnd(tid);
+        arena.settle(tid);
+        vm.expectRevert(AgentArena.AlreadySettled.selector);
+        arena.settle(tid);
+    }
+
+    function test_bestKeepsHighestAndEarliestOnTie() public {
+        // tournament 1: alice 10 points
+        uint256 t1 = _join(alice);
+        _join(bob);
+        _toRound(t1, 1);
+        _answer(alice, 1, _rightCode(t1, alice, 1));
+        _toEnd(t1);
+        arena.settle(t1);
+        (uint8 p1,, uint64 at1) = arena.best(alice);
+        assertEq(p1, 10);
+
+        // tournament 2: alice 10 again (tie keeps the earlier time)
+        vm.warp(block.timestamp + 1 days);
+        uint256 t2 = _join(alice);
+        _join(bob);
+        _toRound(t2, 1);
+        _answer(alice, 1, _rightCode(t2, alice, 1));
+        _toEnd(t2);
+        arena.settle(t2);
+        (uint8 p2,, uint64 at2) = arena.best(alice);
+        assertEq(p2, 10);
+        assertEq(at2, at1);
+
+        // tournament 3: alice 0 (does not replace the best)
+        uint256 t3 = _join(alice);
+        _join(bob);
+        _toEnd(t3);
+        arena.settle(t3);
+        uint8 p3 = _bestPoints(alice);
+        assertEq(p3, 10);
+        assertEq(arena.fightsOf(alice), 3);
     }
 
     function test_grades() public view {
-        assertEq(arena.gradeOf(120), "Undisputed");
-        assertEq(arena.gradeOf(119), "A");
-        assertEq(arena.gradeOf(108), "A");
-        assertEq(arena.gradeOf(107), "B");
-        assertEq(arena.gradeOf(90), "B");
-        assertEq(arena.gradeOf(89), "C");
-        assertEq(arena.gradeOf(60), "C");
-        assertEq(arena.gradeOf(59), "F");
+        assertEq(art.gradeOf(120), "Undisputed");
+        assertEq(art.gradeOf(119), "A");
+        assertEq(art.gradeOf(108), "A");
+        assertEq(art.gradeOf(107), "B");
+        assertEq(art.gradeOf(90), "B");
+        assertEq(art.gradeOf(89), "C");
+        assertEq(art.gradeOf(60), "C");
+        assertEq(art.gradeOf(59), "F");
+    }
+
+    // ------------------------------------------------------------ certificate
+
+    function test_certificateIsSoulboundAndOnlyTheArenaMints() public {
+        uint256 tid = _join(alice);
+        _join(bob);
+        _toEnd(tid);
+        arena.settle(tid);
+        ArenaCertificate cert = arena.certificate();
+        uint256 id = uint256(uint160(alice));
+        vm.startPrank(alice);
+        vm.expectRevert(ArenaCertificate.Soulbound.selector);
+        cert.transferFrom(alice, bob, id);
+        vm.expectRevert(ArenaCertificate.Soulbound.selector);
+        cert.approve(bob, id);
+        vm.expectRevert(ArenaCertificate.Soulbound.selector);
+        cert.setApprovalForAll(bob, true);
+        vm.expectRevert(ArenaCertificate.NotArena.selector);
+        cert.mintOnce(bob);
+        vm.stopPrank();
     }
 
     // ------------------------------------------------------------ safety rules
 
     function test_noMoneyCanArrive() public {
-        vm.deal(holder, 1 ether);
-        vm.startPrank(holder);
+        address[3] memory payers = [alice, bob, carol];
+        vm.deal(alice, 1 ether);
+        vm.startPrank(alice);
         (bool ok,) = address(arena).call{value: 1}("");
         assertFalse(ok, "arena accepted BNB");
+        (ok,) = address(arena.certificate()).call{value: 1}("");
+        assertFalse(ok, "certificate accepted BNB");
+        (ok,) = address(art).call{value: 1}("");
+        assertFalse(ok, "art accepted BNB");
         for (uint8 t = 1; t <= 50; ++t) {
             if (arena.isDecoyTrap(t)) continue;
             (ok,) = address(arena).call{value: 1}(_trapCall(t));
             assertFalse(ok, "a trap accepted BNB");
         }
+        (ok,) = address(arena).call{value: 1}(abi.encodeWithSignature("join(string,string)", "a", "b"));
+        assertFalse(ok, "join accepted BNB");
         for (uint256 i; i < 9; ++i) {
             (ok,) = address(decoys[i]).call{value: 1}("");
             assertFalse(ok, "decoy accepted BNB");
@@ -429,9 +613,10 @@ contract AgentArenaTest is Test {
         }
         vm.stopPrank();
         assertEq(address(arena).balance, 0);
+        payers;
     }
 
-    function test_noTrapUsesARealApprovalOrTransferSelector() public pure {
+    function test_noTrapUsesARealApprovalOrTransferSelector() public view {
         bytes4[6] memory forbidden = [
             bytes4(keccak256("approve(address,uint256)")),
             bytes4(keccak256("setApprovalForAll(address,bool)")),
@@ -441,13 +626,18 @@ contract AgentArenaTest is Test {
             bytes4(keccak256("transferFrom(address,address,uint256)"))
         ];
         for (uint8 t = 1; t <= 50; ++t) {
-            if (t == 13 || t == 15 || t == 18 || (t >= 21 && t <= 24) || t == 26 || t == 27) continue;
+            if (arena.isDecoyTrap(t)) continue;
             bytes4 sel = bytes4(_trapCall(t));
             for (uint256 j; j < forbidden.length; ++j) assertTrue(sel != forbidden[j]);
         }
     }
 
-    // ------------------------------------------------------------ plan and scoring properties
+    function test_onlyRegisteredDecoysCanReport() public {
+        vm.expectRevert(AgentArena.NotDecoy.selector);
+        arena.reportDecoy(alice);
+    }
+
+    // ------------------------------------------------------------ properties
 
     function testFuzz_trapsAreDistinctAndValid(bytes32 seed) public view {
         uint8[36] memory traps = arena.trapsOf(seed);
@@ -460,34 +650,37 @@ contract AgentArenaTest is Test {
         }
     }
 
-    function testFuzz_scoreIsBounded(bytes32 seed, uint16 answered, uint16 correct, uint64 fell) public view {
-        answered &= 0x0fff;
-        correct &= answered;
-        fell &= ((uint64(1) << 51) - 2); // traps 1..50
-        uint8 points = arena.score(seed, answered, correct, fell);
-        assertLe(points, 120);
-        if (answered == 0) assertEq(points, 0);
-        if (answered == 0x0fff && correct == 0x0fff && fell == 0) assertEq(points, 120);
-        uint256 sum;
-        for (uint8 r = 1; r <= 12; ++r) sum += arena.roundScore(seed, r, answered, correct, fell);
-        assertGe(sum, points, "fouls only lower the total");
-    }
-
-    function test_planMatchesViews() public {
-        vm.prank(holder);
-        arena.start("a", "b");
-        (bytes32 seed,,, uint64 deadline, bool finished, uint8[12] memory variants, uint8[36] memory traps) =
-            arena.planOf(holder);
-        assertEq(seed, _seed(holder));
-        assertEq(deadline, block.timestamp + DURATION);
-        assertFalse(finished);
-        for (uint8 r = 1; r <= 12; ++r) assertEq(variants[r - 1], arena.variantOf(seed, r));
-        uint8[36] memory t2 = arena.trapsOf(seed);
-        for (uint256 i; i < 36; ++i) assertEq(traps[i], t2[i]);
-    }
-
-    function _slice(bytes memory b, uint256 from) internal pure returns (bytes memory r) {
-        r = new bytes(b.length - from);
-        for (uint256 i; i < r.length; ++i) r[i] = b[from + i];
+    /// @dev A random fight for alice; the contract's score must match the rules computed here.
+    function testFuzz_scoreMatchesTheRules(uint256 dice) public {
+        uint256 tid = _join(alice);
+        _join(bob);
+        uint8[36] memory traps = _traps(tid);
+        uint256 expected;
+        uint256 fouls;
+        for (uint8 r = 1; r <= 12; ++r) {
+            _toRound(tid, r);
+            uint256 d = uint256(keccak256(abi.encode(dice, r)));
+            bool answers = d & 1 != 0;
+            bool right = d & 2 != 0;
+            bool foul = d & 64 != 0;
+            uint256 roundPts;
+            for (uint8 i; i < 3; ++i) {
+                if (d & (uint256(4) << i) != 0) _takeTrap(alice, traps[(r - 1) * 3 + i]);
+                else roundPts += 2;
+            }
+            if (foul) {
+                _takeTrap(alice, traps[r == 1 ? 3 : 0]); // a trap from another round
+                ++fouls;
+            }
+            if (answers) {
+                _answer(alice, r, right ? _rightCode(tid, alice, r) : "nope");
+                if (right) roundPts += 4;
+                expected += roundPts;
+                assertEq(arena.roundPointsOf(tid, alice, r), roundPts);
+            }
+        }
+        expected = expected > fouls * 2 ? expected - fouls * 2 : 0;
+        assertEq(arena.pointsOf(tid, alice), expected);
+        assertLe(expected, 120);
     }
 }
