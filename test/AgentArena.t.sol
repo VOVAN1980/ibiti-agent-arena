@@ -329,6 +329,17 @@ contract AgentArenaTest is Test {
         assertTrue(_seed(alice) != _seed(carol));
     }
 
+    function testFuzz_passRoundsAreTheSameForEveryoneOnACard(bytes32 seed, address a, address b) public view {
+        for (uint8 r = 1; r <= 12; ++r) {
+            uint8 va = arena.variantOf(seed, a, r);
+            uint8 vb = arena.variantOf(seed, b, r);
+            assertLt(va, 64);
+            if (r < 9) continue;
+            assertEq(va % 8 == 7, vb % 8 == 7, "PASS depends on the card only");
+            if (va % 8 == 7) assertEq(va, 7);
+        }
+    }
+
     function test_namesAreLimitedTo32Bytes() public {
         vm.startPrank(alice);
         vm.expectRevert(AgentArena.TooLong.selector);

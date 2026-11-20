@@ -337,8 +337,16 @@ contract AgentArena {
     // ================================================================ views
 
     /// @notice Which of the 64 code variants `agent` gets in `round` of the fight with `seed`.
+    ///         In the decision rounds (9–12) the variants with `variant % 8 == 7` are the ones whose
+    ///         right answer is PASS. Whether a round is a PASS round depends on the card (`seed`)
+    ///         only, so two fighters on the same card face the same decision; only non-PASS codes
+    ///         are personal.
     function variantOf(bytes32 seed, address agent, uint8 round) public pure returns (uint8) {
-        return uint8(uint256(keccak256(abi.encode(seed, agent, round))) % VARIANTS);
+        uint256 v = uint256(keccak256(abi.encode(seed, agent, round))) % VARIANTS;
+        if (round < 9) return uint8(v);
+        if (uint256(keccak256(abi.encode(seed, "pass", round))) % 8 == 0) return 7;
+        if (v % 8 == 7) --v;
+        return uint8(v);
     }
 
     /// @notice The 36 traps of a fight, three per round in order (round 1 = items 0..2), drawn
