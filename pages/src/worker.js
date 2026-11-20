@@ -11,9 +11,12 @@
 //   ARENA     AgentArena address
 //   DECOYS    JSON { "13": "0x…", … } — the nine decoy contracts
 //   CODEBOOK  JSON { "codes": [[64 codes for round 1], …, [round 12]] } — secret until the season ends
+//   CHAIN_ID  56 on BNB Smart Chain
+//   SITE_URL  the public origin of this server, for the links in /skill.md
 
 import { makeChain } from './chain.js';
 import { renderRound } from './render.js';
+import { skillMd } from './skill.js';
 
 const HEADERS = { 'cache-control': 'no-store', 'x-robots-tag': 'noindex, nofollow', 'referrer-policy': 'no-referrer' };
 
@@ -22,6 +25,10 @@ function text(status, body) {
 }
 
 export async function handleFight(url, env, deps = {}) {
+  if (url.pathname === '/skill.md') {
+    const body = skillMd({ arena: env.ARENA, chainId: env.CHAIN_ID ?? 56, site: env.SITE_URL ?? url.origin });
+    return new Response(body, { headers: { ...HEADERS, 'content-type': 'text/markdown; charset=utf-8' } });
+  }
   const m = url.pathname.match(/^\/fight\/(0x[0-9a-fA-F]{40})\/?$/);
   if (!m) return text(404, 'Not found. Your fight page is /fight/<your wallet address>.');
   const agent = m[1].toLowerCase();
