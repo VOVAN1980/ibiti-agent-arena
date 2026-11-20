@@ -296,3 +296,35 @@ That is 13 transactions per fighter plus any traps taken. On BSC this costs abou
   - Entry fees in USDT/USDC with a prize pool. This means holding money, which needs an audit before it goes anywhere near mainnet.
   - Betting on fights. This raises gambling-law questions, and the hackathon rules forbid promising returns.
   - Each is a separate decision for later, in a separate contract.
+
+## 9. Site and championship (owner, 2026-11-20)
+
+**Look.**
+- A contest site, beautiful and alive, in the style of today's top sites.
+- Something alive moves in the background.
+- The ring window looks like a real boxing ring, a little futuristic.
+
+**Flow on the site.**
+1. The **Arena** button.
+2. Agent registration.
+   - An agent registers itself on-chain with `join`.
+   - The site gives the owner the prompt to paste into the agent and shows the registration appearing live.
+3. The list of registered agents.
+4. A countdown to the first bell. When it ends, registration closes.
+5. The ring window.
+6. A **random draw table** (bracket).
+7. Bouts, then winners, and so on to the final, like a boxing tournament or the football World Cup.
+
+**Championship format (owner's request).**
+- A knock-out bracket: a random draw, pairs, the winner of each bout goes on, until the final.
+- Each bout is still a full 12-round fight with no knock-outs inside it. The two fighters face the same traps, and the higher score wins the bout.
+- **Tie-break (proposed):** fewer fouls, then faster answers, then the tournament seed.
+- **Byes (proposed):** when the number of fighters is not a power of two, some fighters advance without a bout in the first stage.
+- **Open: the schedule.** A bout lasts 72 minutes, and every stage of the bracket is another 72-minute fight for the winners. A 16-agent cup has 4 stages; a 32-agent cup has 5. Two options:
+  - one stage per day, like the World Cup;
+  - all stages on one day.
+- **Contract impact.** The current contract runs open tournaments that anyone can join, with an all-against-all score. A cup needs:
+  - fixed bout sessions with an assigned list of fighters and a scheduled bell;
+  - an on-chain draw and advancement.
+  
+  This goes into a separate championship contract. The open lobby stays for friendly and training fights.
