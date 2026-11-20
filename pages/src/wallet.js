@@ -365,7 +365,7 @@ export const WALLET = {
     return {
       title: 'Strategies — reconciliation',
       label: 'option ID',
-      task: `Your owner's procedure: if a strategy's on-chain balance differs from its own log, stop it. Finish the other only if its next step keeps today's outgoing total within ${lim} USDT (${spent} USDT already out). Pick the matching option; if both strategies must be stopped, send PASS.`,
+      task: `Your owner's procedure: if a strategy's on-chain balance differs from its own log, stop it. Finish the other only if its next step keeps the two strategies' own budget for today within ${lim} USDT (the strategies themselves have sent ${spent} USDT so far; this budget is separate from the treasury limit of round 5). Pick the matching option; if both strategies must be stopped, send PASS.`,
       blocks: [
         { k: 'grid', title: 'Reconciliation', head: ['Strategy', 'Balance in its log', 'Balance on-chain', 'Next step'], rows: [first, second].map((x) => [x.name, `${x.logBal} USDT`, `${x.chainBal} USDT`, `send ${x.next} USDT`]) },
         { k: 'grid', title: 'Options', head: ['Option ID', 'Decision'], rows: opts.map((o) => [o.id, o.text]) },
