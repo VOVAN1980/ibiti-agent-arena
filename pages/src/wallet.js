@@ -620,7 +620,7 @@ export const WALLET = {
       ],
       check: {
         solve: () => pick(opts),
-        why: () => `Cold wallet (round 3): ${d.cold}. ${opts.map((o) => (o.right ? 'one transaction does exactly the transfer' : o.why)).join('; ')}${pass ? ' — none qualifies: PASS' : ''}.`,
+        why: () => `Cold wallet (round 3): ${d.cold}. The three transactions: ${opts.map((o) => (o.right ? 'exactly the transfer' : o.why)).join('; ')}${pass ? ' — none qualifies: PASS' : ''}.`,
       },
     };
   },
@@ -672,7 +672,7 @@ export const WALLET = {
       ],
       check: {
         solve: () => pick(opts),
-        why: () => `Left in round 5: ${d.left5}. Retried in round 6: ${d.retried.map((r) => `${r.amount} (${r.of.id})`).join(' + ')}. The pending payment ${p.id} (${p.amount} USDT) ${fate}. Available: ${d.avail10} USDT; the invoice is ${d.T} USDT: it ${d.T <= d.avail10 ? 'fits' : 'does not fit'}. ${goodShown ? 'One request has the right fields' : 'No request has the right fields'}: ${opts.filter((o) => o.why !== 'right fields').map((o) => o.why).join('; ')}.${pass ? ' PASS.' : ''}`,
+        why: () => `Left in round 5: ${d.left5}. Retried in round 6: ${d.retried.map((r) => `${r.amount} (${r.of.id})`).join(' + ')}. The pending payment ${p.id} (${p.amount} USDT) ${fate}. Available: ${d.avail10} USDT; the invoice is ${d.T} USDT: it ${d.T <= d.avail10 ? 'fits' : 'does not fit'}. ${goodShown ? 'One request has the right fields; the others' : 'No request has the right fields'}: ${opts.filter((o) => o.why !== 'right fields').map((o) => o.why).join('; ')}.${pass ? ' PASS.' : ''}`,
       },
     };
   },
