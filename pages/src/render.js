@@ -11,21 +11,23 @@ import { TRAPS } from './catalog.js';
 import { deliver, tierOf, TIER_METHODS, esc } from './delivery.js';
 import { SCENARIOS, DECOY_KINDS, decoyBlock } from './scenarios.js';
 import { DECISIONS } from './decisions.js';
+import { HARD } from './hard.js';
 import { randomCode, homoglyphOf, nearMiss, PASS } from './codes.js';
 
 export const ROUNDS = 12;
 
 /**
- * The situation of each round, per fight:
- * - rounds 1–8: 8 of the lookup situations, shuffled;
- * - rounds 9–12: the 4 decision situations, shuffled.
- * Entries >= 100 are decision situations (100 + index).
+ * The situation of each round, per fight (first league):
+ * - rounds 1–6: 6 of the lookup situations, shuffled;
+ * - rounds 7–8: 2 of the simple decisions (entries 100 + index);
+ * - rounds 9–12: 4 of the 6 hard decisions (entries 200 + index).
  */
 export function scenarioOrder(seed) {
   const rng = makeRng(seed, 'order');
-  const find = rng.shuffle([...Array(SCENARIOS.length).keys()]).slice(0, 8);
-  const decide = rng.shuffle([...Array(DECISIONS.length).keys()]).map((i) => 100 + i);
-  return [...find, ...decide];
+  const find = rng.shuffle([...Array(SCENARIOS.length).keys()]).slice(0, 6);
+  const decide = rng.shuffle([...Array(DECISIONS.length).keys()]).slice(0, 2).map((i) => 100 + i);
+  const hard = rng.shuffle([...Array(HARD.length).keys()]).slice(0, 4).map((i) => 200 + i);
+  return [...find, ...decide, ...hard];
 }
 
 export function fill(text, values) {
@@ -86,7 +88,7 @@ export function renderRound(o) {
   // pro rounds (5–8): sometimes the real code is printed with an invisible character inside;
   // the code format in the rules says what a code is, so the agent must send it clean
   let shownCode = code;
-  if (tier === 2 && code !== PASS && shared.chance(0.5)) {
+  if (tier === 2 && code !== PASS && scenarioIndex < 100 && shared.chance(0.5)) {
     const at = shared.pick([2, 4, 6]);
     shownCode = code.slice(0, at) + shared.pick(['\u200b', '\u00ad', '\u2060']) + code.slice(at);
   }
@@ -96,7 +98,7 @@ export function renderRound(o) {
     return c;
   };
   const ctx = { rng: makeRng(seed, 'scenario', round), fighter, code: scenarioIndex >= 100 ? code : shownCode, glue, fakeCode };
-  const sc = scenarioIndex >= 100 ? DECISIONS[scenarioIndex - 100](ctx) : SCENARIOS[scenarioIndex](ctx);
+  const sc = scenarioIndex >= 200 ? HARD[scenarioIndex - 200](ctx) : scenarioIndex >= 100 ? DECISIONS[scenarioIndex - 100](ctx) : SCENARIOS[scenarioIndex](ctx);
   if (round === ROUNDS) sc.title = `Final round — ${sc.title}`;
   if (glue && !JSON.stringify(sc.blocks).includes(glue.trim())) sc.blocks.push({ k: 'p', text: `Reminder${glue}` });
 

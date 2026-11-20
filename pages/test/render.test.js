@@ -7,6 +7,7 @@ import { deliver, toTags, TIER_METHODS } from '../src/delivery.js';
 import { makeRng } from '../src/rng.js';
 import { homoglyphOf, HOMOGLYPHS, PASS } from '../src/codes.js';
 import { DECISIONS } from '../src/decisions.js';
+import { HARD } from '../src/hard.js';
 import { skillMd } from '../src/skill.js';
 import { buildCodebook } from '../tools/make-codebook.mjs';
 import { handleFight } from '../src/worker.js';
@@ -38,14 +39,28 @@ test('every fighter of a tournament meets the same situation and the same hidden
   }
 });
 
-test('situations: rounds 1–8 are lookups, rounds 9–12 are the four decisions, all shuffled per fight', () => {
+test('situations: rounds 1–6 lookups, 7–8 simple decisions, 9–12 hard decisions, shuffled per fight', () => {
   const o1 = scenarioOrder(SEED);
   const o2 = scenarioOrder('0x' + '77'.repeat(32));
   assert.equal(o1.length, 12);
-  const find = o1.slice(0, 8);
-  assert.ok(find.every((i) => i < 100) && new Set(find).size === 8);
-  assert.deepEqual([...o1.slice(8)].sort(), [100, 101, 102, 103]);
+  const find = o1.slice(0, 6);
+  assert.ok(find.every((i) => i < 100) && new Set(find).size === 6);
+  assert.ok(o1.slice(6, 8).every((i) => i >= 100 && i < 200));
+  assert.ok(o1.slice(8).every((i) => i >= 200) && new Set(o1.slice(8)).size === 4);
   assert.notDeepEqual(o1, o2);
+});
+
+test('every hard decision has exactly one right answer, or none when the answer is PASS', () => {
+  for (let h = 0; h < HARD.length; h++) {
+    for (let s = 0; s < 60; s++) {
+      for (const code of ['K7QM-9XDA', PASS]) {
+        const own = makeRng('own-hard', h, s);
+        const sc = HARD[h]({ rng: makeRng('hard', h, s), fighter: '0x' + 'ab12cd'.repeat(6) + 'ef98', code, glue: '', fakeCode: () => `F${own.int(1e9)}-X` });
+        assert.equal(sc.check.solve(), code, `hard ${h} seed ${s} code ${code}`);
+        assert.match(sc.task, /PASS/);
+      }
+    }
+  }
 });
 
 test('every decision table has exactly one right row, or none when the answer is PASS', () => {
@@ -64,7 +79,7 @@ test('every decision table has exactly one right row, or none when the answer is
 test('the final round is a decision and says so in its title', () => {
   const p = renderRound(base({ round: 12, code: PASS, traps: [1, 2, 3] }));
   assert.match(p.title, /^Final round — /);
-  assert.ok(p.meta.scenario >= 100);
+  assert.ok(p.meta.scenario >= 200);
 });
 
 // ------------------------------------------------------------------ the real code
@@ -79,7 +94,7 @@ test('the real code is on the page (maybe with an invisible character inside in 
       const shown = p.meta.shownCode;
       assert.ok(p.md.includes(shown), `round ${r}: code missing in md`);
       assert.equal(shown.replace(/[^A-Z0-9-]/g, ''), code, 'only invisible characters may be added');
-      if (r <= 4 || r >= 9) assert.equal(shown, code, 'clean code outside rounds 5–8');
+      if (r <= 4 || p.meta.scenario >= 100) assert.equal(shown, code, 'clean code in rounds 1–4 and in decisions');
       for (const d of p.meta.decoys) assert.notEqual(d.code, code, 'a decoy must not be the real code');
     }
   }
