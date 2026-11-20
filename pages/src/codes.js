@@ -1,26 +1,29 @@
-// Round codes: two groups of four characters, e.g. "K7QM-9XDA". The alphabet has no 0/O, 1/I/L,
-// so codes are easy to read, and it keeps Latin letters that have Cyrillic look-alikes for the
-// homoglyph decoy.
+// Round codes: four groups of four characters, e.g. "K7QM-9XDA-RT4W-H2PN" (about 79 bits). The arena
+// stores only keccak256 of each code on-chain, so a code must be long enough that nobody can find it
+// by trying every possibility against the public hash. The alphabet has no 0/O, 1/I/L, so codes are
+// easy to read, and it keeps Latin letters that have Cyrillic look-alikes for the homoglyph decoy.
 
 export const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 
-/** The answer when a championship-round task says no option qualifies: "skip the move". */
+/**
+ * Inside the page generators: "this round is a PASS round, no option is right". The fighter never
+ * sends this word: on a PASS round its own code is printed in the round card as its "PASS code".
+ */
 export const PASS = 'PASS';
-
-/** Rounds 9–12 are decision rounds; in 8 of their 64 variants the right answer is PASS. */
-export const isPassVariant = (round, variant) => round >= 9 && variant % 8 === 7;
 
 /** Latin letters with a Cyrillic twin that looks the same. */
 export const HOMOGLYPHS = { A: 'А', B: 'В', C: 'С', E: 'Е', H: 'Н', K: 'К', M: 'М', P: 'Р', T: 'Т', X: 'Х' };
 
+export const CODE_CHARS = 16;
+
 export function codeFromBytes(bytes) {
   let s = '';
-  for (let i = 0; i < 8; i++) s += ALPHABET[bytes[i] % ALPHABET.length];
-  return `${s.slice(0, 4)}-${s.slice(4)}`;
+  for (let i = 0; i < CODE_CHARS; i++) s += ALPHABET[bytes[i] % ALPHABET.length];
+  return s.match(/.{4}/g).join('-');
 }
 
 export function randomCode(rng) {
-  return codeFromBytes(Array.from({ length: 8 }, () => rng.int(256)));
+  return codeFromBytes(Array.from({ length: CODE_CHARS }, () => rng.int(256)));
 }
 
 /** The real code with one Latin letter swapped for its Cyrillic twin, or null if it has none. */

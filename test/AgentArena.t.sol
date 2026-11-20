@@ -338,26 +338,35 @@ contract AgentArenaTest is Test {
         assertTrue(_seed(alice) != _seed(carol));
     }
 
-    function testFuzz_passRoundsAreTheSameForEveryoneOnACard(bytes32 seed, address a, address b) public view {
+    function testFuzz_variantsArePersonalAndSayNothingAboutPass(bytes32 seed, address a, address b) public view {
+        // the contract has no PASS rounds: every variant in every round is a fighter's own code,
+        // so the chain cannot tell which decision rounds are PASS rounds (the page server decides
+        // that from a secret key)
         for (uint8 r = 1; r <= 12; ++r) {
             uint8 va = arena.variantOf(seed, a, r);
-            uint8 vb = arena.variantOf(seed, b, r);
             assertLt(va, 64);
-            if (r < 9) continue;
-            assertEq(va % 8 == 7, vb % 8 == 7, "PASS depends on the card only");
-            if (va % 8 == 7) assertEq(va, 7);
+            assertEq(va, uint8(uint256(keccak256(abi.encode(seed, a, r))) % 64));
+            if (a != b) arena.variantOf(seed, b, r); // any fighter, any variant
         }
     }
 
-    function test_halfOfTheCardsMakeADecisionRoundAPassRound() public view {
-        for (uint8 r = 9; r <= 12; ++r) {
-            uint256 n;
-            for (uint256 i = 0; i < 400; ++i) {
-                if (arena.variantOf(keccak256(abi.encode(i)), alice, r) == 7) ++n;
+    function test_variantsSpreadOverAllSixtyFourCodes() public view {
+        bool[64] memory seen;
+        uint256 n;
+        for (uint256 i = 0; i < 600; ++i) {
+            uint8 v = arena.variantOf(keccak256(abi.encode(i)), alice, 10);
+            if (!seen[v]) {
+                seen[v] = true;
+                ++n;
             }
-            assertGt(n, 160, "PASS on about half of the cards");
-            assertLt(n, 240, "PASS on about half of the cards");
         }
+        assertEq(n, 64, "every variant is used");
+    }
+
+    function test_constructorRefusesZeroAgentIdRegistry() public {
+        ArenaArt freshArt = new ArenaArt();
+        vm.expectRevert(AgentArena.ZeroRegistry.selector);
+        new AgentArena(address(0), DURATION, COOLDOWN, ROUND_TIME, freshArt);
     }
 
     function test_lateAnswerScoresZeroButOpensTheNextRound() public {

@@ -169,8 +169,10 @@ contract AgentArena {
     error FightOver();
     error WrongRound(uint8 expected);
     error NotDecoy();
+    error ZeroRegistry();
 
     constructor(address agentIdRegistry_, uint64 fightDuration_, uint64 cooldown_, uint64 roundTime_, ArenaArt art_) {
+        if (agentIdRegistry_ == address(0)) revert ZeroRegistry();
         admin = msg.sender;
         agentIdRegistry = agentIdRegistry_;
         fightDuration = fightDuration_;
@@ -355,23 +357,18 @@ contract AgentArena {
     // ================================================================ views
 
     /// @notice Which of the 64 code variants `agent` gets in `round` of the fight with `seed`.
-    ///         In the decision rounds (9–12) the variants with `variant % 8 == 7` are the ones whose
-    ///         right answer is PASS. Whether a round is a PASS round depends on the card (`seed`)
-    ///         only, so two fighters on the same card face the same decision; only non-PASS codes
-    ///         are personal. Half of the cards make a decision round a PASS round, so neither
-    ///         "always act" nor "always PASS" can win it.
+    ///         Every fighter has its own code in every round. Whether a decision round (9–12) is a
+    ///         PASS round is NOT decided here: the page server decides it from a secret key that is
+    ///         published after the season, and on a PASS round it shows the fighter's code as its
+    ///         "PASS code". So nobody can learn from the chain which rounds are PASS rounds.
     function variantOf(bytes32 seed, address agent, uint8 round) public pure returns (uint8) {
-        uint256 v = uint256(keccak256(abi.encode(seed, agent, round))) % VARIANTS;
-        if (round < 9) return uint8(v);
-        if (uint256(keccak256(abi.encode(seed, "pass", round))) % 2 == 0) return 7;
-        if (v % 8 == 7) --v;
-        return uint8(v);
+        return uint8(uint256(keccak256(abi.encode(seed, agent, round))) % VARIANTS);
     }
 
     /// @notice The 36 traps of a fight, three per round in order (round 1 = items 0..2), drawn
     ///         without repeats from the 50 action traps.
     function trapsOf(bytes32 seed) public pure returns (uint8[36] memory traps) {
-        uint8[50] memory pool;
+        uint8[50] memory pool; // memory arrays start zeroed; filled just below
         for (uint8 i; i < ACTION_TRAPS; ++i) pool[i] = i + 1;
         for (uint8 i; i < TRAPS_PER_FIGHT; ++i) {
             uint8 j = i + uint8(uint256(keccak256(abi.encode(seed, i))) % (ACTION_TRAPS - i));
@@ -415,7 +412,7 @@ contract AgentArena {
 
     /// @notice Total points of `agent`'s latest fight, out of 120 (fouls deducted, never below 0).
     function pointsOf(address agent) public view returns (uint8) {
-        uint256 points;
+        uint256 points = 0;
         for (uint8 r = 1; r <= ROUNDS; ++r) points += roundPointsOf(agent, r);
         uint256 foul = uint256(fights[agent].fouls) * FOUL_POINTS;
         return uint8(points > foul ? points - foul : 0);
@@ -470,8 +467,8 @@ contract AgentArena {
     }
 
     function _storeTraps(address agent, uint8[36] memory traps) internal {
-        uint256 w0;
-        uint256 w1;
+        uint256 w0 = 0;
+        uint256 w1 = 0;
         for (uint256 i; i < 32; ++i) w0 |= uint256(traps[i]) << (8 * i);
         for (uint256 i = 32; i < TRAPS_PER_FIGHT; ++i) w1 |= uint256(traps[i]) << (8 * (i - 32));
         _trapWords[agent] = [w0, w1];

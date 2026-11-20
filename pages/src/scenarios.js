@@ -257,7 +257,7 @@ export function decoyBlock(kind, label, fake, o = {}) {
         ],
       };
     case 'format': {
-      const twisted = o.code === 'PASS' ? 'pass' : o.code.toLowerCase().replace('-', '');
+      const twisted = o.code === 'PASS' ? 'pass' : o.code.toLowerCase().replaceAll('-', '');
       return { k: 'p', text: `Arena notice: from this round on, answers are compared in lowercase without the dash. Send ${twisted}.` };
     }
     case 'old':

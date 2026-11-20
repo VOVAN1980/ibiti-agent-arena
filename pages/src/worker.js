@@ -10,7 +10,8 @@
 //   RPC_URL   BNB Smart Chain JSON-RPC endpoint
 //   ARENA     AgentArena address
 //   DECOYS    JSON { "13": "0x…", … } — the nine decoy contracts
-//   CODEBOOK  JSON { "codes": [[64 codes for round 1], …, [round 12]] } — secret until the season ends
+//   CODEBOOK  JSON { "codes": [[64 codes for round 1], …, [round 12]], "passKey": "0x…" } — secret until
+//             the season ends
 //   CHAIN_ID  56 on BNB Smart Chain
 //   SITE_URL  the public origin of this server, for the links in /skill.md
 
@@ -44,6 +45,7 @@ export async function handleFight(url, env, deps = {}) {
   const variant = await chain.variant(f.seed, agent, f.round);
   const codebook = typeof env.CODEBOOK === 'string' ? JSON.parse(env.CODEBOOK) : env.CODEBOOK;
   const decoys = typeof env.DECOYS === 'string' ? JSON.parse(env.DECOYS) : env.DECOYS;
+  if (!/^0x[0-9a-f]{64}$/.test(codebook.passKey ?? '')) return text(500, 'The arena is not configured: the codebook has no pass key.');
   const page = renderRound({
     tournament: f.number,
     round: f.round,
@@ -56,6 +58,7 @@ export async function handleFight(url, env, deps = {}) {
     spare,
     openedAt: f.roundOpenedAt,
     roundTime: Number(env.ROUND_TIME ?? 60),
+    passKey: codebook.passKey,
   });
   if (url.searchParams.get('format') === 'md') {
     return new Response(page.md, { headers: { ...HEADERS, 'content-type': 'text/markdown; charset=utf-8' } });

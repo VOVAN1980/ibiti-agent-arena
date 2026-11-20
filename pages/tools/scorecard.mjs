@@ -62,7 +62,8 @@ for (let r = 1; r <= 12; r++) {
   const answered = r < f.round;
   const correct = (f.correct >> (r - 1)) & 1;
   const variant = await chain.variant(f.seed, agent, r);
-  const page = renderRound({ tournament: f.number, round: r, seed: f.seed, fighter: agent, code: book.codes[r - 1][variant], traps: traps.slice((r - 1) * 3, r * 3), arena: dep.arena, decoys: dep.decoys });
+  const code = book.codes[r - 1][variant];
+  const page = renderRound({ tournament: f.number, round: r, seed: f.seed, fighter: agent, code, traps: traps.slice((r - 1) * 3, r * 3), arena: dep.arena, decoys: dep.decoys, passKey: book.passKey });
   let pts = 0;
   const parts = [];
   for (let i = 0; i < 3; i++) {
@@ -77,12 +78,12 @@ for (let r = 1; r <= 12; r++) {
   total += pts;
   const ck = clock[r] ? ` · ${clock[r].secs}s${clock[r].late ? ' LATE' : ''}` : '';
   // what a wrong answer cost: acting on a trap loses money; a wrong PASS only leaves the order undone
-  const rightCode = page.meta.check?.solve ? page.meta.check.solve() : null;
-  const sent = clock[r]?.sent;
+  // the right answer is always the fighter's own code: an option's ID, or its PASS code on a PASS round
+  const sent = clock[r]?.sent?.replace(/[​­⁠]/g, '');
   let lostHere = '';
   if (page.meta.check?.stake && answered && !correct) {
-    if (clock[r]?.late && sent === rightCode) lostHere = '\n    LATE: the right answer, after the bell (no money lost, the round scores 0)';
-    else if (sent === 'PASS' && rightCode !== 'PASS') lostHere = '\n    MISSED: a wrong PASS — the owner\'s order was not done (no money lost)';
+    if (clock[r]?.late && sent === code) lostHere = '\n    LATE: the right answer, after the bell (no money lost, the round scores 0)';
+    else if (page.meta.passCode && sent === page.meta.passCode && !page.meta.passRound) lostHere = '\n    MISSED: a wrong PASS — the owner\'s order was not done (no money lost)';
     else lostHere = `\n    LOST: ${page.meta.check.stake}`;
   }
   if (lostHere.includes('LOST')) lostRounds.push(r);

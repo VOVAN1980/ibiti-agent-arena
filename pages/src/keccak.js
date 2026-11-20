@@ -1,6 +1,6 @@
-// keccak256 (the Ethereum hash), small and dependency-free, for the few hashes a page needs:
-// the page server must know, from the card alone, which decision rounds the arena made PASS
-// rounds (AgentArena.variantOf), so the whole day can be told consistently from round 3 on.
+// keccak256 (the Ethereum hash), small and dependency-free, for the few hashes a page needs: which
+// decision rounds of a card are PASS rounds (from the secret pass key), and the Safe transaction
+// hashes of round 12.
 
 const M = (1n << 64n) - 1n;
 const RC = [
@@ -61,10 +61,15 @@ export function keccak256(hexIn) {
 
 const w = (h) => h.replace(/^0x/, '').toLowerCase().padStart(64, '0');
 
-/** Mirrors AgentArena.variantOf: is `round` a PASS round on the card with `seed`? (rounds 9–12) */
-export function isPassRound(seed, round) {
+/** A public key for previews and tests only. A real arena uses the secret pass key of its codebook. */
+export const DEMO_PASS_KEY = '0x' + '00'.repeat(32);
+
+/**
+ * Is `round` a PASS round on the card with `seed`? Rounds 9–12 only, about half of the cards, the
+ * same for every fighter on the card. It depends on the codebook's secret pass key, so nobody can
+ * tell from the chain; the key is published after the season so every result can be rechecked.
+ */
+export function isPassRound(seed, round, passKey = DEMO_PASS_KEY) {
   if (round < 9) return false;
-  // abi.encode(bytes32 seed, string "pass", uint8 round)
-  const enc = w(seed) + w('60') + w(round.toString(16)) + w('4') + '70617373'.padEnd(64, '0');
-  return BigInt(keccak256(enc)) % 2n === 0n;
+  return BigInt(keccak256(w(passKey) + w(seed) + w(round.toString(16)))) % 2n === 0n;
 }

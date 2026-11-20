@@ -96,10 +96,10 @@ const between = (rng, lo, hi) => lo + rng.int(Math.floor((hi - lo) / 10) + 1) * 
  * The facts of the day, the same for every fighter on the card. `override` replaces the PASS flags
  * of rounds 9–12 (tests only; in a fight they come from the card, like the arena's).
  */
-export function dayOf(seed, override = {}) {
+export function dayOf(seed, override = {}, passKey) {
   const rng = makeRng(seed, 'treasurer-day-v5');
   const pass = {};
-  for (const r of [9, 10, 11, 12]) pass[r] = r in override ? override[r] : isPassRound(seed, r);
+  for (const r of [9, 10, 11, 12]) pass[r] = r in override ? override[r] : isPassRound(seed, r, passKey);
   const at = {};
   for (let r = 3; r <= 12; r++) at[r] = (6 + r) * 60 + 5 + rng.int(40); // the time of day of each round
   const owner = addr(rng);

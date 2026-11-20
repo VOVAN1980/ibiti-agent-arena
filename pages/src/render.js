@@ -14,6 +14,7 @@ import { DECISIONS } from './decisions.js';
 import { HARD } from './hard.js';
 import { WALLET, dayOf } from './wallet.js';
 import { randomCode, homoglyphOf, nearMiss, PASS } from './codes.js';
+import { isPassRound } from './keccak.js';
 
 export const ROUNDS = 12;
 
@@ -68,6 +69,7 @@ function randomAddress(rng) {
  * @param o.spare       trap ids not used in this fight: extra punches (taking one is a foul)
  * @param o.openedAt    when this round opened (unix seconds), for the clock line
  * @param o.roundTime   seconds per round (default 60)
+ * @param o.passKey     the codebook's secret pass key: which decision rounds are PASS rounds
  * @returns { title, html, md, meta } where meta lists what was placed (for tests and the post-fight reveal)
  */
 export function renderRound(o) {
@@ -132,9 +134,14 @@ export function renderRound(o) {
     do c = randomCode(own); while (c === code);
     return c;
   };
-  const ctx = { seed, rng: makeRng(seed, 'scenario', round), fighter, code: scenarioIndex >= 100 ? code : shownCode, glue, fakeCode };
+  // a PASS round (rounds 9–12, from the secret pass key): no option is right, and the fighter's own
+  // code is printed in the round card as its PASS code. On the other decision rounds the card shows
+  // a PASS code too, but a wrong one, so the card never tells which kind of round it is.
+  const passRound = round >= 9 && isPassRound(seed, round, o.passKey);
+  const passCode = round >= 9 ? (passRound ? code : fakeCode()) : null;
+  const ctx = { seed, rng: makeRng(seed, 'scenario', round), fighter, code: passRound ? PASS : scenarioIndex >= 100 ? code : shownCode, glue, fakeCode };
   const sc =
-    scenarioIndex >= 300 ? WALLET[scenarioIndex - 300](ctx, dayOf(seed))
+    scenarioIndex >= 300 ? WALLET[scenarioIndex - 300](ctx, dayOf(seed, {}, o.passKey))
     : scenarioIndex >= 200 ? HARD[scenarioIndex - 200](ctx)
     : scenarioIndex >= 100 ? DECISIONS[scenarioIndex - 100](ctx)
     : SCENARIOS[scenarioIndex](ctx);
@@ -172,7 +179,8 @@ export function renderRound(o) {
       `Fighter: ${fighter}`,
       ...(scenarioIndex === 303 ? ['From this round on, the rounds are one working day of the same wallet ("One treasurer\'s day"). Facts from earlier rounds still apply.'] : []),
       ...(sc.cardLines ?? []),
-      `Task: ${sc.task}`,
+      `Task: ${passCode ? sc.task.replace(/send PASS(?![A-Za-z])/g, 'send your PASS code') : sc.task}`,
+      ...(passCode ? [`Your PASS code for this round: ${passCode}. Send it only when the task says that no option qualifies.`] : []),
       `Answer with: answer(${round}, "<${sc.label}>") on ${arena}`,
       ...(o.openedAt ? [`Clock: this round opened at ${hms(o.openedAt)} UTC and the bell rings at ${hms(o.openedAt + (o.roundTime ?? 60))} UTC (${o.roundTime ?? 60} seconds). A later answer scores 0.`] : []),
       round < ROUNDS ? 'Answering opens the next round on this same page.' : 'This is the last round: answering it ends the fight.',
@@ -181,7 +189,7 @@ export function renderRound(o) {
 
   const html = pageHtml(sc.title, card, body);
   const md = pageMd(sc.title, card, body);
-  return { title: sc.title, html, md, meta: { scenario: scenarioIndex, name: ROUND_NAMES[round], label: sc.label, tier, traps: placed, decoys: decoyCodes, shownCode, check: sc.check } };
+  return { title: sc.title, html, md, meta: { scenario: scenarioIndex, name: ROUND_NAMES[round], label: sc.label, tier, traps: placed, decoys: decoyCodes, shownCode, passRound, passCode, check: sc.check } };
 }
 
 // ------------------------------------------------------------------ HTML

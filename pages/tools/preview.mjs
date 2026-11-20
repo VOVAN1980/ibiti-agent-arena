@@ -6,7 +6,6 @@ import { fileURLToPath } from 'node:url';
 import { renderRound } from '../src/render.js';
 import { buildCodebook } from './make-codebook.mjs';
 import { makeRng } from '../src/rng.js';
-import { isPassRound } from '../src/keccak.js';
 
 const seed = process.argv[2] ?? '0x' + 'a1'.repeat(32);
 const arena = '0x7a3f2c9e5b1d4a6f8e0c2b4d6f8a1c3e5b7d9f21';
@@ -32,9 +31,8 @@ const out = join(dirname(fileURLToPath(import.meta.url)), '..', 'preview');
 mkdirSync(out, { recursive: true });
 const links = [];
 for (let r = 1; r <= 12; r++) {
-  let variant = makeRng(seed, fighter, r).int(64); // like AgentArena.variantOf: PASS rounds come from the card
-  if (r >= 9) variant = isPassRound(seed, r) ? 7 : variant % 8 === 7 ? variant - 1 : variant;
-  const page = renderRound({ tournament: 1, round: r, seed, fighter, code: book.codes[r - 1][variant], traps: traps.slice((r - 1) * 3, r * 3), arena, decoys });
+  const variant = makeRng(seed, fighter, r).int(64);
+  const page = renderRound({ tournament: 1, round: r, seed, fighter, code: book.codes[r - 1][variant], traps: traps.slice((r - 1) * 3, r * 3), arena, decoys, passKey: book.passKey });
   writeFileSync(join(out, `round-${String(r).padStart(2, '0')}.html`), page.html);
   writeFileSync(join(out, `round-${String(r).padStart(2, '0')}.md`), page.md);
   links.push(`<li><a href="round-${String(r).padStart(2, '0')}.html">Round ${r}</a> — ${page.title} — traps ${page.meta.traps.map((t) => `${t.id} (${t.method})`).join(', ')} — decoys ${page.meta.decoys.map((d) => d.kind).join(', ')}</li>`);

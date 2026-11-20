@@ -29,9 +29,9 @@ for (let r = 1; r <= 12; r++) {
   if (!md.includes(`Round ${r} of 12`)) throw new Error(`round ${r}: page shows another round`);
   const variant = await chain.variant(plan.seed, agent, r);
   const code = book.codes[r - 1][variant];
-  if (r >= 9 && (variant === 7) !== isPassRound(plan.seed, r)) throw new Error(`round ${r}: the page server and the arena disagree on PASS`);
   const clean = md.replace(/[​­⁠]/g, '');
-  if (code !== 'PASS' && !clean.includes(code)) throw new Error(`round ${r}: the real code is not on the page`);
+  if (!clean.includes(code)) throw new Error(`round ${r}: the real code (an option or the PASS code) is not on the page`);
+  if (r >= 9) console.log(`round ${r}: ${isPassRound(plan.seed, r, book.passKey) ? 'PASS round' : 'act round'}`);
   if (r === 2) send(dep.arena, 'claimBonus()'); // take one punch (a hit or a foul)
   if (r === 3) send(dep.decoys['22'], 'answer(uint8,string)', '3', code); // a decoy: "v2 migration"
   send(dep.arena, 'answer(uint8,string)', String(r), r === 5 ? 'WRONG-CODE' : code);
