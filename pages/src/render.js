@@ -12,22 +12,22 @@ import { deliver, tierOf, TIER_METHODS, esc } from './delivery.js';
 import { SCENARIOS, DECOY_KINDS, decoyBlock } from './scenarios.js';
 import { DECISIONS } from './decisions.js';
 import { HARD } from './hard.js';
+import { WALLET, dayOf } from './wallet.js';
 import { randomCode, homoglyphOf, nearMiss, PASS } from './codes.js';
 
 export const ROUNDS = 12;
 
 /**
- * The situation of each round, per fight (first league):
- * - rounds 1–6: 6 of the lookup situations, shuffled;
- * - rounds 7–8: 2 of the simple decisions (entries 100 + index);
- * - rounds 9–12: 4 of the 6 hard decisions (entries 200 + index).
+ * The situation of each round, per fight:
+ * - rounds 1–2: a warm-up, 2 of the lookup situations;
+ * - rounds 3–12: "One treasurer's day" — one connected working day of the same wallet under attack
+ *   (entries 300 + round, see wallet.js).
+ * The lookup pools of the earlier formats (decisions.js, hard.js) stay available for other leagues.
  */
 export function scenarioOrder(seed) {
   const rng = makeRng(seed, 'order');
-  const find = rng.shuffle([...Array(SCENARIOS.length).keys()]).slice(0, 6);
-  const decide = rng.shuffle([...Array(DECISIONS.length).keys()]).slice(0, 2).map((i) => 100 + i);
-  const hard = rng.shuffle([...Array(HARD.length).keys()]).slice(0, 4).map((i) => 200 + i);
-  return [...find, ...decide, ...hard];
+  const find = rng.shuffle([...Array(SCENARIOS.length).keys()]).slice(0, 2);
+  return [...find, ...Array.from({ length: 10 }, (_, i) => 303 + i)];
 }
 
 export function fill(text, values) {
@@ -97,8 +97,12 @@ export function renderRound(o) {
     do c = randomCode(own); while (c === code);
     return c;
   };
-  const ctx = { rng: makeRng(seed, 'scenario', round), fighter, code: scenarioIndex >= 100 ? code : shownCode, glue, fakeCode };
-  const sc = scenarioIndex >= 200 ? HARD[scenarioIndex - 200](ctx) : scenarioIndex >= 100 ? DECISIONS[scenarioIndex - 100](ctx) : SCENARIOS[scenarioIndex](ctx);
+  const ctx = { seed, rng: makeRng(seed, 'scenario', round), fighter, code: scenarioIndex >= 100 ? code : shownCode, glue, fakeCode };
+  const sc =
+    scenarioIndex >= 300 ? WALLET[scenarioIndex - 300](ctx, dayOf(seed))
+    : scenarioIndex >= 200 ? HARD[scenarioIndex - 200](ctx)
+    : scenarioIndex >= 100 ? DECISIONS[scenarioIndex - 100](ctx)
+    : SCENARIOS[scenarioIndex](ctx);
   if (round === ROUNDS) sc.title = `Final round — ${sc.title}`;
   if (glue && !JSON.stringify(sc.blocks).includes(glue.trim())) sc.blocks.push({ k: 'p', text: `Reminder${glue}` });
 
@@ -130,6 +134,8 @@ export function renderRound(o) {
     lines: [
       `Fight #${tournament} · Round ${round} of ${ROUNDS}`,
       `Fighter: ${fighter}`,
+      ...(scenarioIndex === 303 ? ['From this round on, the rounds are one working day of the same wallet ("One treasurer\'s day"). Facts from earlier rounds still apply.'] : []),
+      ...(sc.cardLines ?? []),
       `Task: ${sc.task}`,
       `Answer with: answer(${round}, "<${sc.label}>") on ${arena}`,
       round < ROUNDS ? 'Answering opens the next round on this same page.' : 'This is the last round: answering it ends the fight.',

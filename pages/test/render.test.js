@@ -8,6 +8,7 @@ import { makeRng } from '../src/rng.js';
 import { homoglyphOf, HOMOGLYPHS, PASS } from '../src/codes.js';
 import { DECISIONS } from '../src/decisions.js';
 import { HARD } from '../src/hard.js';
+import { WALLET, dayOf } from '../src/wallet.js';
 import { skillMd } from '../src/skill.js';
 import { buildCodebook } from '../tools/make-codebook.mjs';
 import { handleFight } from '../src/worker.js';
@@ -39,18 +40,57 @@ test('every fighter of a tournament meets the same situation and the same hidden
   }
 });
 
-test('situations: rounds 1–6 lookups, 7–8 simple decisions, 9–12 hard decisions, shuffled per fight', () => {
+test('situations: rounds 1–2 warm-up lookups, rounds 3–12 one treasurer\'s day in order', () => {
   const o1 = scenarioOrder(SEED);
-  const o2 = scenarioOrder('0x' + '77'.repeat(32));
   assert.equal(o1.length, 12);
-  const find = o1.slice(0, 6);
-  assert.ok(find.every((i) => i < 100) && new Set(find).size === 6);
-  assert.ok(o1.slice(6, 8).every((i) => i >= 100 && i < 200));
-  assert.ok(o1.slice(8).every((i) => i >= 200) && new Set(o1.slice(8)).size === 4);
-  assert.notDeepEqual(o1, o2);
+  assert.ok(o1.slice(0, 2).every((i) => i < 100));
+  assert.deepEqual(o1.slice(2), [303, 304, 305, 306, 307, 308, 309, 310, 311, 312]);
 });
 
-test('every hard decision has exactly one right answer, or none when the answer is PASS', () => {
+const WALLET_ROUNDS = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+
+function walletRound(seed, r, code, fighter, ownTag) {
+  const own = makeRng('own', ownTag, seed, r);
+  const ctx = { seed, rng: makeRng(seed, 'scenario', r), fighter, code, glue: '', fakeCode: () => `F${own.int(1e9)}-${ownTag}` };
+  return WALLET[r](ctx, dayOf(seed));
+}
+
+test('one treasurer\'s day: every round has exactly one right answer (PASS only in rounds 9–12)', () => {
+  for (let s = 0; s < 80; s++) {
+    const seed = '0x' + s.toString(16).padStart(64, '0');
+    for (const r of WALLET_ROUNDS) {
+      const codes = r >= 9 ? ['K7QM-9XDA', PASS] : ['K7QM-9XDA'];
+      for (const code of codes) {
+        const sc = walletRound(seed, r, code, A, 'a');
+        assert.equal(sc.check.solve(), code, `seed ${s} round ${r} code ${code}`);
+      }
+    }
+  }
+});
+
+test('same card: both fighters get the same day, the same orders and the same right decision', () => {
+  // the arena decides PASS rounds from the card alone, so both fighters share the PASS flags
+  const right = (sc, code) => {
+    if (code === PASS) return PASS;
+    const g = sc.blocks.find((b) => b.k === 'grid' && b.rows.some((row) => row[0] === code));
+    const row = g.rows.find((row) => row[0] === code);
+    return JSON.stringify(row.slice(1));
+  };
+  for (let s = 0; s < 40; s++) {
+    const seed = '0x' + (s + 1000).toString(16).padStart(64, '0');
+    for (const r of WALLET_ROUNDS) {
+      for (const pass of r >= 9 ? [false, true] : [false]) {
+        const a = walletRound(seed, r, pass ? PASS : 'AAAA-2222', A, 'a');
+        const b = walletRound(seed, r, pass ? PASS : 'BBBB-3333', B, 'b');
+        assert.equal(a.task, b.task, `round ${r}: same order`);
+        assert.deepEqual(a.cardLines ?? [], b.cardLines ?? [], `round ${r}: same trusted facts`);
+        assert.equal(right(a, pass ? PASS : 'AAAA-2222'), right(b, pass ? PASS : 'BBBB-3333'), `seed ${s} round ${r}: same right decision`);
+      }
+    }
+  }
+});
+
+test('(other leagues) every hard decision has exactly one right answer, or none when the answer is PASS', () => {
   for (let h = 0; h < HARD.length; h++) {
     for (let s = 0; s < 60; s++) {
       for (const code of ['K7QM-9XDA', PASS]) {
@@ -63,7 +103,7 @@ test('every hard decision has exactly one right answer, or none when the answer 
   }
 });
 
-test('every decision table has exactly one right row, or none when the answer is PASS', () => {
+test('(other leagues) every decision table has exactly one right row, or none when the answer is PASS', () => {
   for (let d = 0; d < DECISIONS.length; d++) {
     for (let s = 0; s < 40; s++) {
       for (const code of ['K7QM-9XDA', PASS]) {
@@ -79,7 +119,7 @@ test('every decision table has exactly one right row, or none when the answer is
 test('the final round is a decision and says so in its title', () => {
   const p = renderRound(base({ round: 12, code: PASS, traps: [1, 2, 3] }));
   assert.match(p.title, /^Final round — /);
-  assert.ok(p.meta.scenario >= 200);
+  assert.equal(p.meta.scenario, 312);
 });
 
 // ------------------------------------------------------------------ the real code
