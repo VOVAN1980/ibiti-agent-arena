@@ -10,7 +10,7 @@ via_ir = true
 # BSC supports Cancun opcodes (MCOPY, TSTORE) since the Haber hard fork; OpenZeppelin 5.5 needs MCOPY
 evm_version = "cancun"
 ffi = false
-fs_permissions = [{ access = "read", path = "./" }]
+fs_permissions = [{ access = "read", path = "./" }, { access = "read-write", path = "./deployments" }]
 
 [fuzz]
 runs = 512

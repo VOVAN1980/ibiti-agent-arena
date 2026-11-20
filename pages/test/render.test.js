@@ -7,7 +7,7 @@ import { deliver, toTags, TIER_METHODS } from '../src/delivery.js';
 import { makeRng } from '../src/rng.js';
 import { homoglyphOf, HOMOGLYPHS } from '../src/codes.js';
 import { buildCodebook } from '../tools/make-codebook.mjs';
-import { handleRound } from '../src/worker.js';
+import { handleFight } from '../src/worker.js';
 
 const ARENA = '0x7a3f2c9e5b1d4a6f8e0c2b4d6f8a1c3e5b7d9f21';
 const DECOYS = Object.fromEntries([13, 15, 18, 21, 22, 23, 24, 26, 27].map((t) => [t, `0x${String(t).padStart(2, '0')}${'ab'.repeat(19)}`]));
@@ -162,12 +162,11 @@ test('placeholders fill only known keys', () => {
 
 // ------------------------------------------------------------------ the page server
 
-function fakeChain({ round = 3, open = true, fighter = true, startAt = 1 } = {}) {
+function fakeChain({ round = 3, live = true, startedAt = 1 } = {}) {
   const traps = [...Array(36).keys()].map((i) => i + 1);
   return {
-    session: async () => ({ seed: SEED, startAt, fighters: 2, settled: false }),
-    roundNow: async () => ({ round, open }),
-    isFighter: async () => fighter,
+    fight: async () => ({ seed: SEED, startedAt, finishedAt: 0, hits: 0n, number: 2, correct: 0, round, fouls: 0, official: true }),
+    isLive: async () => live,
     traps: async () => traps,
     variant: async () => 9,
   };
@@ -175,24 +174,25 @@ function fakeChain({ round = 3, open = true, fighter = true, startAt = 1 } = {})
 
 const ENV = { ARENA, DECOYS: JSON.stringify(DECOYS), CODEBOOK: JSON.stringify(BOOK) };
 
-test('the server shows the open round to a fighter, with the fighter\'s own code', async () => {
-  const res = await handleRound(new URL(`https://x/s/7/3?agent=${A}`), ENV, { chain: fakeChain() });
+test('the server shows the agent its current round, with its own code', async () => {
+  const res = await handleFight(new URL(`https://x/fight/${A}`), ENV, { chain: fakeChain() });
   assert.equal(res.status, 200);
   const html = await res.text();
-  assert.ok(html.includes(BOOK.codes[2][9]));
-  const md = await (await handleRound(new URL(`https://x/s/7/3?agent=${A}&format=md`), ENV, { chain: fakeChain() })).text();
+  assert.ok(html.includes(BOOK.codes[2][9]), 'round 3 code for variant 9');
+  assert.ok(html.includes('Fight #2 · Round 3 of 12'));
+  const md = await (await handleFight(new URL(`https://x/fight/${A}?format=md`), ENV, { chain: fakeChain() })).text();
   assert.ok(md.startsWith('# IBITI Agent Arena — round card'));
+  assert.ok(md.includes('Answering opens the next round on this same page.'));
+  const last = await (await handleFight(new URL(`https://x/fight/${A}?format=md`), ENV, { chain: fakeChain({ round: 12 }) })).text();
+  assert.ok(last.includes('This is the last round'));
 });
 
-test('the server refuses: wrong round, corner, not a fighter, no such session, after the bell, bad address', async () => {
-  const get = (path, chain) => handleRound(new URL(`https://x${path}`), ENV, { chain });
-  assert.equal((await get(`/s/7/4?agent=${A}`, fakeChain({ round: 3 }))).status, 409);
-  assert.equal((await get(`/s/7/3?agent=${A}`, fakeChain({ round: 3, open: false }))).status, 409);
-  assert.equal((await get(`/s/7/3?agent=${A}`, fakeChain({ fighter: false }))).status, 403);
-  assert.equal((await get(`/s/7/3?agent=${A}`, fakeChain({ startAt: 0 }))).status, 404);
-  assert.equal((await get(`/s/7/3?agent=${A}`, fakeChain({ round: 13, open: false }))).status, 410);
-  assert.equal((await get(`/s/7/3?agent=0x12`, fakeChain())).status, 400);
-  assert.equal((await get(`/s/7/13?agent=${A}`, fakeChain())).status, 404);
+test('the server refuses: no fight yet, fight over, all rounds answered, bad path', async () => {
+  const get = (path, chain) => handleFight(new URL(`https://x${path}`), ENV, { chain });
+  assert.equal((await get(`/fight/${A}`, fakeChain({ startedAt: 0 }))).status, 404);
+  assert.equal((await get(`/fight/${A}`, fakeChain({ live: false }))).status, 410);
+  assert.equal((await get(`/fight/${A}`, fakeChain({ round: 13 }))).status, 410);
+  assert.equal((await get(`/fight/0x12`, fakeChain())).status, 404);
   assert.equal((await get(`/nope`, fakeChain())).status, 404);
 });
 

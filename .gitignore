@@ -8,3 +8,4 @@ dist/
 codebook/
 
 pages/preview/
+deployments/local-*.json

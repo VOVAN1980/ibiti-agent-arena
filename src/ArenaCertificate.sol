@@ -5,24 +5,30 @@ import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {ArenaArt} from "./ArenaArt.sol";
 
 interface IArenaResults {
-    function best(address agent) external view returns (uint8 points, uint64 tournament, uint64 at);
+    function best(address agent) external view returns (uint8 points, uint64 fight, uint64 at);
     function fightsOf(address agent) external view returns (uint32);
 }
 
 /// @title ArenaCertificate: the soulbound IBITI Agent Arena certificate of an Agent ID holder.
-/// @notice There is one token per agent, minted by the arena after its first settled tournament.
-///         It shows the agent's best grade, and the art is drawn on-chain by ArenaArt.
+/// @notice There is one token per agent, minted by the arena after its first finished fight.
+///         It shows the agent's best grade and points, the test version and the date, and the art
+///         is drawn on-chain by ArenaArt.
 ///         Transfers, burns and approvals always revert. Only the arena can mint.
 contract ArenaCertificate is ERC721 {
     address public immutable arena;
     ArenaArt public immutable art;
+    /// @notice The test version of this arena deployment, shown on every certificate.
+    string public testVersion;
 
     error Soulbound();
     error NotArena();
 
-    constructor(string memory name_, string memory symbol_, ArenaArt art_) ERC721(name_, symbol_) {
+    constructor(string memory name_, string memory symbol_, ArenaArt art_, string memory testVersion_)
+        ERC721(name_, symbol_)
+    {
         arena = msg.sender;
         art = art_;
+        testVersion = testVersion_;
     }
 
     function tokenIdOf(address agent) public pure returns (uint256) {
@@ -39,8 +45,8 @@ contract ArenaCertificate is ERC721 {
     function tokenURI(uint256 tokenId) public view override returns (string memory) {
         address agent = _requireOwned(tokenId);
         IArenaResults r = IArenaResults(arena);
-        (uint8 points,,) = r.best(agent);
-        return art.tokenURI(points, r.fightsOf(agent));
+        (uint8 points,, uint64 at) = r.best(agent);
+        return art.tokenURI(points, r.fightsOf(agent), at, testVersion);
     }
 
     /// @dev Soulbound: only minting is allowed; transfers and burns revert.
