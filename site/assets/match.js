@@ -12,7 +12,7 @@ import { CFG, emptyState, refresh, bouts, verdict, clockOf, fightName, fightOf, 
 const foulsOf = (j) => (j.empty ? '—' : j.fouls);
 import { $, esc, keep, tName, header, footer, avatar, shareButtons, mmss, siteUrl, agentUrl, matchUrl, t, applyI18n } from './ui.js';
 import { forFight, loadTheme, loadAll, themeName, themeText, themesKnown } from './themes.js';
-import { gong, beep, ding, thud, cheer, boo, crowdLevel, setMusic, soundOn, setSound } from './sound.js';
+import { gong, beep, ding, thud, cheer, boo, ooh, crowdLevel, setMusic, soundOn, setSound } from './sound.js';
 import { createScene as createFlatScene } from './scene.js';
 
 $('#head').innerHTML = header('match');
@@ -36,6 +36,18 @@ async function makeScene(el) {
 }
 const scene = await makeScene($('#stage'));
 if (params.has('probe')) window.arenaScene = scene; // a read-only look at the scene, for checks
+// the hall's voice at the moments of the ring: a fighter up on the ropes, a taunt, the winner's backflip
+scene.onMoment?.((name, side) => {
+  if (name === 'ropes') cheer(0.5);
+  else if (name === 'taunt') ooh(0.45, 1.3);
+  else if (name === 'flip') ooh(1.2, 3.2); // the slow turn in the air
+  else if (name === 'land') {
+    thud();
+    cheer(1.5);
+    scene.pyro('win', side);
+    scene.excite(side, 1);
+  }
+});
 let shared = false;
 let ringSig = '';
 let roundsSig = '';

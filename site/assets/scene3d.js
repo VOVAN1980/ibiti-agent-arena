@@ -328,12 +328,31 @@ function turnTo(from, to, k) {
 // Each fighter has its own lap, pace and manner: how often it stops at a corner to play to the stands,
 // what it does there, and how it carries its arms on the way.
 const LAPS = {
-  red: { at: [[0, 1.4], [-0.9, 2.5], [-1.8, 3.1], [-3.0, 2.0], [-3.0, 0.9], [-1.6, 1.2]], speed: 1.25, stops: 45, show: ['pump', 'flex', 'wave'], stroll: 'wave' },
-  blue: { at: [[0, 1.4], [1.7, 1.3], [2.9, 1.0], [2.9, 2.3], [1.6, 3.1], [0.8, 2.4]], speed: 1.05, stops: 35, show: ['point', 'pump', 'box'], stroll: 'box' },
+  red: { at: [[0, 1.4], [-0.9, 2.5], [-1.8, 3.1], [-3.0, 2.0], [-3.0, 0.9], [-1.6, 1.2]], speed: 1.25, swing: 0.55, stops: 22, show: ['pump', 'flex', 'wave'], flair: 'wave', ropes: ['pump', 'flex', 'wave'], taunts: ['beckon', 'laugh'], answers: ['laugh', 'flex'] },
+  blue: { at: [[0, 1.4], [1.7, 1.3], [2.9, 1.0], [2.9, 2.3], [1.6, 3.1], [0.8, 2.4]], speed: 1.05, swing: 0.38, stops: 16, show: ['point', 'pump', 'box'], flair: 'box', ropes: ['pump', 'point', 'chest'], taunts: ['chest', 'box', 'beckon'], answers: ['brush', 'box'] },
 };
+const ROPE_MID = 1.0; // the middle rope, above the ring's floor: where a fighter stands to play to the stands
+const ROPE_TOP = 1.45; // the top rope: where the winner stands before its backflip
+const HIP = 0.95; // the height a body turns about in the air
 const lerpTo = (a, b, k) => a + (b - a) * k;
 /** What the arms do out in the ring. */
 const GESTURES = {
+  // an easy walk: the arms swing with the steps
+  stroll: (t, wide = 0.5) => {
+    const k = Math.sin(t * 6.2) * wide;
+    return { a0x: k, a0z: -0.14, e0: -0.3 - Math.max(0, -k) * 0.4, a1x: -k, a1z: 0.14, e1: -0.3 - Math.max(0, k) * 0.4 };
+  },
+  // "come on, then": one hand out towards the other corner, curling
+  beckon: (t) => ({ a0x: -1.5, a0z: -0.1, e0: -0.25 - 0.95 * ((Math.sin(t * 8) + 1) / 2), a1x: 0.1, a1z: 0.5, e1: -1.3 }),
+  // fists drumming on its chest
+  chest: (t) => {
+    const k = Math.sin(t * 11);
+    return { a0x: -0.75, a0z: 0.35, e0: -2.2 + Math.max(0, k) * 0.5, a1x: -0.75, a1z: -0.35, e1: -2.2 + Math.max(0, -k) * 0.5, bounce: Math.abs(k) * 0.03 };
+  },
+  // hands on its hips, laughing it off
+  laugh: (t) => ({ a0x: 0.1, a0z: -0.5, e0: -1.3, a1x: 0.1, a1z: 0.5, e1: -1.3, bounce: Math.abs(Math.sin(t * 9)) * 0.05, lean: -0.14, look: -0.35 }),
+  // brushing it off: a flick of the hand, a shake of the head
+  brush: (t) => ({ a0x: -1.05, a0z: -0.3 + Math.sin(t * 9) * 0.4, e0: -0.7, a1x: 0.05, a1z: 0.12, e1: -0.25, shake: Math.sin(t * 6) * 0.45 }),
   // one arm up, waving to the stands, the arms taking turns
   wave: (t) => {
     const right = Math.floor(t / 3) % 2 === 0;
@@ -377,7 +396,7 @@ const POSES = {
   // out in front of the desk, walking about and pumping the crowd
   hype: (t, side, gesture) => {
     // on its lap in its own manner, or stopped at a corner playing to the stands
-    const arms = GESTURES[gesture ?? LAPS[side === 'blue' ? 'blue' : 'red'].stroll](t);
+    const arms = gesture ? GESTURES[gesture](t) : GESTURES.stroll(t, LAPS[side === 'blue' ? 'blue' : 'red'].swing);
     return { spot: [0, 1.4], lap: true, seat: false, bounce: 0, turn: 0, lean: gesture === 'flex' ? -0.08 : 0, look: gesture ? -0.2 : -0.1, ...arms };
   },
   // at the desk, hands near the keyboard, waiting for the bell
@@ -810,66 +829,252 @@ export async function createScene(root) {
   resize();
   new ResizeObserver(resize).observe(root);
 
-  const state = { exc: { red: 0.35, blue: 0.35 }, lights: 'sweep', winner: null };
+  const state = { exc: { red: 0.35, blue: 0.35 }, lights: 'sweep', winner: null, lastTaunt: -99 };
+  // the scene's own clock: everything in the hall runs on it, so slow motion slows the whole hall
+  let clock = performance.now() / 1000;
+  let slow = 1;
+  let slowTo = 1;
+  const now = () => clock;
+  // moments the page may want to hear of ('ropes', 'taunt', 'flip', 'land'), for the hall's voice
+  let onMoment = null;
+  const moment = (name, side) => {
+    try {
+      onMoment?.(name, side);
+    } catch {
+      // the page's own trouble
+    }
+  };
 
   // ------------------------------------------------------------------ every frame
 
   function applyBody(bot, p, k) {
     const cur = bot.cur ?? (bot.cur = {});
-    for (const key of ['bounce', 'turn', 'lean', 'look', 'shake', 'a0x', 'a0z', 'e0', 'a1x', 'a1z', 'e1', 'floor']) {
+    for (const key of ['bounce', 'turn', 'lean', 'look', 'shake', 'a0x', 'a0z', 'e0', 'a1x', 'a1z', 'e1', 'floor', 'tuck']) {
       const v = p[key] ?? 0;
       cur[key] = cur[key] == null ? v : cur[key] + (v - cur[key]) * k;
     }
     return cur;
   }
 
+  // ---- acts: a taunt and its answer, a climb onto the ropes, the winner's backflip
+
+  /** A fighter's corner post on the camera's side of the ring: where it stands on the ropes there, where
+   *  it hops down, and where the winner lands (in the station's own coordinates; the post in the hall's). */
+  function cornerOf(f, side) {
+    if (!f.corner) {
+      const post = corner(side === 'red' ? 2 : 1).multiplyScalar(0.97).setY(FLOOR);
+      const inward = post.clone().setY(0).normalize().multiplyScalar(-1);
+      const standW = post.clone().addScaledVector(inward, 0.5);
+      const own = (w) => {
+        const v = f.st.g.worldToLocal(w.clone());
+        return new THREE.Vector2(v.x, v.z);
+      };
+      f.corner = { standW, outW: inward.clone().multiplyScalar(-1), stand: own(standW), hop: own(standW.clone().addScaledVector(inward, 0.9)), land: own(standW.clone().addScaledVector(inward, 1.9)) };
+    }
+    return f.corner;
+  }
+  /** Facing the stands from where it is: away from the ring's centre. */
+  function yawOut(f) {
+    const centre = f.st.g.worldToLocal(new THREE.Vector3(0, FLOOR, 0));
+    return Math.atan2(f.pos.x - centre.x, f.pos.y - centre.z);
+  }
+  /** Facing the other fighter. */
+  function yawAt(f, other) {
+    const v = f.st.g.worldToLocal(other.bot.root.getWorldPosition(new THREE.Vector3()));
+    return Math.atan2(v.x - f.pos.x, v.z - f.pos.y);
+  }
+
+  /** Leads the body while an act runs: what the act wants this frame, or null when there is none. */
+  function stepAct(f, side, t) {
+    const a = f.act;
+    const other = fighters[side === 'red' ? 'blue' : 'red'];
+    if (a.kind === 'answer' && !a.began) {
+      if (t < a.from) return null; // it has not noticed yet
+      a.began = true;
+      a.since = t;
+    }
+    const at = t - a.since; // the time in this phase
+    const next = (phase) => {
+      a.phase = phase;
+      a.since = t;
+    };
+    if (a.kind === 'taunt' || a.kind === 'answer') {
+      if (at > a.len || !other.present) {
+        f.act = null;
+        return null;
+      }
+      return { hold: true, face: yawAt(f, other), gesture: a.gesture };
+    }
+    const k = cornerOf(f, side);
+    const top = a.kind === 'win' ? ROPE_TOP : ROPE_MID;
+    if (a.phase === 'go') {
+      if (f.pos.distanceTo(k.stand) < 0.14) next('up');
+      return { goal: k.stand, speed: a.kind === 'win' ? 2.5 : LAPS[side].speed * 1.3 };
+    }
+    if (a.phase === 'up') {
+      // two steps up the ropes
+      const u = Math.min(1, at / 0.8);
+      f.lift = top * (u < 0.5 ? ease(u * 2) * 0.55 : 0.55 + ease((u - 0.5) * 2) * 0.45);
+      if (u >= 1) {
+        next('pose');
+        moment('ropes', side);
+      }
+      return { hold: true, face: yawOut(f), gesture: null, pose: { tuck: Math.sin(u * Math.PI * 2) ** 2 * 0.35 } };
+    }
+    if (a.phase === 'pose') {
+      // up on the ropes, playing to the stands
+      f.lift = top;
+      state.exc[side] = Math.max(state.exc[side], a.kind === 'win' ? 1 : 0.85);
+      if (at > (a.kind === 'win' ? 1.7 : 2.6)) {
+        a.from = f.pos.clone();
+        a.yaw = f.bot.yaw;
+        if (a.kind === 'win') {
+          next('flip');
+          moment('flip', side);
+        } else next('down');
+      }
+      return { hold: true, face: yawOut(f), gesture: a.gesture };
+    }
+    if (a.phase === 'down') {
+      // a hop back into the ring
+      const u = Math.min(1, at / 0.55);
+      f.pos.lerpVectors(a.from, k.hop, ease(u));
+      f.lift = top * (1 - u) + Math.sin(u * Math.PI) * 0.35;
+      if (u >= 1) {
+        f.lift = 0;
+        f.act = null;
+        f.lastClimb = t;
+        return null;
+      }
+      return { hold: true, face: a.yaw, gesture: null, pose: { tuck: Math.sin(u * Math.PI) * 0.4 } };
+    }
+    if (a.phase === 'flip') {
+      // off the top rope, backwards: one whole turn in the air and down on its feet; the middle of it
+      // in slow motion
+      const u = Math.min(1, at / 1.25);
+      slowTo = u > 0.1 && u < 0.86 ? 0.26 : 1;
+      f.pos.lerpVectors(a.from, k.land, u);
+      f.lift = ROPE_TOP * (1 - u) + 4 * u * (1 - u) * 1.15;
+      f.flip = -Math.PI * 2 * ease(u);
+      const tuck = Math.sin(Math.min(1, u * 1.1) * Math.PI);
+      if (u >= 1) {
+        f.flip = 0;
+        f.lift = 0;
+        slowTo = 1;
+        next('land');
+        moment('land', side);
+        cam.shake = 0.4;
+      }
+      // the arms up at the take-off and the landing, round the knees in the air
+      return { hold: true, face: a.yaw, gesture: null, pose: { tuck: tuck * 0.9, a0x: lerp(-0.3, -1.25, tuck), a0z: lerp(-2.6, -0.2, tuck), e0: lerp(-0.3, -1.5, tuck), a1x: lerp(-0.3, -1.25, tuck), a1z: lerp(2.6, 0.2, tuck), e1: lerp(-0.3, -1.5, tuck) } };
+    }
+    // the landing: the knees take it, then up with both arms; from here on it celebrates where it landed
+    const u = Math.min(1, at / 0.9);
+    const dip = Math.sin(Math.min(1, u * 1.6) * Math.PI);
+    f.lift = -0.16 * dip;
+    if (u >= 1) {
+      f.lift = 0;
+      f.winAt = f.pos.clone();
+      f.act = null;
+      return null;
+    }
+    return { hold: true, face: a.yaw, gesture: 'pump', pose: { tuck: dip * 0.45, bounce: 0 } };
+  }
+
   function moveFighter(f, side, t, dt) {
     const bot = f.bot;
+    const lap = LAPS[side];
+    const otherSide = side === 'red' ? 'blue' : 'red';
+    const other = fighters[otherSide];
     // the two never share a clock: blue's poses run a little ahead (not the loser's, whose furniture
     // flies on its own times)
     const tt = t - f.since + (side === 'blue' && f.pose !== 'lose' ? 0.7 : 0);
-    const p = reduced ? POSES.guard(0) : POSES[f.pose](tt, side, f.gesture);
+    // an act belongs to its pose: the bell or the verdict ends it at once (down from the ropes too)
+    if (f.act && (reduced || (f.act.kind === 'win' ? f.pose !== 'win' : f.pose !== 'hype'))) {
+      if (f.act.phase === 'flip') slowTo = 1;
+      f.act = null;
+    }
+    // the winner, once the referee has raised its arm: to its corner, up the ropes, and the backflip
+    if (!reduced && f.pose === 'win' && !f.act && !f.flipped && tt > 3.2) {
+      f.flipped = true;
+      f.act = { kind: 'win', phase: 'go', since: t, gesture: 'pump' };
+    }
+    const lead = f.act ? stepAct(f, side, t) : null;
+    const onRopes = f.act && (f.act.kind === 'climb' || f.act.kind === 'win') && f.act.phase !== 'go';
+    if (!onRopes) f.lift = (f.lift ?? 0) * Math.max(0, 1 - dt * 9); // back on the floor
+    if (f.act?.phase !== 'flip') f.flip = 0;
+    // on its lap: an easy walk, with a few seconds of its own flair now and then
+    const flair = !lead && f.pose === 'hype' && (f.flairUntil ?? 0) > t ? lap.flair : null;
+    const p = reduced ? POSES.guard(0) : POSES[f.pose](tt, side, lead ? lead.gesture : f.gesture ?? flair);
+    if (lead) {
+      // the act's own body: its gesture, whatever else it asks, and never the pose's own jumping about
+      Object.assign(p, { bounce: 0, turn: 0, lean: 0, look: -0.1, shake: 0, tuck: 0 }, lead.gesture ? GESTURES[lead.gesture](tt) : GESTURES.stroll(tt, 0), lead.pose ?? {}, { seat: false });
+    }
     const c = applyBody(bot, p, Math.min(1, dt * 10));
     // walk to the spot of the pose (or to the next corner of its lap), round the desk when the way
     // crosses it, on the side it is nearer to
     let goal;
     let showing = false;
-    if (p.lap && !reduced) {
-      const lap = LAPS[side];
+    let free = false;
+    if (lead) {
+      goal = lead.hold ? f.pos.clone() : lead.goal.clone();
+      free = true; // an act knows its way: it never crosses the desk
+    } else if (p.lap && !reduced) {
       if (f.lapI == null) {
         f.lapI = 0;
         f.dice = side === 'red' ? 7 : 23; // its own run of chances
+        f.nextFlair = t + 5 + (side === 'red' ? 2 : 7);
       }
-      const corner = (i) => new THREE.Vector2(...lap.at[i % lap.at.length]);
+      const lapAt = (i) => new THREE.Vector2(...lap.at[i % lap.at.length]);
+      if (t > f.nextFlair) {
+        f.dice = (f.dice * 16807) % 2147483647;
+        f.flairUntil = t + 2.4 + (f.dice % 13) / 10;
+        f.nextFlair = t + 11 + (f.dice % 9);
+      }
       if (f.showUntil && t >= f.showUntil) {
         // the show is over: on to the next corner
         f.showUntil = 0;
         f.gesture = null;
         f.lapI++;
-      } else if (!f.showUntil && f.pos.distanceTo(corner(f.lapI)) < 0.3) {
-        // at a corner of its lap: now and then it stops there and plays to the stands
+      } else if (!f.showUntil && f.pos.distanceTo(lapAt(f.lapI)) < 0.3) {
+        // at a corner of its lap, the dice: mostly it walks on; now and then it stops and plays to the
+        // stands, climbs the ropes at its corner, or (seldom) taunts the other, who may answer
         f.dice = (f.dice * 16807) % 2147483647;
-        if (f.dice % 100 < lap.stops) {
+        const roll = f.dice % 100;
+        const pick = (list) => list[f.dice % list.length];
+        f.lapI++;
+        if (roll < lap.stops) {
+          f.lapI--; // it stays at this corner for the show
           f.showUntil = t + 1.8 + (f.dice % 17) / 10;
-          f.gesture = lap.show[f.dice % lap.show.length];
-        } else f.lapI++;
+          f.gesture = pick(lap.show);
+        } else if (roll < lap.stops + 9 && other.present && other.pose === 'hype' && !other.act && t - state.lastTaunt > 24) {
+          state.lastTaunt = t;
+          f.act = { kind: 'taunt', since: t, len: 2.4, gesture: pick(lap.taunts) };
+          moment('taunt', side);
+          // two times in three the other answers, a moment later
+          if (f.dice % 3) other.act = { kind: 'answer', from: t + 0.7, since: t, len: 1.9, gesture: LAPS[otherSide].answers[f.dice % LAPS[otherSide].answers.length] };
+        } else if (roll < lap.stops + 20 && tt > 3 && t - (f.lastClimb ?? -99) > 30) {
+          f.lastClimb = t;
+          f.act = { kind: 'climb', phase: 'go', since: t, gesture: pick(lap.ropes) };
+        }
       }
       showing = !!f.showUntil;
-      goal = showing ? f.pos.clone() : corner(f.lapI);
+      goal = showing ? f.pos.clone() : lapAt(f.lapI);
     } else {
       f.showUntil = 0;
       f.gesture = null;
-      goal = new THREE.Vector2(...p.spot);
+      // after its backflip the winner celebrates where it landed
+      goal = f.pose === 'win' && f.winAt ? f.winAt.clone() : new THREE.Vector2(...p.spot);
     }
     if (!f.path.length || !f.path[f.path.length - 1].equals(goal)) {
-      const crossing = (f.pos.y < 0.4 && goal.y > 0.95) || (f.pos.y > 0.95 && goal.y < 0.4);
+      const crossing = !free && ((f.pos.y < 0.4 && goal.y > 0.95) || (f.pos.y > 0.95 && goal.y < 0.4));
       const round = (crossing && goal.y > 0.95 ? goal.x : f.pos.x) < 0 ? -1.05 : 1.05;
       f.path = crossing ? [new THREE.Vector2(round, f.pos.y), new THREE.Vector2(round, goal.y), goal] : [goal];
     }
     const next = f.path[0];
     const d = next.clone().sub(f.pos);
     const dist = d.length();
-    const walking = dist > 0.25; // a real walk, not the small drift of a pose
+    const walking = dist > 0.25 && !lead?.hold; // a real walk, not the small drift of a pose
     // full speed to a corner of the way round the desk; to the spot itself slowing down as it
     // nears, so a drifting spot is followed smoothly and not in stop-and-go jumps (which a close-up
     // camera, riding with the robot, turned into a shaking picture)
@@ -884,18 +1089,21 @@ export async function createScene(root) {
         if (off < -Math.PI) off += Math.PI * 2;
         pace = Math.max(0.08, Math.cos(Math.min(Math.abs(off), Math.PI / 2)));
       }
-      f.pos.add(d.clampLength(0, dt * pace * (p.lap && toSpot ? LAPS[side].speed : toSpot ? Math.min(1.7, dist * 7) : 1.7)));
+      const speed = lead?.speed ?? (p.lap && toSpot ? lap.speed : toSpot ? Math.min(1.7, dist * 7) : 1.7);
+      f.pos.add(d.clampLength(0, dt * pace * speed));
     }
-    bot.root.position.set(f.pos.x, 0, f.pos.y);
-    // facing the way it walks; stopped for a show, facing the stands (away from the ring's centre)
+    // facing the way it walks; in an act, where the act says; stopped for a show, facing the stands
     let facing = c.turn;
     if (walking) facing = Math.atan2(d.x, d.y);
-    else if (showing) {
-      const centre = f.st.g.worldToLocal(new THREE.Vector3(0, FLOOR, 0));
-      facing = Math.atan2(f.pos.x - centre.x, f.pos.y - centre.z);
-    }
-    bot.yaw = turnTo(bot.yaw ?? c.turn, facing, Math.min(1, dt * 6));
-    bot.root.rotation.y = bot.yaw;
+    else if (lead?.face != null) facing = lead.face;
+    else if (showing) facing = yawOut(f);
+    bot.yaw = turnTo(bot.yaw ?? c.turn, facing, Math.min(1, dt * (lead ? 9 : 6)));
+    // on the floor, up on the ropes, or turning over in the air about its hips
+    const lift = f.lift ?? 0;
+    const flip = f.flip ?? 0;
+    bot.root.rotation.order = 'YXZ';
+    bot.root.rotation.set(flip, bot.yaw, 0);
+    bot.root.position.set(f.pos.x - HIP * Math.sin(flip) * Math.sin(bot.yaw), lift + HIP * (1 - Math.cos(flip)), f.pos.y - HIP * Math.sin(flip) * Math.cos(bot.yaw));
     if (bot.pose) {
       let reach = null;
       if (p.reach === 'keys') {
@@ -914,8 +1122,8 @@ export async function createScene(root) {
     const step = walking ? Math.sin(t * 9) : 0;
     bot.legs.forEach((leg, i) => {
       const s = i ? -1 : 1;
-      leg.hip.rotation.x = lerp(step * 0.55 * s - c.bounce * 1.5, -1.5, Math.max(sit, floor));
-      leg.knee.rotation.x = lerp(Math.max(0, -step * s) * 0.7 + c.bounce * 2.5, 1.5, sit) * (1 - floor) + 0.15 * floor;
+      leg.hip.rotation.x = lerp(step * 0.55 * s - c.bounce * 1.5, -1.5, Math.max(sit, floor, c.tuck || 0));
+      leg.knee.rotation.x = lerp(Math.max(0, -step * s) * 0.7 + c.bounce * 2.5, 1.5, Math.max(sit, c.tuck || 0)) * (1 - floor) + 0.15 * floor;
     });
     bot.torso.rotation.x = c.lean;
     bot.head.rotation.x = c.look;
@@ -962,10 +1170,16 @@ export async function createScene(root) {
 
   const v3 = new THREE.Vector3();
   let last = performance.now() / 1000;
+  const camFollow = new THREE.Vector3();
+  let following = false;
   function frame() {
-    const t = performance.now() / 1000;
-    const dt = Math.min(0.05, t - last);
-    last = t;
+    const real = performance.now() / 1000;
+    const realDt = Math.min(0.05, real - last);
+    last = real;
+    slow += (slowTo - slow) * Math.min(1, realDt * 9);
+    const dt = realDt * slow;
+    clock += dt;
+    const t = clock;
     for (const side of ['red', 'blue']) state.exc[side] += (0.32 - state.exc[side]) * Math.min(1, dt * 0.35);
 
     // the fans jump with their side's mood
@@ -1109,6 +1323,26 @@ export async function createScene(root) {
       cam.shot = 'wide';
       cam.cut = true;
     }
+    const flier = !cam.fixed && !reduced && state.winner && fighters[state.winner].act?.kind === 'win' && fighters[state.winner].act.phase !== 'go' ? fighters[state.winner] : null;
+    if (flier) {
+      const k = flier.corner;
+      camFront.set(-k.outW.z, 0, k.outW.x); // along the ropes
+      camera.position.copy(k.standW).addScaledVector(k.outW, 4.6).addScaledVector(camFront, state.winner === 'red' ? -1.5 : 1.5).add(camUp.set(0, 2.9, 0));
+      // its hips, wherever the flip has them, followed softly
+      flier.st.g.localToWorld(camLook.set(flier.pos.x, (flier.lift ?? 0) + HIP, flier.pos.y));
+      if (!following) camFollow.copy(camLook);
+      following = true;
+      camFollow.lerp(camLook, Math.min(1, realDt * 7));
+      camera.lookAt(camFollow);
+      for (const b of beams) b.m.visible = false;
+      cam.shot = 'wide';
+      cam.at = t;
+      cam.cut = true;
+      composer.render(dt);
+      requestAnimationFrame(frame);
+      return;
+    }
+    following = false;
     if (cam.shot === 'winClose' && state.winner) {
       const f = fighters[state.winner];
       f.bot.root.getWorldPosition(v3);
@@ -1174,7 +1408,6 @@ export async function createScene(root) {
 
   // ------------------------------------------------------------------ what the page can ask
 
-  const now = () => performance.now() / 1000;
   return {
     kind: '3d',
     setFighters({ red = true, blue }) {
@@ -1189,6 +1422,8 @@ export async function createScene(root) {
       if (f.wrecked && pose !== 'lose') resetStation(f);
       f.pose = pose;
       f.since = now();
+      f.flipped = false;
+      f.winAt = null;
       if (!f.placed) {
         // the first thing the page says: the robot is already where it should be (a viewer may join mid-round)
         f.placed = true;
@@ -1206,12 +1441,16 @@ export async function createScene(root) {
       f.bot.eyes.forEach((e) => e.scale.set(1, eyeScale, 1));
     },
     poseOf: (side) => fighters[side]?.pose,
+    /** Calls fn(name, side) at 'ropes' (up on the ropes), 'taunt', 'flip' (the winner leaves the top rope) and 'land'. */
+    onMoment(fn) {
+      onMoment = fn;
+    },
     /** Where a fighter stands and which way it faces, in the hall's own coordinates (for checks and camera work). */
     where(side) {
       const f = fighters[side];
       const at = f.bot.root.getWorldPosition(new THREE.Vector3());
       const facing = f.bot.root.getWorldDirection(new THREE.Vector3());
-      return { x: at.x, z: at.z, fx: facing.x, fz: facing.z, pose: f.pose, gesture: f.gesture ?? null };
+      return { x: at.x, y: at.y, z: at.z, fx: facing.x, fz: facing.z, pose: f.pose, gesture: f.gesture ?? null, act: f.act ? `${f.act.kind}${f.act.phase ? ':' + f.act.phase : ''}` : null, lift: f.lift ?? 0, flip: f.flip ?? 0, slow };
     },
     excite(side, amount) {
       for (const s of side ? [side] : ['red', 'blue']) state.exc[s] = Math.min(1, Math.max(state.exc[s], amount));

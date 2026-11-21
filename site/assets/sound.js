@@ -185,6 +185,41 @@ export function cheer(power = 1) {
   }
 }
 
+/** The hall goes "oooh": many voices sliding up together, opening from "oo" towards "ah". */
+export function ooh(power = 1, dur = 2.8) {
+  if (!live()) return;
+  crowdStart();
+  const at = ctx.currentTime;
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.setValueAtTime(700, at);
+  lp.frequency.exponentialRampToValueAtTime(1500, at + dur * 0.8);
+  const formant = ctx.createBiquadFilter();
+  formant.type = 'peaking';
+  formant.gain.value = 11;
+  formant.Q.value = 1.6;
+  formant.frequency.setValueAtTime(340, at);
+  formant.frequency.exponentialRampToValueAtTime(680, at + dur * 0.8);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, at);
+  g.gain.exponentialRampToValueAtTime(0.2 * power, at + dur * 0.62);
+  g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+  lp.connect(formant).connect(g).connect(master);
+  for (let i = 0; i < 18; i++) {
+    const o = ctx.createOscillator();
+    o.type = 'sawtooth';
+    const f = 110 + Math.random() * 110;
+    o.frequency.setValueAtTime(f, at);
+    o.frequency.exponentialRampToValueAtTime(f * (1.35 + Math.random() * 0.2), at + dur * 0.8);
+    const og = ctx.createGain();
+    og.gain.value = 0.16;
+    o.connect(og).connect(lp);
+    o.start(at + Math.random() * 0.2);
+    o.stop(at + dur + 0.1);
+  }
+  noise(at, dur * 0.8, 'bandpass', 900, 0.6, 0.05 * power, dur * 0.5);
+}
+
 /** A long "booo" from the stands. */
 export function boo() {
   if (!live()) return;

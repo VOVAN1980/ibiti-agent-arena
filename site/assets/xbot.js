@@ -144,7 +144,7 @@ export function makeXRobot(kind, gltf, colors) {
 
     sitW += ((p.seat && !walking ? 1 : 0) - sitW) * Math.min(1, dt * 7);
     const floor = c.floor || 0;
-    const legsW = Math.max(sitW, floor);
+    const legsW = Math.max(sitW, floor, c.tuck || 0); // seated, on the floor, or tucked in the air
     lift.position.y = (shin + 0.03 - hipsY) * sitW + (0.2 - hipsY) * floor * (1 - sitW) + (p.seat ? 0 : c.bounce);
 
     root.getWorldQuaternion(rootQ);
