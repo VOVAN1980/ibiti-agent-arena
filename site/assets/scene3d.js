@@ -42,6 +42,18 @@ function canvasTex(w, h, draw, { repeat = null, srgb = true } = {}) {
   return t;
 }
 
+// the BNB mark (24x24), drawn on the ring floor and on the backs of the monitors
+const BNB = new Path2D('M16.624 13.9202l2.7175 2.7154-7.353 7.353-7.353-7.352 2.7175-2.7164 4.6355 4.6595 4.6356-4.6595zm4.6366-4.6366L24 12l-2.7154 2.7164L18.5682 12l2.6924-2.7164zm-9.272.001l2.7163 2.6914-2.7164 2.7174v-.001L9.2721 12l2.7164-2.7154zm-9.2722-.001L5.4088 12l-2.6914 2.6924L0 12l2.7164-2.7164zM11.9885.0115l7.353 7.329-2.7174 2.7154-4.6356-4.6356-4.6355 4.6595-2.7174-2.7154 7.353-7.353z');
+function drawBnb(g, cx, cy, size, rot = 0) {
+  g.save();
+  g.translate(cx, cy);
+  g.rotate(rot);
+  g.scale(size / 24, size / 24);
+  g.translate(-12, -12);
+  g.fill(BNB);
+  g.restore();
+}
+
 const hexPath = (g, x, y, r) => {
   g.beginPath();
   for (let i = 0; i < 6; i++) {
@@ -64,15 +76,11 @@ const floorTex = () => canvasTex(1024, 1024, (g, w, h) => {
     hexPath(g, x, y, r);
     g.stroke();
   }
-  const grad = g.createLinearGradient(w / 2 - 220, 0, w / 2 + 220, 0);
-  grad.addColorStop(0, '#ef4444');
-  grad.addColorStop(1, '#3b82f6');
-  g.lineWidth = 14;
-  g.strokeStyle = grad;
-  g.shadowColor = '#8aa8ff';
-  g.shadowBlur = 30;
-  hexPath(g, w / 2, h / 2, 220);
-  g.stroke();
+  // the BNB mark in the centre; the floor's texture lies turned a quarter, so the mark is turned back
+  g.fillStyle = '#f0b90b';
+  g.shadowColor = '#f0b90b';
+  g.shadowBlur = 40;
+  drawBnb(g, w / 2, h / 2, 430, -Math.PI / 2);
   g.shadowBlur = 0;
 
 });
@@ -128,11 +136,12 @@ function screenTex(side, kind) {
       g.fillStyle = '#0b1020';
       g.fillRect(0, 0, w, h);
       g.strokeStyle = CSS[side];
-      g.lineWidth = 8;
-      g.shadowColor = CSS[side];
-      g.shadowBlur = 18;
-      hexPath(g, w / 2, h / 2, 42);
-      g.stroke();
+      g.lineWidth = 6;
+      g.strokeRect(5, 5, w - 10, h - 10);
+      g.fillStyle = '#f0b90b';
+      g.shadowColor = '#f0b90b';
+      g.shadowBlur = 16;
+      drawBnb(g, w / 2, h / 2, 96);
     } else {
       g.fillStyle = kind === 'sent' ? '#22c55e' : '#f97316';
       g.font = '800 54px Inter, sans-serif';
@@ -466,17 +475,17 @@ export function createScene(root) {
   }
   const board = boardTex();
   const cube = new THREE.Group();
-  cube.position.set(0, 7.2, -1.2);
+  cube.position.set(0, 5.05, 0.2);
   scene.add(cube);
-  mesh(new THREE.BoxGeometry(3.4, 1.7, 3.4), M.black, [0, 0, 0], cube);
+  mesh(new THREE.BoxGeometry(3.0, 1.3, 3.0), M.black, [0, 0, 0], cube);
   for (let i = 0; i < 4; i++) {
-    const p = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 1.55), new THREE.MeshBasicMaterial({ map: board, color: 0xd8d8d8 }));
-    p.position.set(Math.sin((i * Math.PI) / 2) * 1.71, 0, Math.cos((i * Math.PI) / 2) * 1.71);
+    const p = new THREE.Mesh(new THREE.PlaneGeometry(2.86, 1.2), new THREE.MeshBasicMaterial({ map: board, color: 0xd8d8d8 }));
+    p.position.set(Math.sin((i * Math.PI) / 2) * 1.51, 0, Math.cos((i * Math.PI) / 2) * 1.51);
     p.rotation.y = (i * Math.PI) / 2;
     cube.add(p);
   }
-  mesh(new THREE.BoxGeometry(3.5, 0.08, 3.5), M.glow(COLOR.gold, 2), [0, -0.9, 0], cube);
-  scene.add(bar(new THREE.Vector3(0, 8, -1.2), new THREE.Vector3(0, 14, -1.2), 0.05, M.dark));
+  mesh(new THREE.BoxGeometry(3.1, 0.08, 3.1), M.glow(COLOR.gold, 2), [0, -0.7, 0], cube);
+  scene.add(bar(new THREE.Vector3(0, 5.7, 0.2), new THREE.Vector3(0, 14, 0.2), 0.05, M.dark));
 
   // the stands: a raked bowl of fans, red on the left, blue on the right
   const bowl = [];
@@ -489,7 +498,7 @@ export function createScene(root) {
       const a = (j / n) * Math.PI * 2 + (k % 2) * (Math.PI / n);
       const x = r * Math.cos(a);
       const z = r * Math.sin(a);
-      if (k > 0 && z > 0 && Math.abs(Math.atan2(x, z)) < 0.85) continue; // the camera's side stays open, but for the front row
+      if (k > 3 && z > 0 && Math.abs(Math.atan2(x, z)) < 0.85) continue; // behind the camera the stands stay open; the first rows are seen below
       bowl.push({ x, z, base, side: x < -1.5 ? 'red' : x > 1.5 ? 'blue' : Math.random() < 0.5 ? 'red' : 'blue', ph: Math.random() * 6.28, sp: 0.8 + Math.random() * 0.6 });
     }
     const step = new THREE.Mesh(new THREE.CylinderGeometry(r + 0.46, r + 0.46, 0.08, 96, 1, true, 0.85 + Math.PI / 2 - Math.PI, Math.PI * 2 - 1.7), M.dark);
@@ -566,9 +575,9 @@ export function createScene(root) {
     focus[side].from.set(side === 'red' ? -4 : 4, 12, 2);
   }
   const refBot = buildRobot('ref', M);
-  refBot.root.position.set(0, FLOOR, -2.4);
+  refBot.root.position.set(0, FLOOR, -1.5);
   scene.add(refBot.root);
-  const referee = { bot: refBot, pose: 'ref', since: 0, side: null, pos: new THREE.Vector2(0, -2.4), target: new THREE.Vector2(0, -2.4), cur: {} };
+  const referee = { bot: refBot, pose: 'ref', since: 0, side: null, pos: new THREE.Vector2(0, -1.5), target: new THREE.Vector2(0, -1.5), cur: {} };
 
   // things flying around (the loser's desk), and sparks
   const flying = [];
@@ -817,22 +826,23 @@ export function createScene(root) {
     ticker.offset.x = reduced ? 0 : (t * 0.02) % 1;
     tickerIn.offset.x = -ticker.offset.x;
 
-    // the camera: a slow broadcast drift; closer while a round runs; on the winner at the end
+    // the camera: the whole ring, both corners, the referee and the scoreboard cube, with a slow
+    // broadcast drift; at the end a little closer to the winner
     const portrait = camera.aspect < 0.8;
     const half = portrait ? 4.4 : 8.2;
     const hf = 2 * Math.atan(Math.tan((camera.fov * Math.PI) / 360) * camera.aspect);
-    let dist = Math.max(11, half / Math.tan(hf / 2)) * (state.lights === 'focus' ? 0.88 : 1);
-    const aim = new THREE.Vector3(0, 1.4, 0.4);
+    let dist = Math.max(portrait ? 11 : 16.5, half / Math.tan(hf / 2));
+    const aim = new THREE.Vector3(0, portrait ? 2.2 : 3.95, 0.4);
     if (state.lights === 'winner' && state.winner) {
       fighters[state.winner].bot.root.getWorldPosition(v3);
-      aim.lerp(v3.setY(1.5), 0.45);
-      dist *= 0.86;
+      aim.lerp(v3.setY(2.2), 0.3);
+      dist *= 0.92;
     }
     // like a broadcast: while a round runs, cut between the wide shot and a shot over each robot's shoulder
     if (cam.fixed) {
       cam.shot = cam.fixed;
     } else if (state.lights === 'focus' && !reduced) {
-      if (t - cam.at > (cam.shot === 'wide' ? 6 : 4.5)) {
+      if (t - cam.at > (cam.shot === 'wide' ? 12 : 3.5)) {
         cam.step = (cam.step + 1) % SHOTS.length;
         cam.shot = SHOTS[cam.step];
         if (cam.shot !== 'wide' && !fighters[cam.shot].present) cam.shot = 'wide';
@@ -845,10 +855,11 @@ export function createScene(root) {
     }
     if (cam.shot !== 'wide') {
       const g = fighters[cam.shot].st.g;
-      const k = Math.min(1, (t - cam.at) / 4.5);
-      const side = 1;
-      g.localToWorld(camAt.set(1.65 * side, 2.7 - k * 0.12, -1.75 + k * 0.3));
-      g.localToWorld(camLook.set(-0.2 * side, 1.1, 0.55));
+      const k = Math.min(1, (t - cam.at) / 3.5);
+      const out = cam.shot === 'red' ? -1 : 1; // from the outer side of the ring, away from the referee
+      g.localToWorld(camAt.set(2.3 * out, 3.35 - k * 0.15, -2.75 + k * 0.3));
+      g.localToWorld(camLook.set(-0.3 * out, 1.15, 0.5));
+      for (const b of beams) b.m.visible = false; // no haze of the roof lights right in front of the lens
       camera.position.copy(camAt);
       camera.lookAt(camLook);
       composer.render(dt);
@@ -863,7 +874,7 @@ export function createScene(root) {
     cam.aim.lerp(aim, Math.min(1, dt * 1.2));
     cam.dist += (dist - cam.dist) * Math.min(1, dt * 1.2);
     const az = Math.PI / 2 + (reduced ? 0 : Math.sin(t * 0.08) * 0.22);
-    const el = portrait ? 0.62 : 0.56;
+    const el = portrait ? 0.62 : 0.48;
     camera.position.set(cam.aim.x + Math.cos(az) * Math.cos(el) * cam.dist, cam.aim.y + Math.sin(el) * cam.dist, cam.aim.z + Math.sin(az) * Math.cos(el) * cam.dist);
     if (cam.shake > 0) {
       camera.position.x += (Math.random() - 0.5) * cam.shake;
@@ -927,7 +938,7 @@ export function createScene(root) {
         referee.side = winner;
         referee.since = now();
       } else if (referee.pose === 'refRaise') {
-        referee.target.set(0, -2.4);
+        referee.target.set(0, -1.5);
         referee.pose = 'ref';
         referee.since = now();
       }
