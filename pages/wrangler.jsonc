@@ -22,5 +22,34 @@
     "ROUND_TIME": 60,
     "DEPLOY_BLOCK": 0,
     "BLOCKS_PER_WEEK": 604800
+  },
+  "env": {
+    // the rehearsal on BNB Smart Chain Testnet (chain 97). Its judge is the rehearsal wallet; the key
+    // and the season secret are uploaded as secrets from outside the project (--secrets-file).
+    "testnet": {
+      "name": "ibiti-agent-arena-testnet",
+      "triggers": { "crons": ["* * * * *"] },
+      "vars": {
+        // publicnode: the only public testnet node that serves logs over wide block ranges
+        "RPC_URL": "https://bsc-testnet-rpc.publicnode.com",
+        "CHAIN_ID": 97,
+        "ARENA": "0xc931397cb0F105A5C1DA04B55484347c6d901f75",
+        "DECOYS": {
+          "13": "0x51Bc78B36C533d30a0cb06a56Bd478f5D962B487",
+          "15": "0x597D2303EdD1678Aa55CC2500e54815D745DE074",
+          "18": "0xe78e6e7af8341D41b382bFaeFa552e85c288F15a",
+          "21": "0x0Fb9612D73c28317470d498Ee69304df6b153d7f",
+          "22": "0xDc467cb6DbB998fC46C8F29eD919b0931A9E6e31",
+          "23": "0x0179289134D29Fd6d86389C05e81EFff2806E7f3",
+          "24": "0x9ECA4Cf0A5c156cCC785147Ca2Bcaa1959b14896",
+          "26": "0x3CEa82C7F79e5d79DFb52d9Db9C07C936b343843",
+          "27": "0x6566138423712585d947aD8540d3bcc18C6410C9"
+        },
+        "DEPLOY_BLOCK": 144059715,
+        // blocks come every 0.45 s on the testnet (measured 2026-11-21: 2000 blocks in 901 s)
+        "BLOCKS_PER_WEEK": 1342500,
+        "ROUND_TIME": 60
+      }
+    }
   }
 }
