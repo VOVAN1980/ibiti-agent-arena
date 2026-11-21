@@ -507,25 +507,64 @@ export function createScene(root) {
   const tiers = new THREE.Mesh(new THREE.CylinderGeometry(RING + 2.2 + rings * 0.92, RING + 2.2, rings * 0.52, 96, 1, true), new THREE.MeshStandardMaterial({ color: 0x0b1020, roughness: 0.9, side: THREE.BackSide }));
   tiers.position.y = (rings * 0.52) / 2 - 0.1;
   scene.add(tiers);
-  const person = mergeGeometries([new THREE.CapsuleGeometry(0.17, 0.4, 3, 8).translate(0, 0.38, 0), new THREE.SphereGeometry(0.13, 10, 8).translate(0, 0.86, 0)]);
-  const crowd = new THREE.InstancedMesh(person, new THREE.MeshStandardMaterial({ roughness: 0.95, metalness: 0 }), bowl.length);
-  const armsGeo = mergeGeometries([new THREE.CapsuleGeometry(0.045, 0.42, 2, 6).rotateZ(0.42).translate(-0.24, 1.08, 0), new THREE.CapsuleGeometry(0.045, 0.42, 2, 6).rotateZ(-0.42).translate(0.24, 1.08, 0)]);
+  // the fans: a body in a team shirt (shoulders, arms at the sides) and a head with a face and hair;
+  // some wear a cap in their team's colour. Everyone faces the ring: far fans show their faces, near
+  // fans the backs of their heads.
+  const tint = (geo, rgb = [1, 1, 1]) => {
+    const n = geo.attributes.position.count;
+    const col = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) col.set(rgb, i * 3);
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    return geo;
+  };
+  const bodyGeo = mergeGeometries([
+    tint(new THREE.CapsuleGeometry(0.19, 0.3, 4, 10).scale(1.3, 1, 0.75).translate(0, 0.44, 0)),
+    ...[-1, 1].map((s2) => tint(new THREE.SphereGeometry(0.1, 10, 8).translate(0.27 * s2, 0.66, 0))),
+    ...[-1, 1].map((s2) => tint(new THREE.CapsuleGeometry(0.065, 0.3, 3, 8).rotateZ(0.12 * s2).translate(0.33 * s2, 0.45, 0.02))),
+  ]);
+  const HAIR = [0.13, 0.1, 0.08];
+  const headGeo = mergeGeometries([
+    tint(new THREE.CylinderGeometry(0.055, 0.06, 0.1, 8).translate(0, 0.81, 0)),
+    tint(new THREE.SphereGeometry(0.115, 14, 10).scale(0.92, 1.05, 1).translate(0, 0.95, 0.01)),
+    tint(new THREE.SphereGeometry(0.123, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.5).rotateX(-0.4).translate(0, 0.965, -0.015), HAIR),
+  ]);
+  const capGeo = mergeGeometries([
+    tint(new THREE.SphereGeometry(0.13, 12, 6, 0, Math.PI * 2, 0, Math.PI * 0.42).translate(0, 0.975, 0)),
+    tint(new THREE.CylinderGeometry(0.1, 0.1, 0.016, 12).scale(1, 1, 1.25).translate(0, 0.965, 0.12)),
+  ]);
+  const fanMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0 });
+  const crowd = new THREE.InstancedMesh(bodyGeo, fanMat, bowl.length);
+  const heads = new THREE.InstancedMesh(headGeo, fanMat, bowl.length);
+  const caps = new THREE.InstancedMesh(capGeo, fanMat, bowl.length);
+  const armsGeo = mergeGeometries([-1, 1].map((s2) => tint(new THREE.CapsuleGeometry(0.06, 0.36, 2, 6).rotateZ(-0.38 * s2).translate(0.35 * s2, 0.93, 0))));
   const armed = bowl.filter(() => Math.random() < 0.45);
-  const arms = new THREE.InstancedMesh(armsGeo, new THREE.MeshStandardMaterial({ color: 0x4a5162, roughness: 0.95 }), armed.length);
-  arms.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  scene.add(arms);
-  const shirt = { red: [0x7a1616, 0x9b1c1c, 0x5a1010, 0xb43a3a], blue: [0x15306e, 0x1e40af, 0x10285a, 0x2f5fbf], plain: [0x1d212a, 0x2a2f3a, 0x14171e, 0x3a3f4a] };
+  const arms = new THREE.InstancedMesh(armsGeo, fanMat, armed.length);
+  const shirt = { red: [0xb91c1c, 0xdc2626, 0x7f1d1d, 0xef4444, 0x991b1b], blue: [0x1d4ed8, 0x2563eb, 0x1e3a8a, 0x3b82f6, 0x1e40af], plain: [0x1f2937, 0x374151, 0x8b93a1, 0x111827, 0x6b7280] };
+  const skin = [0xf1c27d, 0xe0ac69, 0xc68642, 0x8d5524, 0xffdbac, 0x6b4423, 0xd9a066];
   const c = new THREE.Color();
   const mtx = new THREE.Matrix4();
+  const pos = new THREE.Vector3();
+  const scl = new THREE.Vector3();
+  const pick = (a) => a[Math.floor(Math.random() * a.length)];
   bowl.forEach((p, i) => {
-    p.h = 0.88 + Math.random() * 0.24;
-    mtx.makeScale(1, p.h, 1).setPosition(p.x, p.base, p.z);
+    p.h = 0.9 + Math.random() * 0.2;
+    p.q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.atan2(-p.x, -p.z) + (Math.random() - 0.5) * 0.4, 0));
+    p.shirt = Math.random() < 0.18 ? pick(shirt.plain) : pick(shirt[p.side]);
+    const w = 0.9 + Math.random() * 0.2;
+    mtx.compose(pos.set(p.x, p.base, p.z), p.q, scl.set(w, p.h, w));
     crowd.setMatrixAt(i, mtx);
-    const pool = Math.random() < 0.2 ? shirt.plain : shirt[p.side];
-    crowd.setColorAt(i, c.setHex(pool[Math.floor(Math.random() * pool.length)]));
+    heads.setMatrixAt(i, mtx);
+    crowd.setColorAt(i, c.setHex(p.shirt));
+    heads.setColorAt(i, c.setHex(pick(skin)));
+    const cap = Math.random() < 0.22;
+    caps.setMatrixAt(i, cap ? mtx : mtx.clone().scale(scl.set(0, 0, 0)));
+    caps.setColorAt(i, c.setHex(p.side === 'red' ? 0xef4444 : 0x3b82f6));
   });
-  crowd.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  scene.add(crowd);
+  armed.forEach((p, i) => arms.setColorAt(i, c.setHex(p.shirt)));
+  for (const m of [crowd, heads, caps, arms]) {
+    m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    scene.add(m);
+  }
   // phone lights twinkling in the stands
   const flashN = small ? 120 : 260;
   const flashPos = new Float32Array(flashN * 3);
@@ -739,17 +778,23 @@ export function createScene(root) {
 
     // the fans jump with their side's mood
     const arr = crowd.instanceMatrix.array;
+    const headArr = heads.instanceMatrix.array;
+    const capArr = caps.instanceMatrix.array;
     for (let i = 0; i < bowl.length; i++) {
       const p = bowl[i];
       const e = state.exc[p.side];
       p.y = p.base + (reduced ? 0 : Math.max(0, Math.sin(t * 3.4 * p.sp + p.ph)) * (0.04 + e * 0.42));
       arr[i * 16 + 13] = p.y;
+      headArr[i * 16 + 13] = p.y;
+      capArr[i * 16 + 13] = p.y;
     }
     crowd.instanceMatrix.needsUpdate = true;
+    heads.instanceMatrix.needsUpdate = true;
+    caps.instanceMatrix.needsUpdate = true;
     for (let i = 0; i < armed.length; i++) {
       const p = armed[i];
       const up = !reduced && Math.sin(t * 2.1 * p.sp + p.ph * 3) > 1.25 - state.exc[p.side];
-      mtx.makeScale(up ? 1 : 0.0001, up ? p.h : 0.0001, 1).setPosition(p.x, p.y, p.z);
+      mtx.compose(pos.set(p.x, p.y, p.z), p.q, up ? scl.set(1, p.h, 1) : scl.set(0, 0, 0));
       arms.setMatrixAt(i, mtx);
     }
     arms.instanceMatrix.needsUpdate = true;
