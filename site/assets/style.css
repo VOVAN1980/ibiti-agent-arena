@@ -584,3 +584,6 @@ footer { font-size: 13px; color: var(--ink-3); }
 @media (max-width: 760px) { nav.links { grid-template-columns: repeat(3, 1fr); } .banner .bidle .tiny { font-size: 13px; } }
 @media (max-width: 760px) { .brand b { font-size: 13px; letter-spacing: 0; } }
 @media (max-width: 380px) { .brand b { font-size: 11px; } }
+.stat { min-width: 0; overflow: hidden; }
+.stat b.long { font-size: clamp(13px, 1.05vw, 17px); line-height: 1.75; }
+@media (max-width: 760px) { .stat b.long { font-size: 17px; } }

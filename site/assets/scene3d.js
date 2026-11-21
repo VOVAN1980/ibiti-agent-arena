@@ -322,6 +322,11 @@ function turnTo(from, to, k) {
   return from + d * k;
 }
 
+// A fighter working the crowd walks laps round its own half of the ring: the corners of the lap in its
+// station's own coordinates (x to its right, z out in front of the desk), every leg of it clear of the
+// desk; blue's lap is the mirror image, started at another corner so the two never move as one.
+const LAP = [[0, 1.4], [-0.9, 2.5], [-1.8, 3.1], [-3.0, 2.0], [-3.0, 0.9], [-1.6, 1.2]];
+
 // poses: what the body does, as a function of the time since the pose began
 const lerp = (a, b, k) => a + (b - a) * k;
 const ease = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
@@ -337,7 +342,7 @@ const POSES = {
     const down = { x: 0.05, z: 0.12, e: -0.25 };
     const r = right ? up : down;
     const l = right ? down : up;
-    return { spot: [Math.sin(t * 0.7) * 0.55, 1.35 + Math.cos(t * 0.7) * 0.25], walkAnim: true, seat: false, bounce: Math.abs(Math.sin(t * 5.2)) * 0.06, turn: Math.sin(t * 0.9) * 0.5, lean: 0, look: -0.1, a0x: r.x, a0z: -r.z, e0: r.e, a1x: l.x, a1z: l.z, e1: l.e };
+    return { spot: [0, 1.4], lap: true, seat: false, bounce: 0, turn: 0, lean: 0, look: -0.1, a0x: r.x, a0z: -r.z, e0: r.e, a1x: l.x, a1z: l.z, e1: l.e };
   },
   // at the desk, hands near the keyboard, waiting for the bell
   guard: (t) => ({ spot: [0, 0], reach: 'keys', seat: true, bounce: 0, turn: 0, lean: 0.1, look: 0.1, a0x: 0.45, a0z: 0.48, e0: -1.85 + Math.sin(t * 3) * 0.05, a1x: 0.45, a1z: -0.48, e1: -1.85 + Math.sin(t * 3 + 1) * 0.05 }),
@@ -778,11 +783,20 @@ export async function createScene(root) {
     const tt = t - f.since;
     const p = reduced ? POSES.guard(0) : POSES[f.pose](tt);
     const c = applyBody(bot, p, Math.min(1, dt * 10));
-    // walk to the spot of the pose, round the desk when the way crosses it
-    const goal = new THREE.Vector2(...p.spot);
+    // walk to the spot of the pose (or to the next corner of its lap), round the desk when the way
+    // crosses it, on the side it is nearer to
+    let goal;
+    if (p.lap && !reduced) {
+      const mirror = side === 'red' ? 1 : -1;
+      if (f.lapI == null) f.lapI = side === 'red' ? 0 : 2;
+      const corner = (i) => new THREE.Vector2(LAP[i % LAP.length][0] * mirror, LAP[i % LAP.length][1]);
+      if (f.pos.distanceTo(corner(f.lapI)) < 0.3) f.lapI++; // on to the next corner without stopping
+      goal = corner(f.lapI);
+    } else goal = new THREE.Vector2(...p.spot);
     if (!f.path.length || !f.path[f.path.length - 1].equals(goal)) {
       const crossing = (f.pos.y < 0.4 && goal.y > 0.95) || (f.pos.y > 0.95 && goal.y < 0.4);
-      f.path = crossing ? [new THREE.Vector2(1.05, f.pos.y), new THREE.Vector2(1.05, goal.y), goal] : [goal];
+      const round = (crossing && goal.y > 0.95 ? goal.x : f.pos.x) < 0 ? -1.05 : 1.05;
+      f.path = crossing ? [new THREE.Vector2(round, f.pos.y), new THREE.Vector2(round, goal.y), goal] : [goal];
     }
     const next = f.path[0];
     const d = next.clone().sub(f.pos);
@@ -793,7 +807,7 @@ export async function createScene(root) {
     // camera, riding with the robot, turned into a shaking picture)
     const toSpot = f.path.length === 1;
     if (!toSpot && dist < 0.02) f.path.shift();
-    else f.pos.add(d.clampLength(0, dt * (toSpot ? Math.min(1.7, dist * 7) : 1.7)));
+    else f.pos.add(d.clampLength(0, dt * (p.lap && toSpot ? 1.2 : toSpot ? Math.min(1.7, dist * 7) : 1.7)));
     bot.root.position.set(f.pos.x, 0, f.pos.y);
     bot.yaw = turnTo(bot.yaw ?? c.turn, walking ? Math.atan2(d.x, d.y) : c.turn, Math.min(1, dt * 6));
     bot.root.rotation.y = bot.yaw;
@@ -1107,6 +1121,13 @@ export async function createScene(root) {
       f.bot.eyes.forEach((e) => e.scale.set(1, eyeScale, 1));
     },
     poseOf: (side) => fighters[side]?.pose,
+    /** Where a fighter stands and which way it faces, in the hall's own coordinates (for checks and camera work). */
+    where(side) {
+      const f = fighters[side];
+      const at = f.bot.root.getWorldPosition(new THREE.Vector3());
+      const facing = f.bot.root.getWorldDirection(new THREE.Vector3());
+      return { x: at.x, z: at.z, fx: facing.x, fz: facing.z, pose: f.pose };
+    },
     excite(side, amount) {
       for (const s of side ? [side] : ['red', 'blue']) state.exc[s] = Math.min(1, Math.max(state.exc[s], amount));
     },

@@ -367,8 +367,11 @@ export function arenaStats(s) {
     });
     if (down || f.judged.fouls) fell += 1;
   }
+  // the most dangerous round: the one where most fights lost points, named only when it is alone
+  // ahead (with a few fights several rounds tie, and naming the first of them would say nothing)
   const most = Math.max(0, ...perRound);
-  return { fights: judged.length, agents: new Set(judged.map((f) => f.agent)).size, fell, worst: most ? perRound.indexOf(most) + 1 : null };
+  const alone = perRound.filter((x) => x === most).length === 1;
+  return { fights: judged.length, agents: new Set(judged.map((f) => f.agent)).size, fell, worst: most && alone ? perRound.indexOf(most) + 1 : null };
 }
 
 /** The bout a fight belongs to (a match or a solo fight). */

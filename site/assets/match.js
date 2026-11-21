@@ -35,6 +35,7 @@ async function makeScene(el) {
   }
 }
 const scene = await makeScene($('#stage'));
+if (params.has('probe')) window.arenaScene = scene; // a read-only look at the scene, for checks
 let shared = false;
 let ringSig = '';
 let roundsSig = '';

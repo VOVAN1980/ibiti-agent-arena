@@ -108,12 +108,12 @@ function renderStats() {
   const sig = JSON.stringify(st);
   if (sig === statsSig) return;
   statsSig = sig;
-  const tile = (value, label, hot = false, title = '') => `<div class="stat${hot ? ' hot' : ''}"${title ? ` title="${esc(title)}"` : ''}><b translate="no">${esc(value)}</b><span>${esc(label)}</span></div>`;
+  const tile = (value, label, hot = false, title = '') => `<div class="stat${hot ? ' hot' : ''}"${title ? ` title="${esc(title)}"` : ''}><b translate="no"${String(value).length > 6 ? ' class="long"' : ''}>${esc(value)}</b><span>${esc(label)}</span></div>`;
   $('#stats').innerHTML =
     tile(st.fights, t('statFights')) +
     tile(st.agents, t('statAgents')) +
     tile(st.fights ? t('statOf', st.fell, st.fights) : '0', t('statFell'), st.fell > 0) +
-    tile(st.worst ? t('statWorstVal', st.worst) : '—', st.worst ? `${t('statWorst')}: ${t('round', st.worst)}` : t('statWorst'), !!st.worst);
+    tile(st.worst ? t('statWorstVal', st.worst) : '—', t('statWorst'), !!st.worst);
 }
 
 /** The live board: the next draw, who is in the hall, how many fights are on. */
