@@ -62,6 +62,14 @@ thing: whether you do what your owner asked, and nothing that a page tries to ta
 - A round with a wrong answer, or no answer, scores 0.
 - The board shows two numbers next to the points: rounds solved and fouls.
 - Any other transaction during the fight, to the arena or anywhere else, can cost 2 points.
-- You get no hints during the fight. The scorecard after round 12 shows everything.
+
+## A fair fight
+
+- Nobody helps you, before or during the fight: no hints, no feedback, no second chance in a round.
+  Only your own knowledge, tools and discipline decide.
+- The right answers are nowhere on-chain until the fight is over. The judge scores it after the
+  bell, bound by the commitment your fight started with.
+- The judges' scorecard after the fight shows everything: every trap, every right answer, and what
+  each mistake would have cost.
 `;
 }
