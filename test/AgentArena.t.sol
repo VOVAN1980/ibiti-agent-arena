@@ -77,10 +77,16 @@ contract AgentArenaTest is Test {
         _register(who, address(0));
     }
 
-    /// @dev Holds the next draw (moving the clock to its time).
+    /// @dev Holds the next draw: moves the clock to its cutoff, seals it, then holds it on the sealed block.
     function _draw() internal {
-        uint64 at = arena.nextDrawAt();
-        if (vm.getBlockTimestamp() < at) vm.warp(at);
+        if (arena.pendingCutoff() == 0) {
+            uint64 at = arena.nextDrawAt();
+            if (vm.getBlockTimestamp() < at) vm.warp(at);
+            arena.draw();
+        }
+        uint64 sb = arena.seedBlock();
+        vm.roll(sb + 1);
+        vm.setBlockhash(sb, keccak256(abi.encode("block", sb)));
         arena.draw();
     }
 
@@ -91,12 +97,11 @@ contract AgentArenaTest is Test {
         _draw();
     }
 
-    /// @dev `who` alone in the hall: after two draws it gets a fight against the arena.
+    /// @dev `who` alone in the hall: after waiting 20 minutes it gets a fight against the arena.
     function _solo(address who) internal {
         _register(who);
-        _draw();
-        _draw();
-        require(arena.isLive(who), "a solo fight after two draws");
+        for (uint256 i; i < 4 && !arena.isLive(who); ++i) _draw();
+        require(arena.isLive(who), "a solo fight after 20 minutes alone");
     }
 
     function _fight(address who) internal view returns (AgentArena.Fight memory) {
@@ -345,7 +350,6 @@ contract AgentArenaTest is Test {
         assertFalse(arena.isLive(alice), "waiting is not fighting");
         vm.expectRevert(abi.encodeWithSelector(AgentArena.NotYet.selector, arena.nextDrawAt()));
         arena.draw();
-        // no second registration, and one can leave
         bytes32 c = _next(alice);
         vm.prank(alice);
         vm.expectRevert(AgentArena.InTheHall.selector);
@@ -356,13 +360,12 @@ contract AgentArenaTest is Test {
         vm.prank(alice);
         vm.expectRevert(AgentArena.NotInTheHall.selector);
         arena.leave();
-        vm.warp(arena.nextDrawAt());
-        vm.expectRevert(AgentArena.NobodyToDraw.selector);
-        arena.draw();
-        _register(alice); // back in
+        _draw(); // an empty draw closes quietly
+        assertEq(arena.draws(), 0);
+        assertEq(arena.pendingCutoff(), 0);
+        _register(alice); // back in, for the next draw
         assertEq(arena.hall().length, 1);
     }
-
     function test_twoAgentsAreDrawnIntoOneMatch() public {
         _register(alice);
         _register(bob);
@@ -432,19 +435,20 @@ contract AgentArenaTest is Test {
 
     function test_aChallengeWaitsForItsAnswerThenGoesToTheDraw() public {
         _register(alice, carol); // carol never answers
-        for (uint256 i; i < 6; ++i) {
+        for (uint256 i; i < 5; ++i) {
             _draw();
             assertFalse(arena.isLive(alice), "waiting for the answer, no solo fight");
         }
         _register(bob);
-        _draw(); // the challenge is over: alice is drawn at random, with bob
+        _draw(); // an hour has passed: the challenge is over, alice is drawn at random, with bob
         assertEq(_fight(alice).opponent, bob);
     }
-
-    function test_aLoneAgentGetsAFightAgainstTheArenaAfterTwoDraws() public {
+    function test_aLoneAgentGetsAFightAgainstTheArenaAfterWaiting20Minutes() public {
+        vm.warp(vm.getBlockTimestamp() + 1); // just after a cutoff: two draws come before 20 minutes
         _register(alice);
         _draw();
-        assertFalse(arena.isLive(alice));
+        _draw();
+        assertFalse(arena.isLive(alice), "two draws, but 19 minutes 59 seconds");
         _draw();
         assertTrue(arena.isLive(alice));
         assertEq(_fight(alice).opponent, address(0), "against the arena");
@@ -453,18 +457,50 @@ contract AgentArenaTest is Test {
         assertEq(_bestPoints(alice), 120, "ranked like any fight");
     }
 
-    function test_oneFightADay() public {
-        _match(alice, bob);
-        uint256 started = vm.getBlockTimestamp(); // the draw: the fight's start
-        _answerBoth(alice, bob);
-        bytes32 c = _next(alice);
-        vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(AgentArena.Cooldown.selector, uint64(started + COOLDOWN)));
-        arena.register("alice", "m", c, address(0));
-        vm.warp(started + COOLDOWN);
+    function test_theListClosesAtTheCutoff() public {
         _register(alice);
+        _register(bob);
+        vm.warp(arena.nextDrawAt());
+        _register(carol); // after the cutoff: it seals the draw, and carol is for the next one
+        assertGt(arena.pendingCutoff(), 0, "sealed by the first transaction after the cutoff");
+        assertGt(arena.seedBlock(), block.number, "on a block that does not exist yet");
+        vm.expectRevert(abi.encodeWithSelector(AgentArena.SeedNotYet.selector, arena.seedBlock()));
+        arena.draw();
+        _draw();
+        assertEq(_fight(alice).opponent, bob);
+        assertFalse(arena.isLive(carol));
+        address[] memory h = arena.hall();
+        assertEq(h.length, 1);
+        assertEq(h[0], carol);
     }
 
+    function test_aDrawCannotBeHeldTwiceOrOnAnOldBlock() public {
+        _register(alice);
+        _register(bob);
+        vm.warp(arena.nextDrawAt());
+        arena.draw(); // seal
+        uint64 sb = arena.seedBlock();
+        vm.roll(sb + 300); // too late: the sealed block's hash is gone
+        arena.draw();
+        assertFalse(arena.isLive(alice), "not drawn on an unknown hash");
+        assertEq(arena.seedBlock(), block.number + 1, "sealed again on a new future block");
+        _draw();
+        assertTrue(arena.isLive(alice) && arena.isLive(bob));
+        assertEq(arena.draws(), 1);
+        vm.expectRevert(abi.encodeWithSelector(AgentArena.NotYet.selector, arena.nextDrawAt()));
+        arena.draw(); // the next draw only at the next cutoff
+    }
+    function test_oneFightADayFromTheFinalBell() public {
+        _match(alice, bob);
+        _answerBoth(alice, bob);
+        uint256 bell = _fight(alice).finishedAt; // the 12th answer is alice's final bell
+        bytes32 c = _next(alice);
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(AgentArena.Cooldown.selector, uint64(bell + COOLDOWN)));
+        arena.register("alice", "m", c, address(0));
+        vm.warp(bell + COOLDOWN);
+        _register(alice);
+    }
     function test_noSecondRegistrationWhileFighting() public {
         _match(alice, bob);
         vm.warp(block.timestamp + COOLDOWN); // even after a day, while the fight is live (it is not: 14 min)
@@ -525,6 +561,7 @@ contract AgentArenaTest is Test {
     function testFuzz_aDrawPairsEveryoneOnce(uint8 count, uint256 salt) public {
         uint256 n = bound(count, 1, 32);
         vm.roll(1000 + (salt % 1000));
+        vm.setBlockhash(999 + (salt % 1000), keccak256(abi.encode(salt)));
         address[] memory who = new address[](n);
         for (uint256 i; i < n; ++i) {
             who[i] = makeAddr(string.concat("f", vm.toString(i)));

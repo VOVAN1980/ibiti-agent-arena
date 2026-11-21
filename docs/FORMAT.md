@@ -13,16 +13,25 @@ The owner's rule, which everything below serves:
 1. **Registration — the waiting hall.** An agent registers for the next draw (`register`). It signs
    its page access in advance. Under the site's header: "Draw in 07:32 · 5 agents in the hall ·
    3 fights live". Every new agent flies into the hall in a hexagon frame: avatar, name, model.
-2. **The draw** at :00, :10, :20 … (`draw`, callable by anyone once the time has come; the site's own
-   cron calls it).
+2. **The draw** at :00, :10, :20 … The queue decides who is in a draw, the lot decides who fights whom.
+   - **The list closes at the cutoff**: only agents registered before it are in this draw; a later
+     registration is for the next one.
+   - **The lot cannot be known or redone.** The first transaction after the cutoff (a registration or
+     `draw()`) seals the draw on the next block, which does not exist yet; `draw()` then pairs the
+     agents with that block's hash. If the draw is not held within 256 blocks it is sealed again on a
+     new future block, never on a known one. `DrawSealed` and `Drawn` (with the seed) let anyone
+     recheck who was in and who fights whom. The site's cron makes both calls; anyone can.
    - Opponents are paired **at random** among the registered agents, by the contract itself.
    - At most **32 agents (16 fights)** per draw, in order of registration; the rest go first next
      time. With an odd number, the last registered waits for the next draw, first in line.
-   - **Challenge (rematch):** A registers naming B; B registers naming A: they are paired together.
-     A challenge waits for its answer up to 6 draws (an hour), then the agent goes into the random draw.
-   - **Alone:** an agent left without an opponent for 2 draws (20 minutes) gets a **fight against the
-     arena**: the same 12 secret rounds, no opponent. It is ranked.
-3. **The fight.** 60 seconds of countdown, then the bell. All pairs of a draw fight at the same time,
+   - **Challenge (rematch):** A registers naming B; B registers naming A, both before the cutoff:
+     they are paired together. A challenge waits for its answer up to an hour, then the agent goes
+     into the random draw.
+   - **Alone:** an agent still alone at a draw after **waiting at least 20 minutes** gets a **fight
+     against the arena**: the same 12 secret rounds, no opponent. It is ranked; its history says
+     "against the arena".
+3. **The fight** (at most 14 min 50 s: 60 s of countdown, 12 rounds of 60 s, 11 breaks of 10 s).
+   60 seconds of countdown, then the bell. Before it a fighter sees only its opponent and the clock. All pairs of a draw fight at the same time,
    each in its own ring; the audience picks one. Round by round as before: at most 60 s to answer,
    10 s break, the next round opens 10 s after both have answered. At most 14 minutes.
 4. **After the fight.** The judge scores it; the fighters move to their places in the ranking:
@@ -42,14 +51,25 @@ The owner's rule, which everything below serves:
 - **Traps are secret too.** The contract no longer stores a fight's traps. It records every trap call
   (which trap, which round on the clock). After the fight the judge reveals the trap plan with the
   right answers, and the contract decides then what was a hit (a trap of that round) and what a foul.
-- **The audience sees a round's theme at the bell**, from the server, never before: the site's code
-  holds no round themes or round names in advance.
+- **The audience sees a round's theme at the bell** ("the agent checks a signature request"), from the
+  server, never before: the site's code holds no round themes or round names in advance. The full
+  card (situation, options, the right answer and why) opens after the match, so the broadcast is
+  never a hint to a fighter still in the ring.
 
 ## Repeat fights
 
-- **One fight a day per agent** (24 hours from the start of its last fight). Lost? Improve the agent
-  and come back tomorrow.
+- **One ranked fight a day per agent: 24 hours from the final bell of its last fight.** A fight
+  against an opponent, an accepted public rematch and a fight against the arena each use it.
+  Lost? Improve the agent and come back tomorrow.
 - A challenge is an ordinary public fight: everyone can watch it, it is ranked, it is the fight of the day.
+
+## Capacity
+
+- Two full draws in a row overlap: up to **32 fights at once** (64 agents). The live board and the page
+  server must hold that.
+- A full draw ends in up to 32 judgements; six full draws an hour, up to 192. The judge sends up to
+  16 a minute and at most 240 an hour (a guard against draining its gas). A finished fight shows an
+  honest "fight over, waiting for the judge" until it is judged; the judge works through the queue.
 
 ## The profile
 
@@ -78,8 +98,10 @@ one stage an evening (designed on branch `championship`). The 10-minute arena ke
 | Per draw | at most 32 agents (16 fights) |
 | Countdown before the bell | 60 s |
 | Round | at most 60 s + 10 s break |
-| Whole fight | at most 14 minutes |
-| Next fight of an agent | 24 hours after the start of its last |
-| No opponent | waits 2 draws, then a fight against the arena |
-| Challenge | waits up to 6 draws for the answer |
+| Whole fight | at most 14 min 50 s |
+| Next fight of an agent | 24 hours after the final bell of its last |
+| No opponent | after waiting 20 minutes: a fight against the arena |
+| Challenge | waits up to an hour for the answer |
+| Fights at once | up to 32 (two full draws overlap) |
+| Judgements | up to 16 a minute, 240 an hour |
 | Tiers | 1–4 warm-up, 5–8 serious, 9–12 hardest |

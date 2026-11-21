@@ -12,12 +12,15 @@ import {ArenaCertificate} from "./ArenaCertificate.sol";
 ///            name against the Agent ID registry (the token number is keccak256 of the name) and
 ///            such a fighter fights officially. The commitment comes from the page server
 ///            (/commit/<agent>): keccak256 of this fight's 12 right-answer hashes and a secret salt.
-///         2. The draw, every `drawEvery` seconds (`draw()`, anyone may call it once the time has come).
-///            At most 32 registered agents, in order of registration, are paired at random by the
-///            arena itself. Two agents that challenged each other are paired together. With an odd
-///            number the last registered waits for the next draw, first in line. An agent left
-///            without an opponent for 2 draws gets a fight against the arena (solo).
-///         3. The fight. A 60-second countdown, then 12 rounds: each round open for at most
+///         2. The draw, every `drawEvery` seconds. The list closes at the cutoff: only agents that
+///            registered before it are in this draw. The first transaction after the cutoff seals the
+///            draw on a block that does not exist yet; `draw()` then pairs them with that block's hash,
+///            so nobody knows the pairs before the list is closed and nobody can draw again.
+///            At most 32 agents, in order of registration, are paired at random. Two agents that
+///            challenged each other are paired together. With an odd number the last registered waits
+///            for the next draw, first in line. An agent alone after waiting 20 minutes gets a fight
+///            against the arena (solo). Anyone can recheck a draw from its events.
+///         3. The fight (at most 14 min 50 s). A 60-second countdown, then 12 rounds: each round open for at most
 ///            `roundTime`; when both fighters have answered, the next round opens 10 seconds later.
 ///            Before its bell nobody knows a round's task: every fight's plan (situations, options,
 ///            codes, traps) is derived by the page server from the season secret and is never on-chain.
@@ -71,9 +74,11 @@ contract AgentArena {
     uint64 public constant COUNTDOWN = 60;
     /// @notice At most this many agents are drawn at once (16 fights); the rest wait, first in line.
     uint8 public constant MAX_PER_DRAW = 32;
-    /// @notice An agent left without an opponent this many draws gets a fight against the arena.
+    /// @notice An agent that has waited SOLO_AFTER * drawEvery (20 minutes) and is still alone gets a
+    ///         fight against the arena at the draw.
     uint8 public constant SOLO_AFTER = 2;
-    /// @notice A challenge waits this many draws for its answer, then the agent is drawn at random.
+    /// @notice A challenge waits CHALLENGE_WAIT * drawEvery (an hour) for its answer, then the agent is
+    ///         drawn at random.
     uint8 public constant CHALLENGE_WAIT = 6;
     /// @notice Trap calls recorded per fight; any call beyond them is a foul at once.
     uint8 public constant MAX_CALLS = 64;
@@ -101,7 +106,7 @@ contract AgentArena {
     /// @notice The most time a round is open. Round r opens at clockAt + (r - clockRound) *
     ///         (roundTime + BREAK); the clock moves on early when every fighter has answered.
     uint64 public immutable roundTime;
-    /// @notice Between the starts of two fights of the same agent (one fight a day).
+    /// @notice From the final bell of an agent's fight to its next registration (one fight a day).
     uint64 public immutable cooldown;
     /// @notice A draw is held every `drawEvery` seconds, on the multiples of it.
     uint64 public immutable drawEvery;
@@ -146,7 +151,7 @@ contract AgentArena {
         bytes32 commitment;
         address challenge; // the agent it wants to fight, or zero
         uint32 pos; // its place in the queue
-        uint8 waited; // draws it has waited without an opponent
+        uint64 registeredAt;
         bool verified; // `name` is its Agent ID name
         bool active; // in the hall now
     }
@@ -165,14 +170,16 @@ contract AgentArena {
     mapping(address => Best) public officialBest; // over judged official fights: the certificate shows this
     mapping(address => uint32) public fightsOf; // judged fights
     mapping(address => uint32) public officialFightsOf; // judged official fights
-    mapping(address => uint64) public lastStart;
 
     /// @notice The waiting hall: agents in order of registration from `queueHead` on.
     mapping(address => Entry) public entries;
     address[] internal _queue;
     uint256 public queueHead;
-    /// @notice When the next draw may be held (zero before the first registration).
+    /// @notice The next cutoff: the list of the next draw closes then (zero before the first registration).
     uint64 public nextDrawAt;
+    /// @notice A sealed draw waiting to be held: its cutoff and the block whose hash will pair it.
+    uint64 public pendingCutoff;
+    uint64 public seedBlock;
     /// @notice Draws held so far.
     uint32 public draws;
 
@@ -181,8 +188,11 @@ contract AgentArena {
     /// @notice An agent entered the waiting hall for the next draw.
     event Registered(address indexed agent, bytes32 name, bytes32 model, bool verified, address indexed challenge);
     event Left(address indexed agent);
-    /// @notice A draw was held: `fights` matches and `solos` fights against the arena, bell at `bellAt`.
-    event Drawn(uint32 indexed draw, uint64 bellAt, uint8 fights, uint8 solos, uint8 waiting);
+    /// @notice The list of a draw is closed: it will be paired with the hash of block `seedBlock`.
+    event DrawSealed(uint64 cutoff, uint64 seedBlock);
+    /// @notice A draw was held from `seed` (keccak256 of the sealed block's hash, the draw number and the
+    ///         arena): `fights` matches and `solos` fights against the arena, bell at `bellAt`.
+    event Drawn(uint32 indexed draw, bytes32 seed, uint64 cutoff, uint64 bellAt, uint8 fights, uint8 solos, uint8 waiting);
     /// @param opponent the other fighter, or zero for a fight against the arena
     event Started(
         address indexed agent,
@@ -245,7 +255,7 @@ contract AgentArena {
     error InTheHall();
     error NotInTheHall();
     error NotYet(uint64 drawAt);
-    error NobodyToDraw();
+    error SeedNotYet(uint64 seedBlock);
 
     constructor(
         address agentIdRegistry_,
@@ -340,18 +350,22 @@ contract AgentArena {
         if (commitment == bytes32(0)) revert BadCommitment();
         if (bytes(name).length > 32 || bytes(model).length > 32) revert TooLong();
         if (entries[msg.sender].active) revert InTheHall();
-        if (_isLive(_latest(msg.sender))) revert FightActive();
-        uint64 last = lastStart[msg.sender];
-        if (last != 0 && block.timestamp < last + cooldown) revert Cooldown(last + cooldown);
+        Fight storage last = _latest(msg.sender);
+        if (_isLive(last)) revert FightActive();
+        if (last.startedAt != 0) {
+            uint64 until = _endOf(last) + cooldown; // one fight a day, from its final bell
+            if (block.timestamp < until) revert Cooldown(until);
+        }
+        _sealIfDue(); // a registration after the cutoff closes that draw's list first: it is for the next one
         bool verified = _ownsAgentId(msg.sender, name);
-        if (queueHead == _queue.length && nextDrawAt <= block.timestamp) nextDrawAt = _nextSlot();
+        if (nextDrawAt == 0) nextDrawAt = _nextSlot();
         entries[msg.sender] = Entry({
             name: bytes32(bytes(name)),
             model: bytes32(bytes(model)),
             commitment: commitment,
             challenge: challenge == msg.sender ? address(0) : challenge,
             pos: uint32(_queue.length),
-            waited: 0,
+            registeredAt: uint64(block.timestamp),
             verified: verified,
             active: true
         });
@@ -366,20 +380,39 @@ contract AgentArena {
         emit Left(msg.sender);
     }
 
-    /// @notice Hold the draw: anyone may call it once `nextDrawAt` has come.
+    /// @notice The draw, in two steps; anyone may call it. After the cutoff the first call seals the draw
+    ///         (if no registration did it already) on the next block; once that block exists, the next
+    ///         call pairs the agents that registered before the cutoff with its hash.
     function draw() external {
-        if (nextDrawAt == 0 || block.timestamp < nextDrawAt) revert NotYet(nextDrawAt);
-        // the hall, in order of registration, at most MAX_PER_DRAW agents
+        if (pendingCutoff == 0) {
+            if (nextDrawAt == 0 || block.timestamp < nextDrawAt) revert NotYet(nextDrawAt);
+            _sealIfDue();
+            return;
+        }
+        if (block.number <= seedBlock) revert SeedNotYet(seedBlock);
+        bytes32 h = blockhash(seedBlock);
+        if (h == bytes32(0)) {
+            // not held within 256 blocks: seal again on a new block, as unknown as the first
+            seedBlock = uint64(block.number + 1);
+            emit DrawSealed(pendingCutoff, seedBlock);
+            return;
+        }
+        uint64 cutoff = pendingCutoff;
+        pendingCutoff = 0;
+        // the hall as it was at the cutoff, in order of registration, at most MAX_PER_DRAW agents
         address[] memory picked = new address[](MAX_PER_DRAW);
         uint256 n;
         uint256 i = queueHead;
         for (; i < _queue.length && n < MAX_PER_DRAW; ++i) {
             address a = _queue[i];
-            if (entries[a].active && entries[a].pos == i) picked[n++] = a;
+            Entry storage e = entries[a];
+            if (!e.active || e.pos != i) continue;
+            if (e.registeredAt >= cutoff) break; // registered after the cutoff: the next draw (the queue is in time order)
+            picked[n++] = a;
         }
-        if (n == 0) revert NobodyToDraw();
+        if (n == 0) return; // nobody registered before this cutoff: nothing to draw
         uint32 d = ++draws;
-        bytes32 drawSeed = keccak256(abi.encode(blockhash(block.number - 1), d, address(this)));
+        bytes32 drawSeed = keccak256(abi.encode(h, d, address(this)));
         uint64 bellAt = uint64(block.timestamp) + COUNTDOWN;
         bool[] memory done = new bool[](n);
         uint8 fights;
@@ -398,17 +431,15 @@ contract AgentArena {
                 }
             }
         }
-        // 2. everyone else free for the draw: a challenge waits CHALLENGE_WAIT draws for its answer,
-        //    then the agent is drawn at random like everyone else
+        // 2. everyone else free for the draw; a challenge waits for its answer up to CHALLENGE_WAIT draws
         address[] memory pool = new address[](n);
         uint256 m;
         for (uint256 x; x < n; ++x) {
             if (done[x]) continue;
             Entry storage e = entries[picked[x]];
             if (e.challenge != address(0)) {
-                if (e.waited < CHALLENGE_WAIT) continue;
-                e.challenge = address(0);
-                e.waited = 0;
+                if (block.timestamp < e.registeredAt + uint64(CHALLENGE_WAIT) * drawEvery) continue;
+                e.challenge = address(0); // no answer: drawn at random like everyone else
             }
             pool[m++] = picked[x];
             done[x] = true;
@@ -424,14 +455,13 @@ contract AgentArena {
             _match(pool[x], pool[x + 1], keccak256(abi.encode(drawSeed, fights)), bellAt, d);
             ++fights;
         }
-        // 4. whoever is left waits; alone for SOLO_AFTER draws (no challenge pending): a solo fight
+        // 4. whoever is left waits; alone after waiting SOLO_AFTER draws (no challenge pending): a solo fight
         address[] memory left = new address[](n);
         uint256 l;
         for (uint256 x; x < n; ++x) {
             if (done[x]) continue;
             Entry storage e = entries[picked[x]];
-            ++e.waited;
-            if (e.waited >= SOLO_AFTER && e.challenge == address(0)) {
+            if (e.challenge == address(0) && block.timestamp >= e.registeredAt + uint64(SOLO_AFTER) * drawEvery) {
                 _openFrom(picked[x], keccak256(abi.encode(drawSeed, "solo", x)), address(0), bellAt, d);
                 ++solos;
             } else {
@@ -445,8 +475,7 @@ contract AgentArena {
             entries[left[x]].pos = uint32(head + x);
         }
         queueHead = head;
-        nextDrawAt = _nextSlot();
-        emit Drawn(d, bellAt, fights, solos, uint8(l));
+        emit Drawn(d, drawSeed, cutoff, bellAt, fights, solos, uint8(l));
     }
 
     // ================================================================ the fight (trusted functions)
@@ -631,6 +660,21 @@ contract AgentArena {
         return (uint64(block.timestamp) / drawEvery + 1) * drawEvery;
     }
 
+    /// @dev After the cutoff, the first transaction closes the list: the draw will be paired with the
+    ///      hash of the next block, which nobody knows yet.
+    function _sealIfDue() internal {
+        if (pendingCutoff != 0 || nextDrawAt == 0 || block.timestamp < nextDrawAt) return;
+        pendingCutoff = nextDrawAt;
+        seedBlock = uint64(block.number + 1);
+        nextDrawAt = _nextSlot();
+        emit DrawSealed(pendingCutoff, seedBlock);
+    }
+
+    /// @dev The final bell of a fight: when its answers ended, or when round 12 closes.
+    function _endOf(Fight storage f) internal view returns (uint64) {
+        return f.finishedAt != 0 ? f.finishedAt : _endsAt(f);
+    }
+
     function _indexOf(address[] memory list, uint256 n, address a) internal pure returns (uint256) {
         for (uint256 i; i < n; ++i) if (list[i] == a) return i;
         return n; // never: `a` comes from the list
@@ -661,7 +705,6 @@ contract AgentArena {
         f.opponent = opponent;
         f.draw = d;
         lastFight[agent] = number;
-        lastStart[agent] = uint64(block.timestamp);
         emit Started(agent, number, seed, e.verified, e.name, e.model, opponent, d);
     }
 
