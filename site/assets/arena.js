@@ -12,7 +12,7 @@ const T = {
   registered: '0xf2c78f5b308dd0ce240b8977e6c0ab5c62ba3ba48ba9972f695f3529ae589784', // Registered(address,bytes32,bytes32,bool,address)
   left: '0xc97a8bf3a3af557fe56cca51d77eeb41b7c07ea6f2d28390ba9d1841a0bf466d', // Left(address)
   sealed: '0x20f8955c254349469e5d82325d89a8876db189ca2f7ea14e85bd4edd0e89f228', // DrawSealed(uint64,uint64)
-  drawn: '0x69ecf47f66934d21d5d5bc9ab9f8298ca519974562ad33da869fd3967acf382e', // Drawn(uint32,bytes32,uint64,uint64,uint8,uint8,uint8)
+  drawn: '0x1046f8d6923dce8398ad3bfa45939110dbd768f7d9855d398b3a4abbff5db4f1', // Drawn(uint32,bytes32,uint64,uint64,uint8,uint8)
   started: '0x1f0a803b340f18c069591b04eca4f49892175c5fcb11f82bd92c7e01eef3498b', // Started(address,uint32,bytes32,bool,bytes32,bytes32,address,uint32)
   matched: '0xe8da39d5ab9af3f2f988c17386b5626d4086d7baa1a92c89c6bfbcb110b884ac', // Matched(address,address,uint64)
   answered: '0xd04c86e49784a8ad1a71a88ae6918567b4697c13f900056453f2f3c128ed7f8e',
@@ -155,7 +155,7 @@ function apply(s, l) {
     case T.sealed:
       break;
     case T.drawn: {
-      s.draws.push({ draw: parseInt(t[1], 16), seed: '0x' + d[0], cutoff: num(d[1]), bellAt: num(d[2]), fights: num(d[3]), solos: num(d[4]), waiting: num(d[5]), block });
+      s.draws.push({ draw: parseInt(t[1], 16), seed: '0x' + d[0], cutoff: num(d[1]), bellAt: num(d[2]), fights: num(d[3]), waiting: num(d[4]), block });
       break;
     }
     case T.started: {
@@ -165,7 +165,7 @@ function apply(s, l) {
       f.official = big(d[1]) !== 0n;
       f.draw = num(d[4]);
       const opp = addrOf(t[3].slice(2));
-      f.opponent = /^0x0{40}$/.test(opp) ? null : opp; // null: a fight against the arena
+      f.opponent = /^0x0{40}$/.test(opp) ? null : opp; // null: a solo fight (no opponent)
       f.block = block;
       f.tx = l.transactionHash;
       const who = fighter(s, agent);

@@ -24,8 +24,8 @@ import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/Messa
 ///            and the draw has exactly one result. At most 32 agents, in order of registration, are
 ///            paired at random. Two agents that challenged each other are paired together; a
 ///            challenge still waiting for its answer takes no place in the draw. With an odd number
-///            the last registered waits for the next draw, first in line. An agent alone after
-///            waiting 20 minutes gets a fight against the arena (solo). No fight starts that could
+///            the last registered waits for the next draw, first in line. There is no fight without
+///            an opponent: an agent alone waits until another registers. No fight starts that could
 ///            end after `seasonEnd`. Anyone can recheck a draw from its events.
 ///         3. The fight (at most 14 min 50 s). A 60-second countdown, then 12 rounds: each round open for at most
 ///            `roundTime`; when both fighters have answered, the next round opens 10 seconds later.
@@ -86,9 +86,6 @@ contract AgentArena {
     uint64 public constant COUNTDOWN = 60;
     /// @notice At most this many agents are drawn at once (16 fights); the rest wait, first in line.
     uint8 public constant MAX_PER_DRAW = 32;
-    /// @notice An agent that has waited SOLO_AFTER * drawEvery (20 minutes) and is still alone gets a
-    ///         fight against the arena at the draw.
-    uint8 public constant SOLO_AFTER = 2;
     /// @notice A challenge waits CHALLENGE_WAIT * drawEvery (an hour) for its answer, then the agent is
     ///         drawn at random.
     uint8 public constant CHALLENGE_WAIT = 6;
@@ -152,7 +149,7 @@ contract AgentArena {
         uint16 late; // bit (round-1) set = answered after the bell
         bool judged;
         bytes32 commitment; // keccak256(abi.encode(bytes32[12] rightHashes, bytes32 salt)), fixed at registration
-        address opponent; // the other fighter of a match, or zero for a fight against the arena
+        address opponent; // the other fighter of the match
         uint8 clockRound; // the round that opens at clockAt
         uint32 opponentNumber; // the opponent's fight number in this match
         uint32 draw; // the draw that opened this fight
@@ -213,9 +210,9 @@ contract AgentArena {
     /// @notice The list of a draw is closed: it will be paired with the hash of block `seedBlock`.
     event DrawSealed(uint64 cutoff, uint64 seedBlock);
     /// @notice A draw was held from `seed` (keccak256 of the sealed block's hash, the draw number and the
-    ///         arena): `fights` matches and `solos` fights against the arena, bell at `bellAt`.
-    event Drawn(uint32 indexed draw, bytes32 seed, uint64 cutoff, uint64 bellAt, uint8 fights, uint8 solos, uint8 waiting);
-    /// @param opponent the other fighter, or zero for a fight against the arena
+    ///         arena): `fights` matches, bell at `bellAt`; `waiting` agents wait for the next draw.
+    event Drawn(uint32 indexed draw, bytes32 seed, uint64 cutoff, uint64 bellAt, uint8 fights, uint8 waiting);
+    /// @param opponent the other fighter of the match
     event Started(
         address indexed agent,
         uint32 indexed number,
@@ -452,8 +449,8 @@ contract AgentArena {
         if (picked.length == 0) return; // nobody to draw: everyone keeps their place
         uint32 d = ++draws;
         bytes32 drawSeed = keccak256(abi.encode(h, d, address(this)));
-        (uint8 fights, uint8 solos) = _pairUp(picked, drawSeed, bellAt, d);
-        emit Drawn(d, drawSeed, cutoff, bellAt, fights, solos, uint8(_requeue(seen, end)));
+        uint8 fights = _pairUp(picked, drawSeed, bellAt, d);
+        emit Drawn(d, drawSeed, cutoff, bellAt, fights, uint8(_requeue(seen, end)));
     }
 
     /// @dev The hall as it was at the cutoff, in order of registration: at most MAX_PER_DRAW agents
@@ -489,8 +486,8 @@ contract AgentArena {
     }
 
     /// @dev Pairs the drawn agents: mutual challenges first, then the rest at random; an odd one out
-    ///      waits (or, alone long enough, fights the arena).
-    function _pairUp(address[] memory picked, bytes32 drawSeed, uint64 bellAt, uint32 d) internal returns (uint8 fights, uint8 solos) {
+    ///      waits for the next draw, first in line. Nobody fights without an opponent.
+    function _pairUp(address[] memory picked, bytes32 drawSeed, uint64 bellAt, uint32 d) internal returns (uint8 fights) {
         uint256 n = picked.length;
         bool[] memory done = new bool[](n);
         // 1. two agents that challenged each other fight each other
@@ -524,15 +521,6 @@ contract AgentArena {
         for (uint256 x; x + 1 < m; x += 2) {
             _match(pool[x], pool[x + 1], keccak256(abi.encode(drawSeed, fights)), bellAt, d);
             ++fights;
-        }
-        // 4. alone after waiting SOLO_AFTER draws (no challenge pending): a fight against the arena
-        for (uint256 x; x < n; ++x) {
-            if (done[x]) continue;
-            Entry storage e = entries[picked[x]];
-            if (e.challenge == address(0) && block.timestamp >= e.registeredAt + uint64(SOLO_AFTER) * drawEvery) {
-                _openFrom(picked[x], keccak256(abi.encode(drawSeed, "solo", x)), address(0), bellAt, d);
-                ++solos;
-            }
         }
     }
 

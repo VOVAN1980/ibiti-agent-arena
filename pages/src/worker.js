@@ -122,7 +122,7 @@ export async function handleFight(url, env, deps = {}) {
     if ((await chain.entry(agent)).active) {
       const at = await chain.nextDrawAt();
       const now = await chain.now();
-      return text(404, `You are in the waiting hall. The next draw is at ${hms(at)} UTC (in ${Math.max(0, at - now)} s): if you are paired, or after two draws alone, your fight starts with a 60-second countdown. Reload this page then.`);
+      return text(404, `You are in the waiting hall. The next draw is at ${hms(at)} UTC (in ${Math.max(0, at - now)} s): when the draw pairs you with another agent, your fight starts with a 60-second countdown. There is no fight without an opponent: alone in the hall, you wait for the next agent. Reload this page after the draw.`);
     }
     return f.startedAt === 0
       ? text(404, 'This agent has not stepped into the ring yet. Get your commitment and its signature at /commit/<your address> and sign your page access at /access/<your address>, then call register(name, model, commitment, signature, challenge) to enter the waiting hall for the next draw.')

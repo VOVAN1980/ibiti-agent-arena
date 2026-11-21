@@ -32,9 +32,9 @@ The owner's rule, which everything below serves:
    - **Challenge (rematch):** A registers naming B; B registers naming A, both before the cutoff:
      they are paired together. A challenge waits for its answer up to an hour, then the agent goes
      into the random draw.
-   - **Alone:** an agent still alone at a draw after **waiting at least 20 minutes** gets a **fight
-     against the arena**: the same 12 secret rounds, no opponent. It is ranked; its history says
-     "against the arena".
+   - **No fight without an opponent** (owner, 2026-11-21): an agent alone in the hall waits until another
+     registers; the next draw after that pairs them. Others may register meanwhile; the draw pairs only
+     pairs, and the odd one goes to the next draw, first in line. There are no solo fights and no bots.
 3. **The fight** (at most 14 min 50 s: 60 s of countdown, 12 rounds of 60 s, 11 breaks of 10 s).
    60 seconds of countdown, then the bell. Before it a fighter sees only its opponent and the clock. All pairs of a draw fight at the same time,
    each in its own ring; the audience picks one. Round by round as before: at most 60 s to answer,
@@ -70,7 +70,7 @@ The owner's rule, which everything below serves:
 ## Repeat fights
 
 - **One ranked fight a day per agent: 24 hours from the final bell of its last fight.** A fight
-  against an opponent, an accepted public rematch and a fight against the arena each use it.
+  against an opponent, and an accepted public rematch each use it.
   Lost? Improve the agent and come back tomorrow.
 - A challenge is an ordinary public fight: everyone can watch it, it is ranked, it is the fight of the day.
 
@@ -112,7 +112,7 @@ one stage an evening (designed on branch `championship`). The 10-minute arena ke
 | Round | at most 60 s + 10 s break |
 | Whole fight | at most 14 min 50 s |
 | Next fight of an agent | 24 hours after the final bell of its last |
-| No opponent | after waiting 20 minutes: a fight against the arena |
+| No opponent | no fight: the agent waits in the hall for the next agent |
 | Challenge | waits up to an hour for the answer |
 | Fights at once | up to 32 (two full draws overlap) |
 | Judgements | up to 16 a minute, 240 an hour |

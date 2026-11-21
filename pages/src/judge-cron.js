@@ -5,8 +5,8 @@
 // - an earlier transaction of the judge still pending after a few seconds is stuck: it is replaced
 //   (an empty transfer to itself, same nonce, a higher gas price) and the run ends there;
 // - the draw: after a cutoff it seals the draw (if no registration did it already), waits for the
-//   sealed block, then holds the draw on its hash (AgentArena.draw); a draw with an empty hall is left
-//   alone (a later registration closes it);
+//   sealed block, then holds the draw on its hash (AgentArena.draw); with fewer than two agents in the
+//   hall there is nobody to pair, so it is left alone (a later registration closes it);
 // - the trap plans: every fight drawn in the last minutes whose first bell has not rung yet (drawn by
 //   this judge or by anyone else) gets its trap plan locked (AgentArena.lockTraps), one hash per
 //   match, so the judge can later judge it only with that plan;
@@ -172,7 +172,7 @@ export async function judgeRun(env, { fetchFn = fetch, log = console.log, wait =
   let drew = false;
   if ((await word(PENDING_CUTOFF)) === 0) {
     const at = await chain.nextDrawAt();
-    if (at !== 0 && (await timeNow()) >= at && (await chain.hall()).length > 0) {
+    if (at !== 0 && (await timeNow()) >= at && (await chain.hall()).length >= 2) { // no fight without an opponent
       const sealed = await send(DRAW, 'seal the draw');
       for (let i = 0; sealed && i < 20 && !(await rpc('eth_getTransactionReceipt', [sealed])); i++) await wait(1000);
     }

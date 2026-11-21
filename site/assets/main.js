@@ -107,7 +107,9 @@ function renderStats() {
 function renderBoard() {
   const live = bouts(s).filter((b) => isLive(s, b.red) || (b.blue && isLive(s, b.blue))).length;
   const left = s.nextDrawAt ? s.nextDrawAt - s.now : null;
-  const draw = s.pendingCutoff || (left !== null && left <= 0 && s.hall.length) ? t('boardDrawing') : left === null || left <= 0 ? t('boardFirst') : t('boardDraw', mmss(left));
+  // no fight without an opponent: the countdown runs only once two agents are in the hall
+  const two = s.hall.length >= 2;
+  const draw = !two ? t('boardFirst') : s.pendingCutoff || (left !== null && left <= 0) ? t('boardDrawing') : left === null ? t('boardFirst') : t('boardDraw', mmss(left));
   const html = `<span class="db-draw">${esc(draw)}</span><i></i><span>${esc(t('boardHall', s.hall.length))}</span><i></i><span>${esc(t('boardLive', live))}</span>`;
   const el = $('#drawboard');
   if (el.innerHTML !== html) el.innerHTML = html;

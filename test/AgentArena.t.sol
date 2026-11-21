@@ -151,11 +151,18 @@ contract AgentArenaTest is Test {
         _draw();
     }
 
-    /// @dev `who` alone in the hall: after waiting 20 minutes it gets a fight against the arena.
-    function _solo(address who) internal {
+    uint256 sparrings;
+
+    /// @dev `who` drawn with a sparring partner that gives up at once (finish() in the countdown):
+    ///      a match in which only `who` fights. There is no fight without an opponent.
+    function _spar(address who) internal {
+        address partner = makeAddr(string.concat("sparring", vm.toString(++sparrings)));
         _register(who);
-        for (uint256 i; i < 4 && !arena.isLive(who); ++i) _draw();
-        require(arena.isLive(who), "a solo fight after 20 minutes alone");
+        _register(partner);
+        for (uint256 i; i < 3 && !arena.isLive(who); ++i) _draw(); // a late registration closes an old list first
+        require(arena.isLive(who) && _fight(who).opponent == partner, "drawn with the sparring partner");
+        vm.prank(partner);
+        arena.finish();
     }
 
     function _fight(address who) internal view returns (AgentArena.Fight memory) {
@@ -493,24 +500,27 @@ contract AgentArenaTest is Test {
         _register(alice, carol); // carol never answers
         for (uint256 i; i < 5; ++i) {
             _draw();
-            assertFalse(arena.isLive(alice), "waiting for the answer, no solo fight");
+            assertFalse(arena.isLive(alice), "waiting for the answer");
         }
         _register(bob);
         _draw(); // an hour has passed: the challenge is over, alice is drawn at random, with bob
         assertEq(_fight(alice).opponent, bob);
     }
-    function test_aLoneAgentGetsAFightAgainstTheArenaAfterWaiting20Minutes() public {
-        vm.warp(vm.getBlockTimestamp() + 1); // just after a cutoff: two draws come before 20 minutes
+    function test_noFightWithoutAnOpponent() public {
         _register(alice);
+        for (uint256 i; i < 12; ++i) {
+            _draw(); // two hours of draws alone
+            assertFalse(arena.isLive(alice), "alone: no fight");
+        }
+        assertEq(arena.lastFight(alice), 0);
+        assertEq(arena.hall()[0], alice, "still waiting, first in line");
+        _register(bob); // a second agent comes: the next draw pairs them
         _draw();
-        _draw();
-        assertFalse(arena.isLive(alice), "two draws, but 19 minutes 59 seconds");
-        _draw();
-        assertTrue(arena.isLive(alice));
-        assertEq(_fight(alice).opponent, address(0), "against the arena");
-        _answerAll(alice);
+        assertEq(_fight(alice).opponent, bob);
+        _answerBoth(alice, bob);
         _judge(alice);
-        assertEq(_bestPoints(alice), 120, "ranked like any fight");
+        _judge(bob);
+        assertEq(_bestPoints(alice), 120);
     }
 
     function test_theListClosesAtTheCutoff() public {
@@ -731,7 +741,7 @@ contract AgentArenaTest is Test {
     // ============================================================ judged after the bell
 
     function test_nothingOnChainTellsARightAnswerDuringTheFight() public {
-        _solo(alice);
+        _spar(alice);
         _answer(alice, 1, _rightCode(alice, 1));
         _answer(alice, 2, "WRONG");
         assertEq(_fight(alice).correct, 0);
@@ -751,7 +761,7 @@ contract AgentArenaTest is Test {
     }
 
     function test_theJudgeIsBoundByTheCommitmentAndItsSalt() public {
-        _solo(alice);
+        _spar(alice);
         // even a fighter sure of all 12 right answers could not check them against the commitment
         assertTrue(keccak256(abi.encode(_rightHashes(alice, 1))) != _fight(alice).commitment);
         _answer(alice, 1, "a wrong answer");
@@ -774,7 +784,7 @@ contract AgentArenaTest is Test {
 
 
     function test_onlyTheJudgeScoresAndOnlyOnce() public {
-        _solo(alice);
+        _spar(alice);
         _answerAll(alice);
         bytes32[12] memory right = _rightHashes(alice, 1);
         uint8[36] memory traps = _traps(alice);
@@ -812,7 +822,7 @@ contract AgentArenaTest is Test {
     }
 
     function test_theJudgeScoresAFightThatRanOutOfTime() public {
-        _solo(alice);
+        _spar(alice);
         _answer(alice, 1, _rightCode(alice, 1));
         vm.warp(_ends(alice) + 1);
         assertFalse(arena.isLive(alice));
@@ -871,7 +881,7 @@ contract AgentArenaTest is Test {
 
     function test_aFightWhosePlanWasNotLockedCountsEveryCallAsAFoul() public {
         lockOnDraw = false;
-        _solo(alice);
+        _spar(alice);
         uint8[36] memory traps = _traps(alice);
         _goto(alice, 1);
         _takeTrap(alice, traps[0]); // would be round 1's punch
@@ -887,7 +897,7 @@ contract AgentArenaTest is Test {
     }
 
     function test_trapCallsAreRecordedAndJudgedOnlyAfterTheFight() public {
-        _solo(alice);
+        _spar(alice);
         uint8[36] memory traps = _traps(alice);
         _goto(alice, 2);
         _takeTrap(alice, traps[3]); // a punch of round 2
@@ -909,7 +919,7 @@ contract AgentArenaTest is Test {
     }
 
     function test_aTrapOfItsRoundIsAHitAnythingElseAFoul() public {
-        _solo(alice);
+        _spar(alice);
         uint8[36] memory traps = _traps(alice);
         _goto(alice, 1);
         _takeTrap(alice, traps[0]); // round 1's first punch: a hit
@@ -925,7 +935,7 @@ contract AgentArenaTest is Test {
     }
 
     function test_aTrapOfTheRoundJustAnsweredCostsTheSame() public {
-        _solo(alice);
+        _spar(alice);
         uint8[36] memory traps = _traps(alice);
         _answer(alice, 1, _rightCode(alice, 1));
         _takeTrap(alice, traps[1]); // in the break after round 1: still round 1 on the clock
@@ -936,7 +946,7 @@ contract AgentArenaTest is Test {
     }
 
     function test_everyTrapLooksSuccessfulAndTheJudgeSortsThem() public {
-        _solo(alice);
+        _spar(alice);
         _goto(alice, 1);
         for (uint8 t = 1; t <= 50; ++t) _takeTrap(alice, t);
         vm.prank(alice);
@@ -951,7 +961,7 @@ contract AgentArenaTest is Test {
     }
 
     function test_callsBeyondTheLimitAreFoulsAtOnce() public {
-        _solo(alice);
+        _spar(alice);
         _goto(alice, 1);
         for (uint256 i; i < 70; ++i) _takeTrap(alice, 41);
         assertEq(arena.callsOf(alice, 1).length, 64);
@@ -964,7 +974,7 @@ contract AgentArenaTest is Test {
 
     function test_trapsOutsideAFightAreNotRecorded() public {
         _takeTrap(alice, 41);
-        _solo(alice);
+        _spar(alice);
         assertEq(arena.callsOf(alice, 1).length, 0, "the call before the fight is not in it");
     }
 
@@ -976,7 +986,7 @@ contract AgentArenaTest is Test {
     // ============================================================ the clock and the score
 
     function test_roundsOpenOnTheClock() public {
-        _solo(alice);
+        _spar(alice);
         uint256 bell = _fight(alice).clockAt;
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(AgentArena.NotOpen.selector, uint64(bell)));
@@ -1001,7 +1011,7 @@ contract AgentArenaTest is Test {
     }
 
     function test_aLateAnswerScoresZeroAndAMissedRoundCountsInFull() public {
-        _solo(alice);
+        _spar(alice);
         uint256 opens = _opens(alice, 1);
         vm.warp(opens + 65);
         _answer(alice, 1, _rightCode(alice, 1)); // after the bell
@@ -1014,7 +1024,7 @@ contract AgentArenaTest is Test {
     }
 
     function test_equalPointsFasterFightRanksHigher() public {
-        _solo(alice);
+        _spar(alice);
         for (uint8 r = 1; r <= 12; ++r) {
             vm.warp(_opens(alice, r) + 5);
             _answer(alice, r, _rightCode(alice, r));
@@ -1023,7 +1033,7 @@ contract AgentArenaTest is Test {
         (, uint64 best1,, uint32 slow) = arena.best(alice);
         assertEq(best1, 1);
         vm.warp(vm.getBlockTimestamp() + COOLDOWN);
-        _solo(alice);
+        _spar(alice);
         _answerAll(alice); // every answer at the bell: faster
         _judge(alice);
         (uint8 p, uint64 best2,, uint32 fast) = arena.best(alice);
@@ -1045,7 +1055,7 @@ contract AgentArenaTest is Test {
     }
 
     function test_finishEarlyAndOnlyOnce() public {
-        _solo(alice);
+        _spar(alice);
         _answer(alice, 1, _rightCode(alice, 1));
         vm.prank(alice);
         arena.finish();
@@ -1058,14 +1068,14 @@ contract AgentArenaTest is Test {
     }
 
     function test_wrongAnswersEverywhereScoreZeroEvenWithoutTraps() public {
-        _solo(alice);
+        _spar(alice);
         for (uint8 r = 1; r <= 12; ++r) _answer(alice, r, "WRONG");
         _judge(alice);
         assertEq(arena.pointsOf(alice), 0);
     }
 
     function test_doingNothingScoresNothing() public {
-        _solo(alice);
+        _spar(alice);
         vm.warp(_ends(alice) + 1);
         _judge(alice);
         assertEq(arena.pointsOf(alice), 0);
@@ -1074,7 +1084,7 @@ contract AgentArenaTest is Test {
 
     /// @dev A random fight for alice; the contract's score must match the rules computed here.
     function testFuzz_scoreMatchesTheRules(uint256 dice) public {
-        _solo(alice);
+        _spar(alice);
         uint8[36] memory traps = _traps(alice);
         uint8 stopAfter = uint8(dice % 13); // answer 0..12 rounds
         uint256 expected;
@@ -1128,7 +1138,7 @@ contract AgentArenaTest is Test {
     }
 
     function test_perfectFightIsUndisputedWithCertificate() public {
-        _solo(alice);
+        _spar(alice);
         _answerAll(alice);
         assertFalse(arena.isLive(alice), "the 12th answer ends the fight");
         assertEq(arena.certificate().balanceOf(alice), 0, "no certificate before the judge");
@@ -1141,7 +1151,7 @@ contract AgentArenaTest is Test {
     }
 
     function test_certificateIsSoulboundAndOnlyTheArenaMints() public {
-        _solo(alice);
+        _spar(alice);
         _finishAndJudge(alice);
         ArenaCertificate cert = arena.certificate();
         uint256 id = uint256(uint160(alice));
@@ -1158,7 +1168,7 @@ contract AgentArenaTest is Test {
     }
 
     function test_certificateStatesVersionDateAndScore() public {
-        _solo(alice);
+        _spar(alice);
         _answerAll(alice);
         _judge(alice);
         assertGt(bytes(arena.certificate().tokenURI(uint256(uint160(alice)))).length, 100);
