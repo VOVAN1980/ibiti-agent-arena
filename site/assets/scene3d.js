@@ -185,7 +185,7 @@ function materials() {
   const std = (o) => new THREE.MeshStandardMaterial(o);
   const glow = (color, k = 3) => std({ color: 0x000000, emissive: color, emissiveIntensity: k });
   return {
-    metal: std({ color: 0xb9c2d3, metalness: 0.9, roughness: 0.3, envMapIntensity: 0.75 }),
+    metal: std({ color: 0xaeb7c8, metalness: 0.85, roughness: 0.36, envMapIntensity: 0.55 }),
     dark: std({ color: 0x262d3d, metalness: 0.75, roughness: 0.38 }),
     black: std({ color: 0x0d1018, metalness: 0.4, roughness: 0.5 }),
     visor: std({ color: 0x04060b, metalness: 1, roughness: 0.06 }),
@@ -423,14 +423,14 @@ export function createScene(root) {
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x04060b);
-  scene.fog = new THREE.FogExp2(0x05070d, 0.034);
+  scene.fog = new THREE.FogExp2(0x05070d, 0.03);
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(new RoomEnvironment(renderer), 0.04).texture;
   const M = materials();
 
   // lights
-  scene.add(new THREE.HemisphereLight(0x8fa6ff, 0x120c18, 0.2));
-  const key = new THREE.DirectionalLight(0xffffff, 1.1);
+  scene.add(new THREE.HemisphereLight(0x8fa6ff, 0x120c18, 0.32));
+  const key = new THREE.DirectionalLight(0xffffff, 0.85);
   key.position.set(3, 12, 7);
   key.castShadow = !small;
   key.shadow.mapSize.set(1024, 1024);
@@ -438,7 +438,7 @@ export function createScene(root) {
   scene.add(key);
   const spots = {};
   for (const side of ['red', 'blue']) {
-    const s = new THREE.SpotLight(COLOR[side], 2.6, 0, 0.42, 0.6, 0);
+    const s = new THREE.SpotLight(COLOR[side], 1.7, 0, 0.42, 0.6, 0);
     s.position.set(side === 'red' ? -4 : 4, 9, 3);
     scene.add(s, s.target);
     spots[side] = s;
@@ -540,8 +540,7 @@ export function createScene(root) {
     tint(new THREE.SphereGeometry(0.13, 12, 6, 0, Math.PI * 2, 0, Math.PI * 0.42).translate(0, 0.975, 0)),
     tint(new THREE.CylinderGeometry(0.1, 0.1, 0.016, 12).scale(1, 1, 1.25).translate(0, 0.965, 0.12)),
   ]);
-  // the stands sit in half-darkness, as in a real arena: the light belongs to the ring
-  const fanMat = new THREE.MeshStandardMaterial({ vertexColors: true, color: 0x7c7c7c, roughness: 0.95, metalness: 0 });
+  const fanMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0 });
   const crowd = new THREE.InstancedMesh(bodyGeo, fanMat, bowl.length);
   const heads = new THREE.InstancedMesh(headGeo, fanMat, bowl.length);
   const caps = new THREE.InstancedMesh(capGeo, fanMat, bowl.length);
@@ -600,8 +599,8 @@ export function createScene(root) {
     return b;
   };
   const sweep = [0xef4444, 0x3b82f6, 0xef4444, 0x3b82f6].map((col) => makeBeam(col, 0.07, 1.3));
-  const focus = { red: makeBeam(0xff9a9a, 0.055, 1.1), blue: makeBeam(0x9ab8ff, 0.055, 1.1) };
-  const crown = makeBeam(0xffd666, 0.11, 1.4);
+  const focus = { red: makeBeam(0xff9a9a, 0.04, 1.1), blue: makeBeam(0x9ab8ff, 0.04, 1.1) };
+  const crown = makeBeam(0xffd666, 0.05, 1.4);
   const aimBeam = (b, from, to) => {
     const d = new THREE.Vector3().subVectors(from, to);
     const len = d.length();
@@ -688,7 +687,7 @@ export function createScene(root) {
   const camLook = new THREE.Vector3();
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
-  const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), small ? 0.6 : 0.72, 0.5, 0.88);
+  const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), small ? 0.5 : 0.55, 0.45, 0.92);
   composer.addPass(bloom);
   const vignette = new ShaderPass(VignetteShader);
   vignette.uniforms.offset.value = 1.05;
@@ -891,7 +890,7 @@ export function createScene(root) {
       focus[side].to.copy(v3);
       aimBeam(focus[side], focus[side].from, focus[side].to);
       focus[side].m.visible = state.lights === 'focus' && f.present;
-      focus[side].m.material.uniforms.opacity.value = 0.045 + state.exc[side] * 0.035;
+      focus[side].m.material.uniforms.opacity.value = 0.03 + state.exc[side] * 0.025;
       spots[side].target.position.copy(v3);
     }
     if (state.winner) {
@@ -902,7 +901,7 @@ export function createScene(root) {
       winSpot.target.position.copy(v3);
     }
     crown.m.visible = state.lights === 'winner';
-    winSpot.intensity = state.lights === 'winner' ? 2.4 : 0;
+    winSpot.intensity = state.lights === 'winner' ? 1.3 : 0;
     haze.update(t);
     flags.update(t, state.exc);
     pyro.update(t, dt);
