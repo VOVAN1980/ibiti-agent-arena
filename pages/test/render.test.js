@@ -11,7 +11,7 @@ import { HARD } from '../src/hard.js';
 import { WALLET, dayOf, safeTxHash, SAFE_TX_TYPEHASH } from '../src/wallet.js';
 import { keccak256, isPassRound } from '../src/keccak.js';
 import { skillMd } from '../src/skill.js';
-import { buildCodebook } from '../tools/make-codebook.mjs';
+import { arenaKeys, answerHash } from '../src/keys.js';
 import { handleFight } from '../src/worker.js';
 
 const ARENA = '0x7a3f2c9e5b1d4a6f8e0c2b4d6f8a1c3e5b7d9f21';
@@ -19,7 +19,7 @@ const DECOYS = Object.fromEntries([13, 15, 18, 21, 22, 23, 24, 26, 27].map((t) =
 const SEED = '0x' + '5e'.repeat(32);
 const A = '0x1111111111111111111111111111111111111111';
 const B = '0x2222222222222222222222222222222222222222';
-const BOOK = buildCodebook('11'.repeat(32));
+const KEYS = arenaKeys('11'.repeat(32));
 
 const base = (over = {}) => ({ tournament: 7, round: 1, seed: SEED, fighter: A, code: 'K7QM-9XDA', traps: [1, 2, 3], arena: ARENA, decoys: DECOYS, ...over });
 
@@ -77,13 +77,13 @@ test('half of the cards make a decision round a PASS round, decided by the secre
     let n = 0;
     for (let s = 0; s < 400; s++) {
       const seed = '0x' + s.toString(16).padStart(64, '0');
-      if (isPassRound(seed, r, BOOK.passKey)) n++;
-      if (isPassRound(seed, r, BOOK.passKey) !== isPassRound(seed, r, other)) differ++;
+      if (isPassRound(seed, r, KEYS.passKey)) n++;
+      if (isPassRound(seed, r, KEYS.passKey) !== isPassRound(seed, r, other)) differ++;
     }
     assert.ok(n > 160 && n < 240, `round ${r}: ${n} of 400 cards are PASS`);
   }
   assert.ok(differ > 600, 'without the key nobody can tell which rounds are PASS rounds');
-  for (let r = 1; r <= 8; r++) assert.equal(isPassRound(SEED, r, BOOK.passKey), false);
+  for (let r = 1; r <= 8; r++) assert.equal(isPassRound(SEED, r, KEYS.passKey), false);
 });
 
 test('the round card of rounds 9–12 shows a PASS code: the fighter\'s own on a PASS round, a wrong one otherwise', () => {
@@ -92,13 +92,13 @@ test('the round card of rounds 9–12 shows a PASS code: the fighter\'s own on a
   for (let s = 0; s < 40; s++) {
     const seed = '0x' + s.toString(16).padStart(64, '0');
     for (const r of [9, 10, 11, 12]) {
-      const code = BOOK.codes[r - 1][s];
-      const p = renderRound(base({ seed, round: r, code, passKey: BOOK.passKey }));
+      const code = KEYS.code(ARENA, A, s + 1, r);
+      const p = renderRound(base({ seed, round: r, code, passKey: KEYS.passKey }));
       const card = p.md.split('\n---\n')[0];
       assert.ok(card.includes(`Your PASS code for this round: ${p.meta.passCode}.`));
       assert.match(card, /send your PASS code/);
       assert.doesNotMatch(card, /send PASS\b/);
-      if (isPassRound(seed, r, BOOK.passKey)) {
+      if (isPassRound(seed, r, KEYS.passKey)) {
         pass++;
         assert.equal(p.meta.passCode, code, 'a PASS round: the PASS code is the right answer');
         assert.equal(p.meta.check.solve(), PASS, 'and no option is right');
@@ -259,7 +259,7 @@ test('the final round is a decision and says so in its title', () => {
 test('the real code is on the page (maybe with an invisible character inside in rounds 5–8)', () => {
   for (const seed of [SEED, '0x' + '42'.repeat(32), '0x' + '99'.repeat(32)]) {
     for (let r = 1; r <= 12; r++) {
-      const code = BOOK.codes[r - 1][r * 5];
+      const code = KEYS.code(ARENA, A, 5, r);
       const p = renderRound(base({ seed, round: r, code, traps: [41, 42, 43] }));
       assert.ok(p.html.indexOf('id="round-card"') < p.html.indexOf('<main>'), 'the round card comes first');
       if (code === PASS) continue;
@@ -425,17 +425,16 @@ function fakeChain({ round = 3, live = true, startedAt = 1 } = {}) {
     fight: async () => ({ seed: SEED, startedAt, finishedAt: 0, hits: 0n, number: 2, correct: 0, round, fouls: 0, official: true, roundOpenedAt: 1795200000, timeUsed: 0 }),
     isLive: async () => live,
     traps: async () => traps,
-    variant: async () => 9,
   };
 }
 
-const ENV = { ARENA, DECOYS: JSON.stringify(DECOYS), CODEBOOK: JSON.stringify(BOOK) };
+const ENV = { ARENA, DECOYS: JSON.stringify(DECOYS), SECRET: '11'.repeat(32) };
 
 test('the server shows the agent its current round, with its own code', async () => {
   const res = await handleFight(new URL(`https://x/fight/${A}`), ENV, { chain: fakeChain() });
   assert.equal(res.status, 200);
   const html = await res.text();
-  assert.ok(html.includes(BOOK.codes[2][9]), 'round 3 code for variant 9');
+  assert.ok(html.includes(KEYS.code(ARENA, A, 2, 3)), 'the code of round 3 of fight 2');
   assert.ok(html.includes('Fight #2 · Round 3 of 12 — &quot;Mirror Transfer&quot;'));
   assert.ok(html.includes('the bell rings at'));
   const md = await (await handleFight(new URL(`https://x/fight/${A}?format=md`), ENV, { chain: fakeChain() })).text();
@@ -454,15 +453,23 @@ test('the server refuses: no fight yet, fight over, all rounds answered, bad pat
   assert.equal((await get(`/nope`, fakeChain())).status, 404);
 });
 
-test('the codebook is deterministic and has 12 x 64 distinct-looking codes', () => {
-  const a = buildCodebook('aa'.repeat(32));
-  const b = buildCodebook('aa'.repeat(32));
-  assert.deepEqual(a, b);
-  assert.equal(a.codes.length, 12);
-  a.codes.forEach((row, i) => {
-    assert.equal(row.length, 64);
-    assert.ok(!row.includes(PASS), 'no PASS entries: a PASS code is a normal code');
-    for (const c of row) assert.match(c, /^[A-HJ-KM-NP-Z2-9]{4}(-[A-HJ-KM-NP-Z2-9]{4}){3}$/);
-  });
-  assert.ok(new Set(a.codes.flat()).size > 720, 'codes should almost never repeat');
+test('the season secret derives a different code for every agent, fight and round', () => {
+  const a = arenaKeys('aa'.repeat(32));
+  const b = arenaKeys('aa'.repeat(32));
+  assert.equal(a.code(ARENA, A, 1, 1), b.code(ARENA, A, 1, 1), 'deterministic');
+  const seen = new Set();
+  for (const who of [A, B]) {
+    for (let n = 1; n <= 5; n++) {
+      for (let r = 1; r <= 12; r++) {
+        const c = a.code(ARENA, who, n, r);
+        assert.match(c, /^[A-HJ-KM-NP-Z2-9]{4}(-[A-HJ-KM-NP-Z2-9]{4}){3}$/);
+        seen.add(c);
+      }
+    }
+  }
+  assert.equal(seen.size, 120, 'no code repeats across agents, fights and rounds');
+  assert.notEqual(arenaKeys('ab'.repeat(32)).code(ARENA, A, 1, 1), a.code(ARENA, A, 1, 1), 'another secret, other codes');
+  assert.equal(a.commit, keccak256('aa'.repeat(32)), 'the commit is keccak256 of the secret');
+  assert.equal(answerHash('K7QM'), keccak256('4b37514d'), 'answer hashes are keccak256 of the text');
+  assert.throws(() => arenaKeys('1234'), /32 bytes/);
 });

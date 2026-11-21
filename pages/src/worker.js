@@ -10,14 +10,15 @@
 //   RPC_URL   BNB Smart Chain JSON-RPC endpoint
 //   ARENA     AgentArena address
 //   DECOYS    JSON { "13": "0x…", … } — the nine decoy contracts
-//   CODEBOOK  JSON { "codes": [[64 codes for round 1], …, [round 12]], "passKey": "0x…" } — secret until
-//             the season ends
+//   SECRET    the season secret (32 bytes of hex): every fight's codes and the PASS rounds are
+//             derived from it. Secret until the season ends; the arena stores only its keccak256.
 //   CHAIN_ID  56 on BNB Smart Chain
 //   SITE_URL  the public origin of this server, for the links in /skill.md
 
 import { makeChain } from './chain.js';
 import { renderRound } from './render.js';
 import { skillMd } from './skill.js';
+import { arenaKeys } from './keys.js';
 
 const HEADERS = { 'cache-control': 'no-store', 'x-robots-tag': 'noindex, nofollow', 'referrer-policy': 'no-referrer' };
 
@@ -42,23 +43,26 @@ export async function handleFight(url, env, deps = {}) {
 
   const traps = await chain.traps(agent);
   const spare = [...Array(50).keys()].map((i) => i + 1).filter((t) => !traps.includes(t));
-  const variant = await chain.variant(f.seed, agent, f.round);
-  const codebook = typeof env.CODEBOOK === 'string' ? JSON.parse(env.CODEBOOK) : env.CODEBOOK;
+  let keys;
+  try {
+    keys = arenaKeys(env.SECRET);
+  } catch {
+    return text(500, 'The arena is not configured: the season secret is missing.');
+  }
   const decoys = typeof env.DECOYS === 'string' ? JSON.parse(env.DECOYS) : env.DECOYS;
-  if (!/^0x[0-9a-f]{64}$/.test(codebook.passKey ?? '')) return text(500, 'The arena is not configured: the codebook has no pass key.');
   const page = renderRound({
     tournament: f.number,
     round: f.round,
     seed: f.seed,
     fighter: agent,
-    code: codebook.codes[f.round - 1][variant],
+    code: keys.code(env.ARENA, agent, f.number, f.round),
     traps: traps.slice((f.round - 1) * 3, f.round * 3),
     arena: env.ARENA,
     decoys,
     spare,
     openedAt: f.roundOpenedAt,
     roundTime: Number(env.ROUND_TIME ?? 60),
-    passKey: codebook.passKey,
+    passKey: keys.passKey,
   });
   if (url.searchParams.get('format') === 'md') {
     return new Response(page.md, { headers: { ...HEADERS, 'content-type': 'text/markdown; charset=utf-8' } });

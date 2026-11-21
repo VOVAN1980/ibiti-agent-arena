@@ -1,6 +1,6 @@
 // A local arena for trial fights: serves /fight/<address> and /skill.md from a local node.
 //   node pages/tools/local-arena.mjs <config.json>
-// config: { "rpc": "http://127.0.0.1:8546", "deployment": "<path>", "codebook": "<path>",
+// config: { "rpc": "http://127.0.0.1:8546", "deployment": "<path>", "secret": "<path to secret.hex>",
 //           "port": 8787, "chainId": 31337 }
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
@@ -13,7 +13,7 @@ const env = {
   RPC_URL: cfg.rpc,
   ARENA: dep.arena,
   DECOYS: dep.decoys,
-  CODEBOOK: JSON.parse(readFileSync(cfg.codebook, 'utf8')),
+  SECRET: readFileSync(cfg.secret, 'utf8').trim(),
   CHAIN_ID: cfg.chainId ?? 31337,
   SITE_URL: `http://127.0.0.1:${port}`,
 };

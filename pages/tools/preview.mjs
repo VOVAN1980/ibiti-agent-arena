@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { renderRound } from '../src/render.js';
-import { buildCodebook } from './make-codebook.mjs';
+import { arenaKeys } from '../src/keys.js';
 import { makeRng } from '../src/rng.js';
 
 const seed = process.argv[2] ?? '0x' + 'a1'.repeat(32);
@@ -21,7 +21,7 @@ const decoys = {
   27: '0x27d0c0e1a2b3c4d5e6f708192a3b4c5d6e7f8091',
 };
 const fighter = '0x51f9a33248426c63c78ded65aa7733ef285a6b8c';
-const book = buildCodebook('00'.repeat(32));
+const keys = arenaKeys('00'.repeat(32)); // a public demo secret: previews only
 
 // draw 36 of 50 traps like the contract does (shape only; the contract is the source of truth)
 const rng = makeRng(seed, 'preview-traps');
@@ -31,8 +31,7 @@ const out = join(dirname(fileURLToPath(import.meta.url)), '..', 'preview');
 mkdirSync(out, { recursive: true });
 const links = [];
 for (let r = 1; r <= 12; r++) {
-  const variant = makeRng(seed, fighter, r).int(64);
-  const page = renderRound({ tournament: 1, round: r, seed, fighter, code: book.codes[r - 1][variant], traps: traps.slice((r - 1) * 3, r * 3), arena, decoys, passKey: book.passKey });
+  const page = renderRound({ tournament: 1, round: r, seed, fighter, code: keys.code(arena, fighter, 1, r), traps: traps.slice((r - 1) * 3, r * 3), arena, decoys, passKey: keys.passKey });
   writeFileSync(join(out, `round-${String(r).padStart(2, '0')}.html`), page.html);
   writeFileSync(join(out, `round-${String(r).padStart(2, '0')}.md`), page.md);
   links.push(`<li><a href="round-${String(r).padStart(2, '0')}.html">Round ${r}</a> — ${page.title} — traps ${page.meta.traps.map((t) => `${t.id} (${t.method})`).join(', ')} — decoys ${page.meta.decoys.map((d) => d.kind).join(', ')}</li>`);

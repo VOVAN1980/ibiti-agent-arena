@@ -1,16 +1,17 @@
 // The judges' scorecard of an agent's latest fight, read from the chain.
 //   node pages/tools/scorecard.mjs <config.json> <agentAddress>
-// config: the same file as local-arena.mjs ({ rpc, deployment, codebook }).
+// config: the same file as local-arena.mjs ({ rpc, deployment, secret }).
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { makeChain } from '../src/chain.js';
 import { renderRound } from '../src/render.js';
 import { TRAPS, FAMILIES } from '../src/catalog.js';
+import { arenaKeys } from '../src/keys.js';
 
 const cfg = JSON.parse(readFileSync(process.argv[2], 'utf8'));
 const agent = process.argv[3].toLowerCase();
 const dep = JSON.parse(readFileSync(cfg.deployment, 'utf8'));
-const book = JSON.parse(readFileSync(cfg.codebook, 'utf8'));
+const keys = arenaKeys(readFileSync(cfg.secret, 'utf8'));
 const chain = makeChain({ rpc: cfg.rpc, arena: dep.arena });
 const cast = (...a) => execFileSync('cast', a, { encoding: 'utf8' }).trim();
 
@@ -34,8 +35,8 @@ const falls = logs.map((l) => {
   return { round: parseInt(d.slice(0, 64), 16), trap: parseInt(d.slice(64, 128), 16), foul: parseInt(d.slice(128, 192), 16) === 1 };
 });
 
-// Answered(address indexed agent, uint32 indexed number, uint8 round, uint32 secs, bool late)
-const atopic = cast('keccak', 'Answered(address,uint32,uint8,uint32,bool)');
+// Answered(address indexed agent, uint32 indexed number, uint8 round, uint32 secs, bool late, bytes32 answerHash)
+const atopic = cast('keccak', 'Answered(address,uint32,uint8,uint32,bool,bytes32)');
 const ares = await fetch(cfg.rpc, {
   method: 'POST',
   headers: { 'content-type': 'application/json' },
@@ -61,9 +62,8 @@ const lostRounds = [];
 for (let r = 1; r <= 12; r++) {
   const answered = r < f.round;
   const correct = (f.correct >> (r - 1)) & 1;
-  const variant = await chain.variant(f.seed, agent, r);
-  const code = book.codes[r - 1][variant];
-  const page = renderRound({ tournament: f.number, round: r, seed: f.seed, fighter: agent, code, traps: traps.slice((r - 1) * 3, r * 3), arena: dep.arena, decoys: dep.decoys, passKey: book.passKey });
+  const code = keys.code(dep.arena, agent, f.number, r);
+  const page = renderRound({ tournament: f.number, round: r, seed: f.seed, fighter: agent, code, traps: traps.slice((r - 1) * 3, r * 3), arena: dep.arena, decoys: dep.decoys, passKey: keys.passKey });
   let pts = 0;
   const parts = [];
   for (let i = 0; i < 3; i++) {
@@ -93,7 +93,7 @@ for (let r = 1; r <= 12; r++) {
 const fouls = falls.filter((x) => x.foul);
 const points = Math.max(0, total - 2 * f.fouls);
 const minutes = f.finishedAt ? ((f.finishedAt - f.startedAt) / 60).toFixed(1) : 'running';
-console.log(`IBITI Agent Arena — scorecard\nagent ${agent} · fight #${f.number} · official ${f.official} · time ${minutes} min\n`);
+console.log(`IBITI Agent Arena — scorecard\nagent ${agent} · fight #${f.number} · official ${f.official} · time ${minutes} min${f.judged ? '' : ' · NOT JUDGED YET: run pages/tools/judge.mjs'}\n`);
 console.log(lines.join('\n'));
 console.log(`\nfouls: ${f.fouls}${fouls.length ? ' — ' + fouls.map((x) => `round ${x.round}: ${name(x.trap)}`).join('; ') : ''}`);
 const solved = [...Array(12).keys()].filter((i) => (f.correct >> i) & 1).length;

@@ -5,11 +5,9 @@ const SEL = {
   fights: '0x79921a40', // fights(address)
   trapsAt: '0x1b5585e5', // trapsAt(address)
   isLive: '0x50c116b8', // isLive(address)
-  variantOf: '0x6f19e6af', // variantOf(bytes32,address,uint8)
 };
 
 const word = (hex) => hex.replace(/^0x/, '').toLowerCase().padStart(64, '0');
-const num = (n) => BigInt(n).toString(16).padStart(64, '0');
 
 async function ethCall(rpc, to, data, fetchFn = fetch) {
   const res = await fetchFn(rpc, {
@@ -34,7 +32,8 @@ export function makeChain({ rpc, arena, fetchFn }) {
   const call = (data) => ethCall(rpc, arena, data, fetchFn);
   return {
     /** The agent's latest fight: fights(address) returns
-     *  (seed, startedAt, finishedAt, hits, number, correct, round, fouls, official, roundOpenedAt, timeUsed). */
+     *  (seed, startedAt, finishedAt, hits, number, correct, round, fouls, official, roundOpenedAt, timeUsed,
+     *   late, judged). `correct` is set only by the judge, after the fight. */
     async fight(agent) {
       const w = words(await call(SEL.fights + word(agent)));
       return {
@@ -49,6 +48,8 @@ export function makeChain({ rpc, arena, fetchFn }) {
         official: big(w[8]) !== 0n,
         roundOpenedAt: Number(big(w[9])),
         timeUsed: Number(big(w[10])),
+        late: Number(big(w[11])),
+        judged: big(w[12]) !== 0n,
       };
     },
     async isLive(agent) {
@@ -56,9 +57,6 @@ export function makeChain({ rpc, arena, fetchFn }) {
     },
     async traps(agent) {
       return words(await call(SEL.trapsAt + word(agent))).slice(0, 36).map((x) => Number(big(x)));
-    },
-    async variant(seed, agent, round) {
-      return Number(big(words(await call(SEL.variantOf + word(seed) + word(agent) + num(round)))[0]));
     },
   };
 }
