@@ -762,10 +762,14 @@ export async function createScene(root) {
     }
     const next = f.path[0];
     const d = next.clone().sub(f.pos);
-    const moving = d.length() > 0.02;
-    const walking = d.length() > 0.25; // a real walk, not the small drift of a pose
-    if (moving) f.pos.add(d.clampLength(0, dt * 1.7));
-    else if (f.path.length > 1) f.path.shift();
+    const dist = d.length();
+    const walking = dist > 0.25; // a real walk, not the small drift of a pose
+    // full speed to a corner of the way round the desk; to the spot itself slowing down as it
+    // nears, so a drifting spot is followed smoothly and not in stop-and-go jumps (which a close-up
+    // camera, riding with the robot, turned into a shaking picture)
+    const toSpot = f.path.length === 1;
+    if (!toSpot && dist < 0.02) f.path.shift();
+    else f.pos.add(d.clampLength(0, dt * (toSpot ? Math.min(1.7, dist * 7) : 1.7)));
     bot.root.position.set(f.pos.x, 0, f.pos.y);
     bot.yaw = turnTo(bot.yaw ?? c.turn, walking ? Math.atan2(d.x, d.y) : c.turn, Math.min(1, dt * 6));
     bot.root.rotation.y = bot.yaw;
@@ -821,10 +825,13 @@ export async function createScene(root) {
     const p = POSES[r.pose](tt, r.side);
     const c = applyBody(r.bot, p, Math.min(1, dt * 10));
     const d = r.target.clone().sub(r.pos);
-    const walking = d.length() > 0.03;
-    if (walking) r.pos.add(d.clampLength(0, dt * 2));
+    const dist = d.length();
+    const walking = dist > 0.03;
+    r.speed = Math.min(2, dist * 5, (r.speed ?? 0) + dt * 5); // speeding up at the start, slowing down at the end
+    r.pos.add(d.clampLength(0, dt * r.speed));
     r.bot.root.position.set(r.pos.x, FLOOR, r.pos.y);
-    r.bot.yaw = turnTo(r.bot.yaw ?? 0, walking && d.length() > 0.2 ? Math.atan2(d.x, d.y) : c.turn, Math.min(1, dt * 6));
+    // facing the way it walks (the distance left, not this frame's step), then the pose's way
+    r.bot.yaw = turnTo(r.bot.yaw ?? 0, walking && dist > 0.2 ? Math.atan2(d.x, d.y) : c.turn, Math.min(1, dt * 6));
     r.bot.root.rotation.y = r.bot.yaw;
     if (r.bot.pose) r.bot.pose(c, p, t, walking, dt, null);
     else applyLimbs(r.bot, c, p, t, walking);
