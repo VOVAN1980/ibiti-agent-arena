@@ -8,12 +8,12 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 
-const URL = 'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/models/gltf/Xbot.glb';
+const MODEL = new URL('./vendor/models/Xbot.glb', import.meta.url).href; // a copy kept with the site (see assets/vendor/README.md)
 const SCALE = 1.12;
 
 export function loadXbot() {
   return Promise.race([
-    new GLTFLoader().loadAsync(URL),
+    new GLTFLoader().loadAsync(MODEL),
     new Promise((_, reject) => setTimeout(() => reject(new Error('the robot model took too long')), 15000)),
   ]);
 }
