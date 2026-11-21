@@ -14,6 +14,9 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { VignetteShader } from 'three/addons/shaders/VignetteShader.js';
+import { beamMaterial, buildHaze, buildScreens, buildPyro, buildFlags } from './atmosphere.js';
 
 const COLOR = { red: 0xef4444, blue: 0x3b82f6, ref: 0xe6ebf5, gold: 0xf5b301 };
 const CSS = { red: '#ef4444', blue: '#3b82f6' };
@@ -450,7 +453,7 @@ export function createScene(root) {
   // the ring
   const ringMat = [
     new THREE.MeshStandardMaterial({ map: hazardTex(), roughness: 0.55, metalness: 0.2 }),
-    new THREE.MeshStandardMaterial({ map: floorTex(), roughness: 0.32, metalness: 0.55, envMapIntensity: 0.6 }),
+    new THREE.MeshStandardMaterial({ map: floorTex(), roughness: 0.18, metalness: 0.7, envMapIntensity: 1.0 }),
     M.black,
   ];
   const ring = new THREE.Mesh(new THREE.CylinderGeometry(RING, RING + 0.22, FLOOR, 6, 1, false, Math.PI / 6), ringMat);
@@ -569,7 +572,11 @@ export function createScene(root) {
     caps.setColorAt(i, c.setHex(p.side === 'red' ? 0xef4444 : 0x3b82f6));
   });
   armed.forEach((p, i) => arms.setColorAt(i, c.setHex(p.shirt)));
-  for (const m of [crowd, heads, caps, arms]) {
+  // glow sticks: a third of those who raise their arms hold one up in their team's colour
+  const stickers = armed.filter(() => Math.random() < 0.35);
+  const sticks = new THREE.InstancedMesh(new THREE.CapsuleGeometry(0.03, 0.26, 2, 6).translate(0.43, 1.32, 0.04), new THREE.MeshBasicMaterial({ color: new THREE.Color(2.6, 2.6, 2.6) }), stickers.length);
+  stickers.forEach((p, i) => sticks.setColorAt(i, c.setHex(p.side === 'red' ? 0xff5a5a : 0x5aa0ff)));
+  for (const m of [crowd, heads, caps, arms, sticks]) {
     m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     scene.add(m);
   }
@@ -586,18 +593,17 @@ export function createScene(root) {
   scene.add(flashes);
 
   // light beams from the roof
-  const beamMat = (color, o) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity: o, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
   const beams = [];
   const makeBeam = (color, o, width) => {
-    const m = new THREE.Mesh(new THREE.ConeGeometry(width, 1, 28, 1, true), beamMat(color, o));
+    const m = new THREE.Mesh(new THREE.ConeGeometry(width, 1, 28, 1, true), beamMaterial(color, o));
     scene.add(m);
     const b = { m, from: new THREE.Vector3(), to: new THREE.Vector3(), base: o };
     beams.push(b);
     return b;
   };
-  const sweep = [0xef4444, 0x3b82f6, 0xef4444, 0x3b82f6].map((col) => makeBeam(col, 0.05, 1.3));
-  const focus = { red: makeBeam(0xff9a9a, 0.06, 1.1), blue: makeBeam(0x9ab8ff, 0.06, 1.1) };
-  const crown = makeBeam(0xffd666, 0.09, 1.4);
+  const sweep = [0xef4444, 0x3b82f6, 0xef4444, 0x3b82f6].map((col) => makeBeam(col, 0.07, 1.3));
+  const focus = { red: makeBeam(0xff9a9a, 0.055, 1.1), blue: makeBeam(0x9ab8ff, 0.055, 1.1) };
+  const crown = makeBeam(0xffd666, 0.11, 1.4);
   const aimBeam = (b, from, to) => {
     const d = new THREE.Vector3().subVectors(from, to);
     const len = d.length();
@@ -625,6 +631,14 @@ export function createScene(root) {
   refBot.root.position.set(0, FLOOR, -0.35);
   scene.add(refBot.root);
   const referee = { bot: refBot, pose: 'ref', since: 0, side: null, pos: new THREE.Vector2(0, -0.35), target: new THREE.Vector2(0, -0.35), cur: {} };
+
+  // the atmosphere: haze, two big screens with live close-ups, pyrotechnics, flags
+  const haze = buildHaze(scene, small);
+  const screens = buildScreens(scene, renderer, { red: fighters.red.st, blue: fighters.blue.st }, small, M);
+  const pyro = buildPyro(scene, small, FLOOR);
+  const flags = buildFlags(scene, bowl, small);
+  const postTops = Array.from({ length: 6 }, (_, k) => corner(k).multiplyScalar(0.97).setY(FLOOR + 1.9));
+  const sidePosts = { red: [2, 3, 4].map((k) => postTops[k]), blue: [5, 0, 1].map((k) => postTops[k]) };
 
   // things flying around (the loser's desk), and sparks
   const flying = [];
@@ -678,6 +692,10 @@ export function createScene(root) {
   composer.addPass(new RenderPass(scene, camera));
   const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), small ? 0.6 : 0.72, 0.5, 0.88);
   composer.addPass(bloom);
+  const vignette = new ShaderPass(VignetteShader);
+  vignette.uniforms.offset.value = 1.05;
+  vignette.uniforms.darkness.value = 1.2;
+  composer.addPass(vignette);
   composer.addPass(new OutputPass());
 
   let size = { w: 1, h: 1 };
@@ -808,8 +826,15 @@ export function createScene(root) {
       const up = !reduced && Math.sin(t * 2.1 * p.sp + p.ph * 3) > 1.25 - state.exc[p.side];
       mtx.compose(pos.set(p.x, p.y, p.z), p.q, up ? scl.set(1, p.h, 1) : scl.set(0, 0, 0));
       arms.setMatrixAt(i, mtx);
+      p.up = up;
     }
     arms.instanceMatrix.needsUpdate = true;
+    for (let i = 0; i < stickers.length; i++) {
+      const p = stickers[i];
+      mtx.compose(pos.set(p.x, p.y, p.z), p.q, p.up ? scl.set(1, p.h, 1) : scl.set(0, 0, 0));
+      sticks.setMatrixAt(i, mtx);
+    }
+    sticks.instanceMatrix.needsUpdate = true;
     for (let i = 0; i < flashN; i++) {
       let v = flashCol[i * 3] * 0.9;
       const e = state.exc[flashOf[i].side];
@@ -868,7 +893,7 @@ export function createScene(root) {
       focus[side].to.copy(v3);
       aimBeam(focus[side], focus[side].from, focus[side].to);
       focus[side].m.visible = state.lights === 'focus' && f.present;
-      focus[side].m.material.opacity = 0.05 + state.exc[side] * 0.04;
+      focus[side].m.material.uniforms.opacity.value = 0.045 + state.exc[side] * 0.035;
       spots[side].target.position.copy(v3);
     }
     if (state.winner) {
@@ -880,6 +905,10 @@ export function createScene(root) {
     }
     crown.m.visible = state.lights === 'winner';
     winSpot.intensity = state.lights === 'winner' ? 4 : 0;
+    haze.update(t);
+    flags.update(t, state.exc);
+    pyro.update(t, dt);
+    screens.update();
     ticker.offset.x = reduced ? 0 : (t * 0.02) % 1;
     tickerIn.offset.x = -ticker.offset.x;
 
@@ -984,8 +1013,14 @@ export function createScene(root) {
     excite(side, amount) {
       for (const s of side ? [side] : ['red', 'blue']) state.exc[s] = Math.min(1, Math.max(state.exc[s], amount));
     },
+    /** 'round': a burst from every corner post; 'win': fountains, flames and confetti for the winner. */
+    pyro(kind, side = null) {
+      if (reduced) return;
+      pyro.fire(kind, kind === 'win' && side ? sidePosts[side] : postTops, now());
+    },
     setLights(mode, winner = null) {
       if (state.lights === mode && state.winner === winner) return;
+      if (state.lights === 'winner' && mode !== 'winner') pyro.sweep();
       state.lights = mode;
       state.winner = winner;
       if (mode === 'winner' && winner) {

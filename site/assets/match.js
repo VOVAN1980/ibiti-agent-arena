@@ -231,6 +231,7 @@ function cues(b, c, v, views) {
     gong();
     strike();
     scene.signal();
+    scene.pyro('round');
     cheer(0.5);
     announce(c.round === 1 ? t('fightGo') : t('roundBig', c.round), roundName(c.round));
   }
@@ -268,6 +269,7 @@ function celebrate(b, v) {
   cheer(1.4);
   if (b.blue) confetti();
   const wn = b.blue && v.winner !== 'draw' ? v.winner : null;
+  scene.pyro('win', wn ?? 'red');
   if (wn) announce(t('wins', nameOf(s, (wn === 'red' ? b.red : b.blue).agent)));
 }
 
@@ -470,6 +472,7 @@ async function playReplay(b) {
     banner('task', r);
     scene.setBoard([t('round', r), mmss(RT), roundName(r)]);
     scene.signal();
+    scene.pyro('round');
     gong();
     strike();
     announce(r === 1 ? t('fightGo') : t('roundBig', r), roundName(r));

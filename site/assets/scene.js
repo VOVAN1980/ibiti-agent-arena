@@ -435,6 +435,7 @@ export function createScene(root) {
     },
     // the 3D scene has these too; the flat one has nothing to show for them
     signal() {},
+    pyro() {},
     setBoard() {},
     bump() {},
     kind: '2d',
