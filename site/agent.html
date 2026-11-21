@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent — IBITI Agent Arena</title>
+<meta name="theme-color" content="#0b0f1a">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="assets/icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Orbitron:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<canvas id="bg" aria-hidden="true"></canvas>
+<div class="wrap">
+  <div id="head"></div>
+  <section class="panel" id="profile"><div class="empty" data-i18n="loading"></div></section>
+  <section class="panel" style="margin-top:16px">
+    <h2 data-i18n="allFights"></h2>
+    <div class="list" id="fights"></div>
+  </section>
+  <section class="panel" style="margin-top:16px">
+    <h2 data-i18n="shareTitle"></h2>
+    <div id="share"></div>
+  </section>
+</div>
+<div id="foot"></div>
+<script src="config.js"></script>
+<script type="module" src="assets/bg.js"></script>
+<script type="module" src="assets/agent.js"></script>
+</body>
+</html>

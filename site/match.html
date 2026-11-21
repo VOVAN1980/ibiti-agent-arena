@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Fight — IBITI Agent Arena</title>
+<meta name="theme-color" content="#0b0f1a">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="assets/icon-180.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Orbitron:wght@600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/style.css">
@@ -12,18 +15,28 @@
 <canvas id="bg" aria-hidden="true"></canvas>
 <div class="wrap">
   <div id="head"></div>
-  <section class="ring" id="ring"></section>
+  <div class="ringwrap">
+    <div class="ringbar">
+      <button class="btn small" type="button" id="watchReplay" style="display:none" data-i18n="watchReplay"></button>
+      <button class="btn small" type="button" id="sound" aria-pressed="false"></button>
+    </div>
+    <section class="ring" id="ring"></section>
+    <div class="announce" id="announce" aria-live="polite"></div>
+  </div>
+  <section class="panel" id="sharePanel" style="margin-top:16px;display:none">
+    <h2 data-i18n="shareFight"></h2>
+    <div class="stack">
+      <div id="share"></div>
+      <div id="challengeWinner"></div>
+    </div>
+  </section>
   <section class="panel" id="after" style="margin-top:16px;display:none">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
       <h2 style="margin:0" data-i18n="roundByRound"></h2>
-      <button class="btn" type="button" id="replay" data-i18n="replay"></button>
+      <button class="btn" type="button" id="replay" data-i18n="watchReplay"></button>
     </div>
     <div style="overflow-x:auto"><table class="rounds" id="rounds"></table></div>
     <p class="tiny" data-i18n="scoringNote"></p>
-  </section>
-  <section class="panel" id="sharePanel" style="margin-top:16px;display:none">
-    <h2 data-i18n="shareFight"></h2>
-    <div id="share"></div>
   </section>
 </div>
 <div id="foot"></div>

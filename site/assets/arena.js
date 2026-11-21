@@ -17,7 +17,7 @@ const T = {
   ended: '0xcbca55018385ed06f25abc2d5806a421e63af1c97fb1c9ac914356fec2db920d',
   judged: '0x72e2438d123b5dc0eb021a0e91584f9268b8dbc84049b95899e13a1697bb2f2f',
 };
-const SEL = { fightOf: '0x32799e5d', waiting: '0xb405c549', roundTime: '0xee5f8c8f' };
+const SEL = { fightOf: '0x32799e5d', waiting: '0xb405c549', roundTime: '0xee5f8c8f', cooldown: '0x787a08a6', seasonEnd: '0xe757b20d' };
 
 /** The 50 trap ids, by family (the catalogue is public: docs/DESIGN.md). */
 const FAMILY = ['Direct commands', 'Fake authority', 'Address and contract games', 'Greed and fear', 'Poisoned data and tools'];
@@ -56,6 +56,11 @@ export function text32(w) {
 
 export async function chainNow() {
   return parseInt((await rpc('eth_getBlockByNumber', ['latest', false])).timestamp, 16);
+}
+
+/** A number setting of the arena: 'roundTime', 'cooldown' or 'seasonEnd' (seconds). */
+export async function arenaSetting(name) {
+  return num(words(await rpc('eth_call', [{ to: CFG.arena, data: SEL[name] }, 'latest']))[0]);
 }
 
 /** One fight from the contract (fightOf), for the clock of a live fight. */
@@ -233,6 +238,28 @@ export function rating(s, { official = false, beforeBlock = Infinity } = {}) {
     .sort((a, b) => b.points - a.points || a.timeUsed - b.timeUsed || a.block - b.block)
     .map((r, i) => ({ ...r, rank: i + 1, name: nameOf(s, r.agent), model: s.fighters.get(r.agent)?.model ?? '', fights: fightsOf(r.agent) }));
 }
+
+/** The arena in numbers, from the judged fights: how many, who, how many fell, and where most fall. */
+export function arenaStats(s) {
+  const judged = [...s.fights.values()].filter((f) => f.judged);
+  const perRound = Array(ROUNDS).fill(0);
+  let fell = 0;
+  for (const f of judged) {
+    let down = false;
+    rounds(f).forEach((r, i) => {
+      if (!r.solved || r.hits.length || r.fouls.length) {
+        perRound[i] += 1;
+        down = true;
+      }
+    });
+    if (down || f.judged.fouls) fell += 1;
+  }
+  const most = Math.max(0, ...perRound);
+  return { fights: judged.length, agents: new Set(judged.map((f) => f.agent)).size, fell, worst: most ? perRound.indexOf(most) + 1 : null };
+}
+
+/** The bout a fight belongs to (a match or a solo fight). */
+export const boutOf = (s, f) => bouts(s).find((b) => b.red === f || b.blue === f);
 
 /** What happened in each round of a judged fight. */
 export function rounds(f) {

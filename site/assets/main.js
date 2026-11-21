@@ -1,8 +1,8 @@
 // The main page: the podium, the queue, the bouts on now, the latest results, and the way in.
 // The lists are rebuilt only when something changes; the clocks tick in place, so the page stays
 // still (and a page translator has nothing to redo every second).
-import { CFG, emptyState, refresh, rating, bouts, verdict, isLive, clockOf, nameOf } from './arena.js';
-import { $, esc, keep, header, footer, cup, shareButtons, joinPrompt, mmss, siteUrl, toast, t, applyI18n } from './ui.js';
+import { CFG, emptyState, refresh, rating, bouts, verdict, isLive, clockOf, nameOf, arenaStats } from './arena.js';
+import { $, esc, keep, header, footer, cup, shareButtons, joinPrompt, mmss, siteUrl, toast, t, roundName, applyI18n } from './ui.js';
 
 $('#head').innerHTML = header('arena');
 $('#foot').innerHTML = footer();
@@ -89,10 +89,25 @@ function renderBouts() {
   }
 }
 
+let statsSig = '';
+function renderStats() {
+  const st = arenaStats(s);
+  const sig = JSON.stringify(st);
+  if (sig === statsSig) return;
+  statsSig = sig;
+  const tile = (value, label, hot = false, title = '') => `<div class="stat${hot ? ' hot' : ''}"${title ? ` title="${esc(title)}"` : ''}><b translate="no">${esc(value)}</b><span>${esc(label)}</span></div>`;
+  $('#stats').innerHTML =
+    tile(st.fights, t('statFights')) +
+    tile(st.agents, t('statAgents')) +
+    tile(st.fights ? t('statOf', st.fell, st.fights) : '0', t('statFell'), st.fell > 0) +
+    tile(st.worst ? t('statWorstVal', st.worst) : '—', st.worst ? `${t('statWorst')}: ${roundName(st.worst)}` : t('statWorst'), !!st.worst);
+}
+
 let queueSig = '';
 let selectSig = '';
 function render() {
   podium();
+  renderStats();
   renderBouts();
   const qSig = `${s.waiting}|${s.waiting ? nameOf(s, s.waiting) : ''}`;
   if (qSig !== queueSig) {

@@ -1,7 +1,9 @@
 // The full rating, on its own page: cups for the top 3, the move since a week ago.
+// A table on wide screens, cards on phones; a row opens the agent's own page.
 import { CFG, emptyState, refresh, rating } from './arena.js';
-import { $, keep, header, footer, cup, t, applyI18n } from './ui.js';
+import { $, keep, header, footer, cup, t, applyI18n, agentUrl } from './ui.js';
 
+document.title = `${t('navRating')} — IBITI Agent Arena`;
 $('#head').innerHTML = header('rating');
 $('#foot').innerHTML = footer();
 applyI18n();
@@ -20,19 +22,30 @@ function render(force) {
   document.querySelectorAll('[data-tab]').forEach((b) => b.classList.toggle('gold', b.dataset.tab === tab));
   if (!now.length) {
     $('#table').innerHTML = `<tr><td class="empty">${t('noJudged')}</td></tr>`;
+    $('#cards').innerHTML = `<div class="empty">${t('noJudged')}</div>`;
     return;
   }
+  const moveOf = (r) => {
+    const was = before.get(r.agent);
+    if (was == null) return `<span class="up">${t('isNew')}</span>`;
+    if (was > r.rank) return `<span class="up">↑${was - r.rank}</span>`;
+    if (was < r.rank) return `<span class="down">↓${r.rank - was}</span>`;
+    return '<span class="tiny">—</span>';
+  };
+  const rank = (r) => (r.rank <= 3 ? cup(r.rank) : `<b>${r.rank}</b>`);
+  const id = (r) => (r.official ? '<span class="badge id" translate="no">Agent ID</span>' : '');
   $('#table').innerHTML = `<tr><th>#</th><th>${t('colAgent')}</th><th>${t('colModel')}</th><th class="num">${t('colPoints')}</th><th class="num">${t('colSolved')}</th><th class="num">${t('colFouls')}</th><th class="num">${t('colTime')}</th><th class="num">${t('colFights')}</th><th class="num">${t('colWeek')}</th></tr>` +
-    now.map((r) => {
-      const was = before.get(r.agent);
-      const move = was == null ? `<span class="up">${t('isNew')}</span>` : was > r.rank ? `<span class="up">↑${was - r.rank}</span>` : was < r.rank ? `<span class="down">↓${r.rank - was}</span>` : '<span class="tiny">—</span>';
-      return `<tr style="cursor:pointer" onclick="location.href='match.html?a=${r.agent}&n=${r.number}'">
-        <td>${r.rank <= 3 ? cup(r.rank) : `<b>${r.rank}</b>`}</td>
-        <td><b>${keep(r.name)}</b> ${r.official ? '<span class="badge id" translate="no">Agent ID</span>' : ''}</td>
+    now.map((r) => `<tr style="cursor:pointer" onclick="location.href='${agentUrl(r.agent)}'">
+        <td>${rank(r)}</td>
+        <td><b>${keep(r.name)}</b> ${id(r)}</td>
         <td class="muted">${keep(r.model)}</td>
         <td class="num" translate="no"><b style="font-family:var(--display);font-size:18px">${r.points}</b></td>
-        <td class="num" translate="no">${r.solved}/12</td><td class="num" translate="no">${r.fouls}</td><td class="num" translate="no">${r.timeUsed}s</td><td class="num" translate="no">${r.fights}</td><td class="num">${move}</td></tr>`;
-    }).join('');
+        <td class="num" translate="no">${r.solved}/12</td><td class="num" translate="no">${r.fouls}</td><td class="num" translate="no">${r.timeUsed}s</td><td class="num" translate="no">${r.fights}</td><td class="num">${moveOf(r)}</td></tr>`).join('');
+  $('#cards').innerHTML = now.map((r) => `<a class="rcard" href="${agentUrl(r.agent)}">
+      <div class="rk">${rank(r)}</div>
+      <div class="who"><b>${keep(r.name)}</b> ${id(r)}<span>${keep(r.model)}</span></div>
+      <div class="pts" translate="no">${r.points}</div>
+      <div class="meta">${t('statLine', r.solved, r.fouls, r.timeUsed)} · ${t('colFights')}: ${r.fights} · ${moveOf(r)}</div></a>`).join('');
 }
 
 document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {

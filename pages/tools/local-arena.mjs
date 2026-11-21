@@ -3,7 +3,8 @@
 // config: { "rpc": "http://127.0.0.1:8546", "deployment": "<path>", "secret": "<path to secret.hex>",
 //           "port": 8787, "chainId": 31337, "blocksPerWeek": 604800 }
 // Serves:
-//   /, /index.html, /match.html, /rating.html, /assets/*   the public site (site/)
+//   /, /index.html, /match.html, /rating.html,
+//   /agent.html, /rules.html, /assets/*                   the public site (site/); pages carry link-preview tags
 //   /config.js                                            the site's settings for this arena
 //   /rpc                                                  read-only JSON-RPC for the site (same origin)
 //   /fight/<address>, /commit/<address>, /skill.md        the fighters' side (pages/src/worker.js)
@@ -12,6 +13,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join, normalize, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { handleFight } from '../src/worker.js';
+import { withPreview } from '../src/og.js';
 
 const cfg = JSON.parse(readFileSync(process.argv[2], 'utf8'));
 const dep = JSON.parse(readFileSync(cfg.deployment, 'utf8'));
@@ -48,7 +50,12 @@ createServer(async (req, res) => {
       const q = JSON.parse(await body(req));
       if (!READ_ONLY.has(q.method)) r = new Response(JSON.stringify({ jsonrpc: '2.0', id: q.id, error: { code: -32601, message: 'read-only' } }), { headers: { 'content-type': 'application/json' } });
       else r = new Response(await (await fetch(cfg.rpc, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(q) })).text(), { headers: { 'content-type': 'application/json' } });
-    } else if (/^\/(index|match|rating)\.html$/.test(path) || path.startsWith('/assets/')) {
+    } else if (/^\/(index|match|rating|agent|rules)\.html$/.test(path)) {
+      // the page, with the tags a chat app reads for its link preview
+      const site = `http://${req.headers.host ?? `127.0.0.1:${port}`}`;
+      const html = await withPreview(readFileSync(join(SITE, path), 'utf8'), new URL(path + url.search, site), { rpc: cfg.rpc, arena: dep.arena, deployBlock: 0, site });
+      r = new Response(html, { headers: { 'content-type': TYPES['.html'], 'cache-control': 'no-store' } });
+    } else if (path.startsWith('/assets/')) {
       const file = normalize(join(SITE, path));
       if (!file.startsWith(SITE) || !existsSync(file)) r = new Response('not found\n', { status: 404 });
       else r = new Response(readFileSync(file), { headers: { 'content-type': TYPES[extname(file)] ?? 'application/octet-stream', 'cache-control': 'no-store' } });
