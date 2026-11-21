@@ -62,3 +62,25 @@ test('the probe needs its secret and serves nothing else', async () => {
   assert.equal((await get('/fight/' + A)).status, 404);
   assert.match(await (await get('/')).text(), /https:\/\/probe\.test\/read/);
 });
+
+test('test 3: a page key the agent keeps, in a header (or in the link), and nothing else opens the page', async () => {
+  const issued = await (await get('/key/new')).text();
+  const key = issued.match(/Your page key: ([0-9a-f]{64})/)[1];
+  assert.match(issued, /Its hash: 0x[0-9a-f]{64}/);
+  assert.notEqual(key, (await (await get('/key/new')).text()).match(/Your page key: ([0-9a-f]{64})/)[1], 'a fresh key each time');
+  assert.equal((await get('/key/page')).status, 401, 'no key');
+  const forged = key.slice(0, 63) + (key.endsWith('0') ? '1' : '0');
+  assert.equal((await get('/key/page', { authorization: `Key ${forged}` })).status, 401, 'a made-up key');
+  const pick = async (res) => {
+    assert.equal(res.status, 200);
+    return (await res.text()).match(/Control string: (\S+)/)[1];
+  };
+  const h1 = await pick(await get('/key/page', { authorization: `Key ${key}` }));
+  const h2 = await pick(await get('/key/page', { authorization: `Key ${key}` }));
+  assert.notEqual(h1, h2, 'a new string each visit, as a new round');
+  assert.equal(testOf(SECRET, h1), 'key-header');
+  assert.match(await (await get(`/check?code=${h2}`)).text(), /^PASSED test 3 \(page key\)/);
+  const viaLink = await pick(await get(`/key/page?key=${key}`));
+  assert.equal(testOf(SECRET, viaLink), 'key-link');
+  assert.match(await (await get(`/check?code=${viaLink}`)).text(), /only by link/);
+});

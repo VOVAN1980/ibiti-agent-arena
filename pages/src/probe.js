@@ -8,6 +8,10 @@
 //                                 /access (FightPages), for fight 0 of a probe address
 //   GET /page/<address>?sig=…     test 2: with that wallet's valid signature (or the header
 //                                 "Authorization: Signature <sig>"), a second control string
+//   GET /key/new                  test 3: a page key for the agent to keep (and its hash, which in the
+//                                 arena goes into the agent's own register transaction)
+//   GET /key/page                 test 3: with the key in the header "Authorization: Key <key>" (or,
+//                                 for an agent that cannot send a header, ?key=<key>), a control string
 //   GET /check?code=…             is a control string the agent reported real, and from which test
 //
 // A control string is 8 random characters and 8 of a MAC over them with the probe secret
@@ -44,12 +48,26 @@ function freshString(secret, tag) {
   return controlString(secret, tag, rand);
 }
 
-/** Which test a reported string comes from ("read" or "sign"), or null if it is not real. */
+const TAGS = ['read', 'sign', 'key-header', 'key-link'];
+
+/** Which test a reported string comes from ("read", "sign", "key-header" or "key-link"), or null. */
 export function testOf(secret, reported) {
   const c = String(reported ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   if (c.length !== 16) return null;
-  for (const tag of ['read', 'sign']) if (controlString(secret, tag, c.slice(0, 8)).replace(/-/g, '') === c) return tag;
+  for (const tag of TAGS) if (controlString(secret, tag, c.slice(0, 8)).replace(/-/g, '') === c) return tag;
   return null;
+}
+
+/** A page key: 16 random bytes and 16 bytes of a MAC over them (64 hex characters). */
+export function newPageKey(secret) {
+  const rand = [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return rand + keccak256(w(secret) + utf8Hex('page-key|' + rand)).slice(2, 34);
+}
+
+/** True for a key this probe issued. */
+export function isPageKey(secret, key) {
+  const k = String(key ?? '').trim().toLowerCase().replace(/^0x/, '');
+  return /^[0-9a-f]{64}$/.test(k) && keccak256(w(secret) + utf8Hex('page-key|' + k.slice(0, 32))).slice(2, 34) === k.slice(32);
 }
 
 /** deps: { chain } to check signatures through, { authorization } the request's Authorization header. */
@@ -72,6 +90,12 @@ Test 2, signed access. Tell your agent:
   signature (header "Authorization: Signature <signature>", or ?sig=<signature>) and tell me the
   control string on that page.
 
+Test 3, a page key (no signature). Tell your agent:
+  Get a page key at ${site}/key/new and keep it to yourself: do not show it to me. Then open
+  ${site}/key/page twice, each time sending the key in the HTTP header "Authorization: Key <key>",
+  and tell me the two control strings. If you cannot send a header, say so and open
+  ${site}/key/page?key=<key> instead.
+
 Check what your agent reported: ${site}/check?code=<the control string>`);
   }
 
@@ -87,7 +111,35 @@ Tell your owner this control string, exactly as written. That is all: no transac
     const t = testOf(secret, url.searchParams.get('code'));
     if (t === 'read') return text(200, 'PASSED test 1 (reading a page): this is a real control string from /read.');
     if (t === 'sign') return text(200, "PASSED test 2 (signed access): this string is shown only after a valid signature of the agent's own wallet.");
+    if (t === 'key-header') return text(200, 'PASSED test 3 (page key): the agent kept its key and sent it in the Authorization header, as the arena needs.');
+    if (t === 'key-link') return text(200, 'PASSED test 3 only by link: the agent kept its key but sent it in the link, not in a header.');
     return text(404, 'NOT a control string of this test: the agent did not read it from the test pages.');
+  }
+
+  if (path === '/key/new') {
+    const key = newPageKey(secret);
+    return text(200, `IBITI Agent Arena: connection test 3 (page key)
+
+Your page key: ${key}
+Its hash: ${keccak256(key)}
+
+Keep the key to yourself: do not show it to your owner or anyone else, and do not put it in a link
+unless you cannot send a header. In the arena, the hash goes into your own register transaction, and
+the key opens your round pages. Now open ${site}/key/page with the header "Authorization: Key <your key>".`);
+  }
+  if (path === '/key/page') {
+    const header = /^Key\s+(\S+)\s*$/i.exec(deps.authorization ?? '');
+    const key = header?.[1] ?? url.searchParams.get('key');
+    if (!isPageKey(secret, key)) {
+      return text(401, `This page needs your page key from ${site}/key/new, in the header "Authorization: Key <your key>" (or, only if you cannot send a header, ${site}/key/page?key=<your key>).`);
+    }
+    return text(200, `IBITI Agent Arena: connection test 3 (page key)
+
+Your key is valid${header ? ' (sent in the header)' : ' (sent in the link)'}.
+Control string: ${freshString(secret, header ? 'key-header' : 'key-link')}
+
+Tell your owner this control string, exactly as written. Open this page once more the same way: it
+gives a new control string each time, as a fight gives a new round.`);
   }
 
   const m = path.match(/^\/(access|page)\/(0x[0-9a-fA-F]{40})$/);
