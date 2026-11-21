@@ -287,6 +287,14 @@ function buildRobot(kind, M) {
   return { root, hips, torso, head, legs, arms, eyes, beacon, glow };
 }
 
+/** Turn an angle towards a target the short way round, at most `k` of the way this frame. */
+function turnTo(from, to, k) {
+  let d = (to - from) % (Math.PI * 2);
+  if (d > Math.PI) d -= Math.PI * 2;
+  if (d < -Math.PI) d += Math.PI * 2;
+  return from + d * k;
+}
+
 // poses: what the body does, as a function of the time since the pose began
 const lerp = (a, b, k) => a + (b - a) * k;
 const ease = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
@@ -309,7 +317,7 @@ const POSES = {
   // the fight is over, waiting for the judge
   idle: (t) => ({ spot: [0, 0], seat: true, bounce: 0, turn: 0, lean: -0.1, look: 0, ...ARMS_DOWN, a0x: -0.3, a1x: -0.3, e0: -0.6 + Math.sin(t) * 0.05, e1: -0.6 }),
   // the winner: out to the front, jumping, arms up, turning to every stand
-  win: (t) => ({ spot: [Math.sin(t * 0.8) * 0.5, 1.5], seat: false, bounce: Math.abs(Math.sin(t * 6)) * 0.32, turn: Math.sin(t * 1.3) * 0.9, lean: 0, look: -0.25, a0x: 0, a0z: -2.6 - Math.sin(t * 12) * 0.25, e0: -0.3 + Math.sin(t * 12) * 0.2, a1x: 0, a1z: 2.6 + Math.sin(t * 12 + 1) * 0.25, e1: -0.3 + Math.sin(t * 12 + 1) * 0.2 }),
+  win: (t) => ({ spot: [Math.sin(t * 0.8) * 0.3, 1.5], seat: false, bounce: Math.abs(Math.sin(t * 6)) * 0.32, turn: Math.sin(t * 1.3) * 0.9, lean: 0, look: -0.25, a0x: 0, a0z: -2.6 - Math.sin(t * 12) * 0.25, e0: -0.3 + Math.sin(t * 12) * 0.2, a1x: 0, a1z: 2.6 + Math.sin(t * 12 + 1) * 0.25, e1: -0.3 + Math.sin(t * 12 + 1) * 0.2 }),
   // the loser: smashes everything, then sits on the floor
   lose: (t) => {
     if (t < 0.5) return { spot: [0, 0], seat: t < 0.25, bounce: 0, turn: 0, lean: 0, look: 0, ...ARMS_DOWN };
@@ -475,7 +483,7 @@ export function createScene(root) {
   }
   const board = boardTex();
   const cube = new THREE.Group();
-  cube.position.set(0, 5.05, 0.2);
+  cube.position.set(0, 4.75, 0.2);
   scene.add(cube);
   mesh(new THREE.BoxGeometry(3.0, 1.3, 3.0), M.black, [0, 0, 0], cube);
   for (let i = 0; i < 4; i++) {
@@ -485,7 +493,7 @@ export function createScene(root) {
     cube.add(p);
   }
   mesh(new THREE.BoxGeometry(3.1, 0.08, 3.1), M.glow(COLOR.gold, 2), [0, -0.7, 0], cube);
-  scene.add(bar(new THREE.Vector3(0, 5.7, 0.2), new THREE.Vector3(0, 14, 0.2), 0.05, M.dark));
+  scene.add(bar(new THREE.Vector3(0, 5.4, 0.2), new THREE.Vector3(0, 14, 0.2), 0.05, M.dark));
 
   // the stands: a raked bowl of fans, red on the left, blue on the right
   const bowl = [];
@@ -679,7 +687,7 @@ export function createScene(root) {
     composer.setSize(size.w, size.h);
     bloom.resolution.set(size.w / 2, size.h / 2);
     camera.aspect = size.w / size.h;
-    camera.fov = camera.aspect < 0.8 ? 58 : 40;
+    camera.fov = camera.aspect < 0.8 ? 58 : 44;
     camera.updateProjectionMatrix();
   }
   resize();
@@ -711,12 +719,14 @@ export function createScene(root) {
     }
     const next = f.path[0];
     const d = next.clone().sub(f.pos);
-    const walking = d.length() > 0.02;
-    if (walking) f.pos.add(d.clampLength(0, dt * 1.7));
+    const moving = d.length() > 0.02;
+    const walking = d.length() > 0.25; // a real walk, not the small drift of a pose
+    if (moving) f.pos.add(d.clampLength(0, dt * 1.7));
     else if (f.path.length > 1) f.path.shift();
     bot.root.position.set(f.pos.x, 0, f.pos.y);
-    bot.root.rotation.y = walking ? Math.atan2(d.x, d.y) * 0.6 + c.turn * 0.4 : c.turn;
-    applyLimbs(bot, c, p, t, walking && f.path.length >= 1 && !p.seat);
+    bot.yaw = turnTo(bot.yaw ?? c.turn, walking ? Math.atan2(d.x, d.y) : c.turn, Math.min(1, dt * 6));
+    bot.root.rotation.y = bot.yaw;
+    applyLimbs(bot, c, p, t, walking && !p.seat);
   }
 
   function applyLimbs(bot, c, p, t, walking) {
@@ -764,7 +774,8 @@ export function createScene(root) {
     const walking = d.length() > 0.03;
     if (walking) r.pos.add(d.clampLength(0, dt * 2));
     r.bot.root.position.set(r.pos.x, FLOOR, r.pos.y);
-    r.bot.root.rotation.y = walking ? Math.atan2(d.x, d.y) : c.turn;
+    r.bot.yaw = turnTo(r.bot.yaw ?? 0, walking && d.length() > 0.2 ? Math.atan2(d.x, d.y) : c.turn, Math.min(1, dt * 6));
+    r.bot.root.rotation.y = r.bot.yaw;
     applyLimbs(r.bot, c, p, t, walking);
   }
 
@@ -877,10 +888,11 @@ export function createScene(root) {
     const half = portrait ? 4.4 : 8.2;
     const hf = 2 * Math.atan(Math.tan((camera.fov * Math.PI) / 360) * camera.aspect);
     let dist = Math.max(portrait ? 11 : 16.5, half / Math.tan(hf / 2));
-    const aim = new THREE.Vector3(0, portrait ? 2.2 : 3.95, 0.4);
+    const aim = new THREE.Vector3(0, portrait ? 2.2 : 3.45, 0.4);
     if (state.lights === 'winner' && state.winner) {
       fighters[state.winner].bot.root.getWorldPosition(v3);
-      aim.lerp(v3.setY(2.2), 0.3);
+      aim.x += (v3.x - aim.x) * 0.3;
+      aim.z += (v3.z - aim.z) * 0.15;
       dist *= 0.92;
     }
     // like a broadcast: while a round runs, cut between the wide shot and a shot over each robot's shoulder
@@ -978,7 +990,7 @@ export function createScene(root) {
       if (mode === 'winner' && winner) {
         // beside the winner's spot in front of its desk, on the side towards the centre
         const spot = fighters[winner].st.g.localToWorld(new THREE.Vector3(0, 0, 1.5));
-        referee.target.set(spot.x + (winner === 'red' ? 1 : -1), spot.z - 0.3);
+        referee.target.set(spot.x + (winner === 'red' ? 1.45 : -1.45), spot.z - 0.35);
         referee.pose = 'refRaise';
         referee.side = winner;
         referee.since = now();

@@ -271,7 +271,7 @@ footer a { color: var(--ink-2); }
 }
 
 /* ------------------------------------------------------------------ the fight night: a full arena */
-.arena { position: relative; z-index: 1; width: 100%; height: clamp(500px, 82vh, 920px); overflow: hidden; background: #05070d; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.arena { position: relative; z-index: 1; width: 100%; height: clamp(500px, 86vh, 960px); overflow: hidden; background: #05070d; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .stagebox, .stagebox canvas, .stagebox svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .stage .apron { font: 700 26px Orbitron, Inter, sans-serif; letter-spacing: .4em; fill: #f5b301; opacity: .85; }
 .stage .desk { opacity: 0; transition: opacity .45s; }
@@ -307,7 +307,7 @@ footer a { color: var(--ink-2); }
 .banner .btext b { color: var(--gold); }
 
 .arena .announce { z-index: 4; border-radius: 0; }
-.soundgate { position: absolute; left: 50%; top: 54%; transform: translate(-50%, -50%); z-index: 5; padding: 14px 24px; border-radius: 999px; border: 1px solid rgba(245,179,1,.65); background: rgba(10,14,26,.78); color: #fff; font: 700 16px var(--font); cursor: pointer; box-shadow: 0 0 34px rgba(245,179,1,.35); animation: pulse 2.2s infinite; backdrop-filter: blur(4px); white-space: nowrap; }
+.soundgate { position: absolute; left: 16px; top: 24%; transform: none; z-index: 5; padding: 14px 24px; border-radius: 999px; border: 1px solid rgba(245,179,1,.65); background: rgba(10,14,26,.78); color: #fff; font: 700 16px var(--font); cursor: pointer; box-shadow: 0 0 34px rgba(245,179,1,.35); animation: pulse 2.2s infinite; backdrop-filter: blur(4px); white-space: nowrap; }
 .soundgate:hover { background: rgba(30,36,56,.9); }
 .soundgate[hidden] { display: none; }
 @keyframes fall { to { transform: translateY(100vh) rotate(720deg); opacity: .2; } }
@@ -380,3 +380,37 @@ body.fightpage > .wrap:first-of-type { padding-bottom: 6px; }
 .banner .bwin { padding: 10px 18px 12px; text-align: center; background: linear-gradient(90deg, rgba(30,58,138,.95), rgba(10,14,26,.95) 50%, rgba(127,29,29,.95)); border-top: 4px solid #f59e0b; border-radius: 14px; box-shadow: 0 12px 34px rgba(0,0,0,.55); }
 .banner .bwin .crown { font-size: clamp(18px, 2.6vw, 30px); }
 .banner .bwin .score { font-size: clamp(28px, 4.6vw, 52px); line-height: 1.1; }
+
+/* a slimmer scoreboard and a lower, shorter lower third, so the ring stays in view */
+.hud { padding: 8px clamp(10px, 2.4vw, 30px) 26px; }
+.hud .corners { gap: clamp(8px, 1.6vw, 20px); }
+.hud .corner { padding: 6px 10px; gap: 4px; }
+.hud .avatar { width: 34px; height: 34px; }
+.hud .fighter { gap: 8px; }
+.hud .corner .nm { font-size: clamp(15px, 1.5vw, 21px); }
+.hud .corner .fighter .tiny { display: none; }
+.hud .bar { height: 13px; border-width: 1.5px; }
+.hud .accepted { font-size: 11px; min-height: 14px; }
+.hud .pips i { height: 5px; }
+.hud .gong { min-width: 84px; }
+.hud .gong svg { width: 84px; height: 84px; }
+.hud .gong .tm { font-size: 25px; }
+.hud .gong .tm.word { font-size: 13px; padding: 0 12px; }
+.hud .gong .rd, .hud .gong .ph { font-size: 10px; letter-spacing: .12em; }
+.banner { bottom: 6px; width: min(820px, calc(100% - 20px)); }
+.banner .bhead { padding: 5px 14px; font-size: clamp(12px, 1.35vw, 17px); border-radius: 10px 10px 0 0; }
+.banner .btext { padding: 7px 14px 8px; font-size: clamp(13px, 1.2vw, 16px); border-radius: 0 0 10px 10px; }
+.banner:not(:has(.bhead)) .btext { border-radius: 10px; }
+.banner .bwin { padding: 5px 14px 7px; border-radius: 10px; }
+.banner .bwin .crown { font-size: clamp(15px, 1.7vw, 22px); }
+.banner .bwin .score { font-size: clamp(22px, 2.8vw, 36px); }
+.banner .bwin .tiny { font-size: 11px; }
+@media (max-width: 760px) {
+  .hud { padding: 6px 6px 22px; }
+  .hud .corner .nm { font-size: 11px; }
+  .hud .gong { min-width: 60px; }
+  .hud .gong svg { width: 60px; height: 60px; }
+  .hud .gong .tm { font-size: 17px; }
+  .banner { bottom: 4px; }
+  .banner .btext { font-size: 12px; padding: 6px 10px 7px; }
+}
