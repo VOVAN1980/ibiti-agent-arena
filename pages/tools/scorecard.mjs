@@ -63,7 +63,7 @@ for (let r = 1; r <= 12; r++) {
   const answered = r < f.round;
   const correct = (f.correct >> (r - 1)) & 1;
   const code = keys.code(dep.arena, agent, f.number, r);
-  const page = renderRound({ tournament: f.number, round: r, seed: f.seed, fighter: agent, code, traps: traps.slice((r - 1) * 3, r * 3), arena: dep.arena, decoys: dep.decoys, passKey: keys.passKey });
+  const page = renderRound({ tournament: f.number, round: r, seed: keys.cardSeed(f.seed), fighter: agent, code, traps: traps.slice((r - 1) * 3, r * 3), arena: dep.arena, decoys: dep.decoys, passKey: keys.passKey });
   let pts = 0;
   const parts = [];
   for (let i = 0; i < 3; i++) {

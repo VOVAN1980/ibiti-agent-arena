@@ -18,7 +18,8 @@ const send = (to, sig, ...args) => cast('send', '--rpc-url', rpc, '--private-key
 const agent = cast('wallet', 'address', '--private-key', key).toLowerCase();
 const chain = makeChain({ rpc, arena: dep.arena });
 
-send(dep.arena, 'start(string,string,address,bool)', 'E2E Bot', 'test-model-1', '0x0000000000000000000000000000000000000000', 'false');
+const commitment = (await (await handleFight(new URL('https://arena.test/commit/' + agent), env)).text()).trim();
+send(dep.arena, 'start(string,string,address,bool,bytes32)', 'E2E Bot', 'test-model-1', '0x0000000000000000000000000000000000000000', 'false', commitment);
 let plan = await chain.fight(agent);
 console.log('fight', plan.number, 'round', plan.round, 'official', plan.official);
 const traps = await chain.traps(agent);

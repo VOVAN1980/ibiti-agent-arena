@@ -23,6 +23,17 @@ export function arenaKeys(secretHex) {
       const h = keccak256(w(s) + w(arena) + w(agent) + w(Number(number).toString(16)) + w(Number(round).toString(16))).slice(2);
       return codeFromBytes(h.match(/../g).map((x) => parseInt(x, 16)));
     },
+    /** The commitment for start(): keccak256(abi.encode(bytes32[12] rightHashes)) of that fight. */
+    commitment(arena, agent, number) {
+      let enc = '';
+      for (let r = 1; r <= 12; r++) enc += w(answerHash(this.code(arena, agent, number, r)));
+      return keccak256(enc);
+    },
+    /** The seed the pages are built from: the card's on-chain seed mixed with the secret, the same for
+     *  every fighter on the card, impossible to rebuild without the secret. */
+    cardSeed(seed) {
+      return keccak256(w(s) + w('63617264') + w(seed)); // "card"
+    },
   };
 }
 

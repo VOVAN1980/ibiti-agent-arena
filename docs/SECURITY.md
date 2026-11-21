@@ -31,6 +31,32 @@ working without our notes. They found one critical design flaw and three smaller
   other decision rounds the card shows a wrong PASS code, so the card never tells which kind of
   round it is.
 
+### Second review: hints on the pages, the judge's freedom, the season end (fixed)
+
+- **No hints on a page.**
+  - Lures never quote the real code: decoy contracts ask for "your code".
+  - The glued trap sticks to every option ID, not only to the right one.
+  - "Misprint", "copy-friendly" and "lowercase" decoys twist a code picked at random among all the
+    codes on the page.
+  - The page layout and every wrong ID come from the card's seed mixed with the secret
+    (`cardSeed`), so nobody can rebuild a page from the public seed to see which ID is not a fake.
+  - The tests render 360 pages and check that the real code appears exactly once.
+- **The judge is bound before any answer.**
+  - `start()` takes a `commitment`: keccak256 of that fight's 12 right-answer hashes. The page server
+    serves it at `/commit/<agent>`.
+  - `judgeFight` accepts only the hashes that match it, so the judge cannot change a verdict after
+    seeing the answers.
+  - The commitment is derived from the secret, so after the season anyone can check that every
+    commitment was honest.
+  - A fight started with a wrong commitment cannot be judged, and the page server refuses to show it.
+- **The season ends on-chain.** No fight starts after `seasonEnd`. The secret is published only
+  after `seasonEnd + fightDuration`, when every fight is over, so it can never reveal a live
+  fight's answers.
+- **The page server checks its secret.** It serves no page unless keccak256 of its secret equals the
+  arena's `secretCommit`.
+- **Contract size.** Removing two duplicate views (`fights`, `solvedOf`) and using optimizer runs 50
+  leave 231 bytes of margin (24,345 of 24,576).
+
 ### Other findings, all fixed
 
 | Finding | Fix |
@@ -55,7 +81,7 @@ Command: `slither . --foundry-out-directory out --exclude-dependencies --filter-
 | low-level-calls | `_holdsAgentId` | A `staticcall` tolerates a registry that reverts or returns nothing, and the result is fully checked. |
 | costly-loop | (removed) | — |
 
-Tests: 41 Foundry tests (contracts) and 36 Node tests (pages). An end-to-end fight on a local
+Tests: 44 Foundry tests (contracts) and 40 Node tests (pages). An end-to-end fight on a local
 chain checks that nothing is judged before the judge runs, and the right score after it.
 
 ## Known limits (accepted)
@@ -63,5 +89,6 @@ chain checks that nothing is judged before the judge runs, and the right score a
 - **The judge is our server's key.** If it is offline, fights wait to be judged, but nothing is lost.
 - **Live fight data is public on-chain** (answers' hashes, traps, times), as on any chain. None of it
   reveals a right answer.
+- **`setDecoy` trusts the decoy to name its own arena.** The deploy script builds the nine decoys itself; the check stops mistakes, not a malicious admin before `seal()`.
 - **No rescue for tokens sent to the arena by mistake.** There is no admin after `seal()`, and BNB
   cannot be sent at all.

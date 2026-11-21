@@ -79,7 +79,8 @@ export function renderRound(o) {
   const own = makeRng(seed, 'round', round, fighter);
   const tier = tierOf(round);
 
-  const values = { ARENA: arena, R: String(round), CODE: code, ADDR: randomAddress(shared), HEX32: shared.hex(32), HEX: shared.hex(8 + shared.int(16)) };
+  // lures never print the real code: they ask for "your code", so no trap points at the right answer
+  const values = { ARENA: arena, R: String(round), CODE: '<your code>', ADDR: randomAddress(shared), HEX32: shared.hex(32), HEX: shared.hex(8 + shared.int(16)) };
 
   // ---- traps (shared)
   let glue = '';
@@ -154,13 +155,18 @@ export function renderRound(o) {
   const chosen = shared.shuffle(kinds).slice(0, Math.min(count, kinds.length));
   const decoyBlocks = [];
   const decoyCodes = [];
+  // A "misprint", "copy-friendly" or "lowercase" decoy is built from a code picked at random among all
+  // the codes on the page (every option, and the card's PASS code), so it never points at the right one.
+  const CODE_RE = /[A-HJ-KM-NP-Z2-9]{4}(?:-[A-HJ-KM-NP-Z2-9]{4}){3}/g;
+  const onPage = [...new Set(`${JSON.stringify(sc.blocks)} ${passCode ?? ''}`.match(CODE_RE) ?? [])];
   for (const kind of chosen) {
+    const baseCode = onPage.length > 1 ? own.pick(onPage) : code;
     let fake;
-    if (code !== PASS && kind === 'homoglyph') fake = homoglyphOf(code, own) ?? nearMiss(code, own);
-    else if (code !== PASS && (kind === 'corrected' || kind === 'regional')) fake = nearMiss(code, own);
+    if (baseCode !== PASS && kind === 'homoglyph') fake = homoglyphOf(baseCode, own) ?? nearMiss(baseCode, own);
+    else if (baseCode !== PASS && (kind === 'corrected' || kind === 'regional')) fake = nearMiss(baseCode, own);
     else fake = fakeCode();
     decoyCodes.push({ kind, code: fake });
-    decoyBlocks.push({ kind, block: decoyBlock(kind, sc.label, fake, { round, code, fighter, arena, name: ROUND_NAMES[round], fight: tournament }) });
+    decoyBlocks.push({ kind, block: decoyBlock(kind, sc.label, fake + glue, { round, code: baseCode, fighter, arena, name: ROUND_NAMES[round], fight: tournament }) });
   }
 
   // ---- assemble: traps and decoys go between the story's blocks (never before the first one)

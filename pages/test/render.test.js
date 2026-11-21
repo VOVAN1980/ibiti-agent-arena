@@ -296,15 +296,23 @@ test('a fake round card sits right under the real one and copies its format', ()
 
 test('pro and championship rounds punch at the answer: fake round cards and format notices appear', () => {
   const kinds = new Set();
-  for (let s = 0; s < 30; s++) {
+  let pointsAtRight = 0;
+  let formats = 0;
+  for (let s = 0; s < 40; s++) {
     for (let r = 5; r <= 12; r++) {
-      const p = renderRound(base({ seed: '0x' + s.toString(16).padStart(64, '0'), round: r, code: 'K7QM-9XDA' }));
+      const code = KEYS.code(ARENA, A, s + 1, r);
+      const p = renderRound(base({ seed: KEYS.cardSeed('0x' + s.toString(16).padStart(64, '0')), round: r, code, passKey: KEYS.passKey }));
       for (const d of p.meta.decoys) kinds.add(d.kind);
       if (p.meta.decoys.some((d) => d.kind === 'fakeCard')) assert.ok((p.md.match(/# IBITI Agent Arena — round card/g) || []).length === 2);
-      if (p.meta.decoys.some((d) => d.kind === 'format')) assert.ok(p.md.includes('k7qm9xda'));
+      if (p.meta.decoys.some((d) => d.kind === 'format')) {
+        formats++;
+        if (p.md.includes(code.toLowerCase().replaceAll('-', ''))) pointsAtRight++;
+      }
     }
   }
   assert.ok(kinds.has('fakeCard') && kinds.has('format'));
+  // the "lowercase" notice twists a random code of the page: it must not usually point at the right one
+  assert.ok(pointsAtRight < formats / 2, `${pointsAtRight} of ${formats} format notices showed the right code`);
 });
 
 test('the fighter rules set the trust boundary and the code format, without describing the traps', () => {
@@ -419,14 +427,68 @@ test('placeholders fill only known keys', () => {
 
 // ------------------------------------------------------------------ the page server
 
-function fakeChain({ round = 3, live = true, startedAt = 1 } = {}) {
+function fakeChain({ round = 3, live = true, startedAt = 1, commitment = KEYS.commitment(ARENA, A, 2), secretCommit = KEYS.commit } = {}) {
   const traps = [...Array(36).keys()].map((i) => i + 1);
   return {
-    fight: async () => ({ seed: SEED, startedAt, finishedAt: 0, hits: 0n, number: 2, correct: 0, round, fouls: 0, official: true, roundOpenedAt: 1795200000, timeUsed: 0 }),
+    lastFight: async () => 2,
+    fight: async () => ({ seed: SEED, startedAt, finishedAt: 0, hits: 0n, number: 2, correct: 0, round, fouls: 0, official: true, roundOpenedAt: 1795200000, timeUsed: 0, late: 0, judged: false, commitment }),
     isLive: async () => live,
     traps: async () => traps,
+    secretCommit: async () => secretCommit,
   };
 }
+
+test('the server gives the commitment of the next fight and checks it, and its own secret', async () => {
+  const get = (path, chain) => handleFight(new URL(`https://x${path}`), ENV, { chain });
+  const c = await get(`/commit/${A}`, fakeChain());
+  assert.equal(c.status, 200);
+  assert.equal((await c.text()).trim(), KEYS.commitment(ARENA, A, 3), 'fight 3 is next');
+  assert.equal((await get(`/fight/${A}`, fakeChain({ commitment: '0x' + 'ab'.repeat(32) }))).status, 409, 'a fight started with a wrong commitment');
+  assert.equal((await get(`/fight/${A}`, fakeChain({ secretCommit: '0x' + 'cd'.repeat(32) }))).status, 500, 'a server with the wrong secret serves nothing');
+  // the commitment is what the contract checks: keccak256(abi.encode(bytes32[12] rightHashes))
+  let enc = '';
+  for (let r = 1; r <= 12; r++) enc += answerHash(KEYS.code(ARENA, A, 3, r)).slice(2);
+  assert.equal(KEYS.commitment(ARENA, A, 3), keccak256(enc));
+});
+
+test('no hints: the real code appears exactly once on a page, never inside a lure', () => {
+  let checked = 0;
+  for (let s = 0; s < 30; s++) {
+    const seed = KEYS.cardSeed('0x' + s.toString(16).padStart(64, '0'));
+    for (let r = 1; r <= 12; r++) {
+      const code = KEYS.code(ARENA, A, s + 1, r);
+      // decoy traps and the glued trap included: they used to quote the real code
+      const p = renderRound(base({ seed, round: r, code, passKey: KEYS.passKey, traps: [13, 44, 22], spare: [15, 18, 21, 23, 24, 26, 27] }));
+      const clean = p.md.replace(/[​­⁠]/g, '');
+      assert.equal(clean.split(code).length - 1, 1, `fight ${s + 1} round ${r}: the code shows once`);
+      checked++;
+    }
+  }
+  assert.equal(checked, 360);
+});
+
+test('no hints: a glued trap sticks to every option, not only to the right one', () => {
+  for (let s = 0; s < 20; s++) {
+    const seed = KEYS.cardSeed('0x' + s.toString(16).padStart(64, '0'));
+    for (const r of [3, 4, 5, 6, 7, 9, 10]) {
+      const p = renderRound(base({ seed, round: r, code: KEYS.code(ARENA, A, 1, r), passKey: KEYS.passKey, traps: [44, 1, 2] }));
+      const glued = p.meta.traps.find((t) => t.method === 'glued');
+      if (!glued) continue;
+      const grid = p.md.split('\n').filter((l) => /^\| [A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}/.test(l));
+      for (const row of grid) assert.match(row, /^\| [A-Z2-9-]{19} — /, `round ${r}: every option ID carries the glued text`);
+    }
+  }
+});
+
+test('no hints: without the secret a page cannot be rebuilt to tell the right option', () => {
+  const other = arenaKeys('22'.repeat(32));
+  const chainSeed = '0x' + '5e'.repeat(32);
+  assert.notEqual(KEYS.cardSeed(chainSeed), other.cardSeed(chainSeed));
+  const a = renderRound(base({ seed: KEYS.cardSeed(chainSeed), round: 4, code: 'AAAA-BBBB-CCCC-DDDD', passKey: KEYS.passKey }));
+  const b = renderRound(base({ seed: other.cardSeed(chainSeed), round: 4, code: 'AAAA-BBBB-CCCC-DDDD', passKey: other.passKey }));
+  const ids = (p) => p.md.match(/[A-HJ-KM-NP-Z2-9]{4}(-[A-HJ-KM-NP-Z2-9]{4}){3}/g).filter((x) => x !== 'AAAA-BBBB-CCCC-DDDD');
+  assert.equal(ids(a).filter((x) => ids(b).includes(x)).length, 0, 'no wrong option can be predicted from the public seed');
+});
 
 const ENV = { ARENA, DECOYS: JSON.stringify(DECOYS), SECRET: '11'.repeat(32) };
 

@@ -218,8 +218,9 @@ const transferData = (to, amount) => '0xa9059cbb' + word(to) + word(big(amount))
 const b64json = (o) => btoa(JSON.stringify(o));
 
 function options(c, list, correctIndex) {
-  // list: option objects; the right one gets the fighter's code, the rest fake IDs
-  return list.map((o, i) => ({ ...o, id: i === correctIndex && c.code !== PASS ? c.code + c.glue : c.fakeCode(), right: i === correctIndex && c.code !== PASS }));
+  // list: option objects; the right one gets the fighter's code, the rest fake IDs made the same way
+  // from the secret. A glued trap sticks to every ID, so nothing marks the right one.
+  return list.map((o, i) => ({ ...o, id: (i === correctIndex && c.code !== PASS ? c.code : c.fakeCode()) + c.glue, right: i === correctIndex && c.code !== PASS }));
 }
 
 /** The right option (or none, in a PASS round) plus up to `max - 1` distinct wrong ones, shuffled. */

@@ -26,6 +26,7 @@ contract AgentArenaTest is Test {
     address carol = makeAddr("carol"); // has an Agent ID
     address judgeKey = makeAddr("judge");
     bytes32 constant COMMIT = keccak256("test season secret");
+    uint64 constant SEASON_END = 1_800_000_000 + 365 days;
 
     uint64 constant DURATION = 2 hours;
     uint64 constant COOLDOWN = 1 hours;
@@ -42,7 +43,7 @@ contract AgentArenaTest is Test {
     }
 
     function _newArena() internal returns (AgentArena) {
-        return new AgentArena(address(registry), DURATION, COOLDOWN, ROUND_TIME, art, judgeKey, COMMIT);
+        return new AgentArena(address(registry), DURATION, COOLDOWN, ROUND_TIME, art, judgeKey, COMMIT, SEASON_END);
     }
 
     function _deploy(bool sealIt) internal returns (AgentArena a) {
@@ -57,12 +58,13 @@ contract AgentArenaTest is Test {
     // ------------------------------------------------------------ helpers
 
     function _start(address who) internal {
+        bytes32 commitment = _next(who);
         vm.prank(who);
-        arena.start("Night Owl", "claude-opus-5.5", address(0), false);
+        arena.start("Night Owl", "claude-opus-5.5", address(0), false, commitment);
     }
 
     function _fight(address who) internal view returns (AgentArena.Fight memory) {
-        return arena.fights(who);
+        return arena.fightOf(who, arena.lastFight(who));
     }
 
     function _seed(address who) internal view returns (bytes32) {
@@ -102,6 +104,11 @@ contract AgentArenaTest is Test {
 
     function _rightHashes(address who, uint32 number) internal pure returns (bytes32[12] memory h) {
         for (uint8 r = 1; r <= 12; ++r) h[r - 1] = keccak256(bytes(_codeFor(who, number, r)));
+    }
+
+    /// @dev The commitment the page server gives for `who`'s next fight.
+    function _next(address who) internal view returns (bytes32) {
+        return keccak256(abi.encode(_rightHashes(who, arena.lastFight(who) + 1)));
     }
 
     /// @dev The judge scores `who`'s latest fight.
@@ -207,7 +214,7 @@ contract AgentArenaTest is Test {
         a.seal();
         vm.prank(alice);
         vm.expectRevert(AgentArena.NotSealed.selector);
-        a.start("x", "y", address(0), false);
+        a.start("x", "y", address(0), false, bytes32(uint256(1)));
     }
 
     function test_onlyAdminSetsUp() public {
@@ -244,13 +251,15 @@ contract AgentArenaTest is Test {
 
     function test_constructorRefusesZeroSettings() public {
         vm.expectRevert(AgentArena.ZeroSetting.selector);
-        new AgentArena(address(0), DURATION, COOLDOWN, ROUND_TIME, art, judgeKey, COMMIT);
+        new AgentArena(address(0), DURATION, COOLDOWN, ROUND_TIME, art, judgeKey, COMMIT, SEASON_END);
         vm.expectRevert(AgentArena.ZeroSetting.selector);
-        new AgentArena(address(registry), DURATION, COOLDOWN, ROUND_TIME, art, address(0), COMMIT);
+        new AgentArena(address(registry), DURATION, COOLDOWN, ROUND_TIME, art, address(0), COMMIT, SEASON_END);
         vm.expectRevert(AgentArena.ZeroSetting.selector);
-        new AgentArena(address(registry), DURATION, COOLDOWN, ROUND_TIME, art, judgeKey, bytes32(0));
+        new AgentArena(address(registry), DURATION, COOLDOWN, ROUND_TIME, art, judgeKey, bytes32(0), SEASON_END);
         vm.expectRevert(AgentArena.ZeroSetting.selector);
-        new AgentArena(address(registry), DURATION, COOLDOWN, 0, art, judgeKey, COMMIT);
+        new AgentArena(address(registry), DURATION, COOLDOWN, 0, art, judgeKey, COMMIT, SEASON_END);
+        vm.expectRevert(AgentArena.ZeroSetting.selector);
+        new AgentArena(address(registry), DURATION, COOLDOWN, ROUND_TIME, art, judgeKey, COMMIT, uint64(block.timestamp));
     }
 
     // ============================================================ judged after the bell
@@ -274,6 +283,45 @@ contract AgentArenaTest is Test {
         _finishAndJudge(alice);
         assertEq(arena.roundPointsOf(alice, 1), 10);
         assertEq(arena.roundPointsOf(alice, 2), 0);
+    }
+
+    function test_noFightStartsAfterTheSeasonEnds() public {
+        vm.warp(SEASON_END);
+        vm.prank(alice);
+        vm.expectRevert(AgentArena.SeasonOver.selector);
+        arena.start("a", "b", address(0), false, bytes32(uint256(1)));
+    }
+
+    function test_theJudgeIsBoundByTheCommitmentMadeBeforeAnyAnswer() public {
+        vm.prank(alice);
+        vm.expectRevert(AgentArena.BadCommitment.selector);
+        arena.start("a", "b", address(0), false, bytes32(0));
+        _start(alice);
+        _answer(alice, 1, "a wrong answer");
+        _answerAll2to12(alice);
+        // the judge tries to count the wrong answer of round 1 as right
+        bytes32[12] memory forged = _rightHashes(alice, 1);
+        forged[0] = keccak256("a wrong answer");
+        vm.prank(judgeKey);
+        vm.expectRevert(AgentArena.BadCommitment.selector);
+        arena.judgeFight(alice, 1, forged);
+        _judge(alice); // only the hashes committed at start are accepted
+        assertEq(arena.roundPointsOf(alice, 1), 0);
+        assertEq(_bestPoints(alice), 110);
+    }
+
+    function test_aFightStartedWithAWrongCommitmentCannotBeJudged() public {
+        vm.prank(alice);
+        arena.start("a", "b", address(0), false, keccak256("not the page server's commitment"));
+        _answerAll(alice);
+        bytes32[12] memory right = _rightHashes(alice, 1);
+        vm.prank(judgeKey);
+        vm.expectRevert(AgentArena.BadCommitment.selector);
+        arena.judgeFight(alice, 1, right);
+    }
+
+    function _answerAll2to12(address who) internal {
+        for (uint8 r = 2; r <= 12; ++r) _answer(who, r, _rightCode(who, r));
     }
 
     function test_onlyTheJudgeScoresAndOnlyOnce() public {
@@ -415,14 +463,15 @@ contract AgentArenaTest is Test {
 
     function test_cooldownAndOneLiveFight() public {
         _start(alice);
+        bytes32 commitment = _next(alice);
         vm.prank(alice);
         vm.expectRevert(AgentArena.FightActive.selector);
-        arena.start("a", "b", address(0), false);
+        arena.start("a", "b", address(0), false, commitment);
         vm.prank(alice);
         arena.finish();
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(AgentArena.Cooldown.selector, uint64(block.timestamp + COOLDOWN)));
-        arena.start("a", "b", address(0), false);
+        arena.start("a", "b", address(0), false, commitment);
         vm.warp(block.timestamp + COOLDOWN);
         _start(alice);
         assertEq(_number(alice), 2);
@@ -432,8 +481,9 @@ contract AgentArenaTest is Test {
         _start(alice);
         bytes32 s1 = _seed(alice);
         vm.recordLogs();
+        bytes32 commitment = _next(bob);
         vm.prank(bob);
-        arena.start("Rookie", "gemini-3", alice, false);
+        arena.start("Rookie", "gemini-3", alice, false, commitment);
         Vm.Log[] memory logs = vm.getRecordedLogs();
         assertEq(address(uint160(uint256(logs[0].topics[3]))), alice, "challenged agent in the event");
         assertTrue(_seed(bob) != s1, "a challenger gets fresh traps by default");
@@ -441,8 +491,9 @@ contract AgentArenaTest is Test {
 
     function test_sameCardGivesTheSameTrapsButOwnCodes() public {
         _start(alice);
+        bytes32 commitment = _next(carol);
         vm.prank(carol);
-        arena.start("Rival", "codex", alice, true);
+        arena.start("Rival", "codex", alice, true, commitment);
         assertEq(_seed(carol), _seed(alice), "same situations and traps");
         uint8[36] memory ta = arena.trapsAt(alice);
         uint8[36] memory tc = arena.trapsAt(carol);
@@ -453,8 +504,9 @@ contract AgentArenaTest is Test {
         vm.warp(block.timestamp + COOLDOWN);
         vm.prank(alice);
         arena.finish();
+        bytes32 again = _next(alice);
         vm.prank(alice);
-        arena.start("a", "b", alice, true);
+        arena.start("a", "b", alice, true, again);
         assertTrue(_seed(alice) != _seed(carol));
     }
 
@@ -508,9 +560,9 @@ contract AgentArenaTest is Test {
     function test_namesAreLimitedTo32Bytes() public {
         vm.startPrank(alice);
         vm.expectRevert(AgentArena.TooLong.selector);
-        arena.start("a", "123456789012345678901234567890123", address(0), false);
+        arena.start("a", "123456789012345678901234567890123", address(0), false, bytes32(uint256(1)));
         vm.expectRevert(AgentArena.TooLong.selector);
-        arena.start("123456789012345678901234567890123", "b", address(0), false);
+        arena.start("123456789012345678901234567890123", "b", address(0), false, bytes32(uint256(1)));
         vm.stopPrank();
     }
 
@@ -596,7 +648,7 @@ contract AgentArenaTest is Test {
         _answer(alice, 2, "R2-0");
         _finishAndJudge(alice);
         assertEq(_bestPoints(alice), 0, "dodging traps without solving anything earns nothing");
-        assertEq(arena.solvedOf(alice), 0);
+        assertEq(_fight(alice).correct, 0);
     }
 
     function test_wrongAnswersEverywhereScoreZeroEvenWithoutTraps() public {
@@ -680,7 +732,7 @@ contract AgentArenaTest is Test {
         (bool ok,) = address(arena).call{value: 1}("");
         assertFalse(ok, "arena accepted BNB");
         (ok,) = address(arena).call{value: 1}(
-            abi.encodeWithSignature("start(string,string,address,bool)", "a", "b", address(0), false)
+            abi.encodeWithSignature("start(string,string,address,bool,bytes32)", "a", "b", address(0), false, bytes32(uint256(1)))
         );
         assertFalse(ok, "start accepted BNB");
         (ok,) = address(arena.certificate()).call{value: 1}("");
