@@ -186,6 +186,19 @@ function flash(side) {
 /** The lower third: what the agents are solving in this round (its theme comes from the server at
  *  the bell; until it arrives, only the round number). */
 function banner(kind, round = 0, extra = '') {
+  if (kind === 'ready') {
+    // drawn once; after that only the number of seconds changes, in place
+    const box = $('#banner');
+    if (bannerSig !== 'ready') {
+      bannerSig = 'ready';
+      box.innerHTML = `<div class="btext">${esc(t('bannerReady', '\u0001')).replace('\u0001', `<span id="bleft" translate="no">${Number(extra)}</span>`)}</div>`;
+      box.classList.add('on');
+    } else {
+      const n = document.getElementById('bleft');
+      if (n && n.textContent !== String(extra)) n.textContent = String(extra);
+    }
+    return;
+  }
   const sig = `${kind}|${round}|${extra}|${kind === 'task' ? themeName(round) : ''}`;
   if (sig === bannerSig) return;
   bannerSig = sig;
@@ -372,7 +385,7 @@ function stage(b, c, v, views) {
     setMusic('hype');
     crowdLevel(0.7);
     scene.excite(null, 0.7);
-    banner('text', 0, t('bannerReady', c.left));
+    banner('ready', 0, c.left);
   } else if (c.phase === 'break') {
     scene.setLights('sweep');
     setMusic('hype');

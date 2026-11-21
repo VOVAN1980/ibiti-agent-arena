@@ -325,7 +325,48 @@ function turnTo(from, to, k) {
 // A fighter working the crowd walks laps round its own half of the ring: the corners of the lap in its
 // station's own coordinates (x to its right, z out in front of the desk), every leg of it clear of the
 // desk; blue's lap is the mirror image, started at another corner so the two never move as one.
-const LAP = [[0, 1.4], [-0.9, 2.5], [-1.8, 3.1], [-3.0, 2.0], [-3.0, 0.9], [-1.6, 1.2]];
+// Each fighter has its own lap, pace and manner: how often it stops at a corner to play to the stands,
+// what it does there, and how it carries its arms on the way.
+const LAPS = {
+  red: { at: [[0, 1.4], [-0.9, 2.5], [-1.8, 3.1], [-3.0, 2.0], [-3.0, 0.9], [-1.6, 1.2]], speed: 1.25, stops: 45, show: ['pump', 'flex', 'wave'], stroll: 'wave' },
+  blue: { at: [[0, 1.4], [1.7, 1.3], [2.9, 1.0], [2.9, 2.3], [1.6, 3.1], [0.8, 2.4]], speed: 1.05, stops: 35, show: ['point', 'pump', 'box'], stroll: 'box' },
+};
+const lerpTo = (a, b, k) => a + (b - a) * k;
+/** What the arms do out in the ring. */
+const GESTURES = {
+  // one arm up, waving to the stands, the arms taking turns
+  wave: (t) => {
+    const right = Math.floor(t / 3) % 2 === 0;
+    const up = { x: -0.15, z: 2.5, e: -0.55 + Math.sin(t * 7) * 0.35 };
+    const down = { x: 0.05, z: 0.12, e: -0.25 };
+    const r = right ? up : down;
+    const l = right ? down : up;
+    return { a0x: r.x, a0z: -r.z, e0: r.e, a1x: l.x, a1z: l.z, e1: l.e };
+  },
+  // a boxer on the move: the guard up, a jab from each hand in turn
+  box: (t) => {
+    const k = (t * 2.2) % 2;
+    const jab = (from) => {
+      const x = (k - from + 2) % 2;
+      return x < 0.35 ? Math.sin((x / 0.35) * Math.PI) : 0;
+    };
+    const a = jab(0);
+    const b = jab(1);
+    return { a0x: lerpTo(-1.0, -1.55, a), a0z: -0.25, e0: lerpTo(-2.1, -0.15, a), a1x: lerpTo(-1.0, -1.55, b), a1z: 0.25, e1: lerpTo(-2.1, -0.15, b) };
+  },
+  // both fists pumping over the head
+  pump: (t) => {
+    const k = (Math.sin(t * 7) + 1) / 2;
+    return { a0x: -0.3, a0z: -2.88, e0: -0.3 - 0.4 * k, a1x: -0.3, a1z: 2.88, e1: -0.3 - 0.4 * (1 - k), bounce: Math.abs(Math.sin(t * 5)) * 0.1 };
+  },
+  // showing its arms: both out to the sides, the forearms up
+  flex: (t) => {
+    const k = Math.sin(t * 4) * 0.12;
+    return { a0x: -1.5, a0z: -1.45, e0: -1.9 + k, a1x: -1.5, a1z: 1.45, e1: -1.9 + k };
+  },
+  // pointing at the stands with one hand, the other at its hip
+  point: (t) => ({ a0x: -1.75 + Math.sin(t * 3) * 0.08, a0z: -0.15, e0: -0.08, a1x: 0.1, a1z: 0.5, e1: -1.3 }),
+};
 
 // poses: what the body does, as a function of the time since the pose began
 const lerp = (a, b, k) => a + (b - a) * k;
@@ -334,23 +375,27 @@ const ARMS_DOWN = { a0x: 0, a0z: -0.1, e0: -0.15, a1x: 0, a1z: 0.1, e1: -0.15 };
 
 const POSES = {
   // out in front of the desk, walking about and pumping the crowd
-  hype: (t) => {
-    // walking about, waving to the stands with one arm at a time
-    const right = Math.floor(t / 3) % 2 === 0;
-    const wave = Math.sin(t * 7);
-    const up = { x: -0.15, z: 2.5, e: -0.55 + wave * 0.35 };
-    const down = { x: 0.05, z: 0.12, e: -0.25 };
-    const r = right ? up : down;
-    const l = right ? down : up;
-    return { spot: [0, 1.4], lap: true, seat: false, bounce: 0, turn: 0, lean: 0, look: -0.1, a0x: r.x, a0z: -r.z, e0: r.e, a1x: l.x, a1z: l.z, e1: l.e };
+  hype: (t, side, gesture) => {
+    // on its lap in its own manner, or stopped at a corner playing to the stands
+    const arms = GESTURES[gesture ?? LAPS[side === 'blue' ? 'blue' : 'red'].stroll](t);
+    return { spot: [0, 1.4], lap: true, seat: false, bounce: 0, turn: 0, lean: gesture === 'flex' ? -0.08 : 0, look: gesture ? -0.2 : -0.1, ...arms };
   },
   // at the desk, hands near the keyboard, waiting for the bell
   guard: (t) => ({ spot: [0, 0], reach: 'keys', seat: true, bounce: 0, turn: 0, lean: 0.1, look: 0.1, a0x: 0.45, a0z: 0.48, e0: -1.85 + Math.sin(t * 3) * 0.05, a1x: 0.45, a1z: -0.48, e1: -1.85 + Math.sin(t * 3 + 1) * 0.05 }),
   // typing
-  work: (t) => ({ spot: [0, 0], reach: 'keys', seat: true, bounce: 0, turn: 0, lean: 0.2, look: 0.3 + Math.sin(t * 1.7) * 0.05, a0x: 0.45 + Math.sin(t * 21) * 0.04, a0z: 0.5, e0: -1.91 + Math.sin(t * 25) * 0.1, a1x: 0.45 + Math.sin(t * 19 + 2) * 0.04, a1z: -0.5, e1: -1.91 + Math.sin(t * 23 + 1) * 0.1 }),
+  work: (t, side) => {
+    const calm = side === 'blue';
+    const q = calm ? 0.72 : 1; // blue types evenly, red hammers the keys
+    return { spot: [0, 0], reach: 'keys', seat: true, bounce: 0, turn: 0, lean: calm ? 0.1 : 0.26, look: (calm ? 0.2 : 0.34) + Math.sin(t * (calm ? 0.9 : 1.7)) * (calm ? 0.12 : 0.05), a0x: 0.45 + Math.sin(t * 21 * q) * 0.04, a0z: 0.5, e0: -1.91 + Math.sin(t * 25 * q) * 0.1, a1x: 0.45 + Math.sin(t * 19 * q + 2) * 0.04, a1z: -0.5, e1: -1.91 + Math.sin(t * 23 * q + 1) * 0.1 };
+  },
   // answered in time: up from the chair, both arms high
-  done: (t) => {
+  done: (t, side) => {
     const pump = (Math.sin(t * 7) + 1) / 2;
+    if (side === 'blue') {
+      // one fist driven up again and again, the other hand at its hip
+      const k = (Math.sin(t * 9) + 1) / 2;
+      return { spot: [0, 0], seat: false, bounce: Math.abs(Math.sin(t * 4.5)) * 0.07, turn: Math.sin(t * 1.4) * 0.3, lean: -0.03, look: -0.05, a0x: -0.4, a0z: -2.7, e0: -0.2 - 0.9 * k, a1x: 0.1, a1z: 0.5, e1: -1.3 };
+    }
     return { spot: [0, 0], seat: false, bounce: Math.abs(Math.sin(t * 5)) * 0.12, turn: Math.sin(t * 2) * 0.2, lean: -0.05, look: 0, a0x: -0.3, a0z: -2.88, e0: -0.3 - 0.4 * pump, a1x: -0.3, a1z: 2.88, e1: -0.3 - 0.4 * (1 - pump) };
   },
   // out of time: head in its hands
@@ -780,19 +825,42 @@ export async function createScene(root) {
 
   function moveFighter(f, side, t, dt) {
     const bot = f.bot;
-    const tt = t - f.since;
-    const p = reduced ? POSES.guard(0) : POSES[f.pose](tt);
+    // the two never share a clock: blue's poses run a little ahead (not the loser's, whose furniture
+    // flies on its own times)
+    const tt = t - f.since + (side === 'blue' && f.pose !== 'lose' ? 0.7 : 0);
+    const p = reduced ? POSES.guard(0) : POSES[f.pose](tt, side, f.gesture);
     const c = applyBody(bot, p, Math.min(1, dt * 10));
     // walk to the spot of the pose (or to the next corner of its lap), round the desk when the way
     // crosses it, on the side it is nearer to
     let goal;
+    let showing = false;
     if (p.lap && !reduced) {
-      const mirror = side === 'red' ? 1 : -1;
-      if (f.lapI == null) f.lapI = side === 'red' ? 0 : 2;
-      const corner = (i) => new THREE.Vector2(LAP[i % LAP.length][0] * mirror, LAP[i % LAP.length][1]);
-      if (f.pos.distanceTo(corner(f.lapI)) < 0.3) f.lapI++; // on to the next corner without stopping
-      goal = corner(f.lapI);
-    } else goal = new THREE.Vector2(...p.spot);
+      const lap = LAPS[side];
+      if (f.lapI == null) {
+        f.lapI = 0;
+        f.dice = side === 'red' ? 7 : 23; // its own run of chances
+      }
+      const corner = (i) => new THREE.Vector2(...lap.at[i % lap.at.length]);
+      if (f.showUntil && t >= f.showUntil) {
+        // the show is over: on to the next corner
+        f.showUntil = 0;
+        f.gesture = null;
+        f.lapI++;
+      } else if (!f.showUntil && f.pos.distanceTo(corner(f.lapI)) < 0.3) {
+        // at a corner of its lap: now and then it stops there and plays to the stands
+        f.dice = (f.dice * 16807) % 2147483647;
+        if (f.dice % 100 < lap.stops) {
+          f.showUntil = t + 1.8 + (f.dice % 17) / 10;
+          f.gesture = lap.show[f.dice % lap.show.length];
+        } else f.lapI++;
+      }
+      showing = !!f.showUntil;
+      goal = showing ? f.pos.clone() : corner(f.lapI);
+    } else {
+      f.showUntil = 0;
+      f.gesture = null;
+      goal = new THREE.Vector2(...p.spot);
+    }
     if (!f.path.length || !f.path[f.path.length - 1].equals(goal)) {
       const crossing = (f.pos.y < 0.4 && goal.y > 0.95) || (f.pos.y > 0.95 && goal.y < 0.4);
       const round = (crossing && goal.y > 0.95 ? goal.x : f.pos.x) < 0 ? -1.05 : 1.05;
@@ -807,9 +875,26 @@ export async function createScene(root) {
     // camera, riding with the robot, turned into a shaking picture)
     const toSpot = f.path.length === 1;
     if (!toSpot && dist < 0.02) f.path.shift();
-    else f.pos.add(d.clampLength(0, dt * (p.lap && toSpot ? 1.2 : toSpot ? Math.min(1.7, dist * 7) : 1.7)));
+    else {
+      // it turns before it goes: the more it still has to turn, the slower it steps
+      let pace = 1;
+      if (walking && bot.yaw != null) {
+        let off = (Math.atan2(d.x, d.y) - bot.yaw) % (Math.PI * 2);
+        if (off > Math.PI) off -= Math.PI * 2;
+        if (off < -Math.PI) off += Math.PI * 2;
+        pace = Math.max(0.08, Math.cos(Math.min(Math.abs(off), Math.PI / 2)));
+      }
+      f.pos.add(d.clampLength(0, dt * pace * (p.lap && toSpot ? LAPS[side].speed : toSpot ? Math.min(1.7, dist * 7) : 1.7)));
+    }
     bot.root.position.set(f.pos.x, 0, f.pos.y);
-    bot.yaw = turnTo(bot.yaw ?? c.turn, walking ? Math.atan2(d.x, d.y) : c.turn, Math.min(1, dt * 6));
+    // facing the way it walks; stopped for a show, facing the stands (away from the ring's centre)
+    let facing = c.turn;
+    if (walking) facing = Math.atan2(d.x, d.y);
+    else if (showing) {
+      const centre = f.st.g.worldToLocal(new THREE.Vector3(0, FLOOR, 0));
+      facing = Math.atan2(f.pos.x - centre.x, f.pos.y - centre.z);
+    }
+    bot.yaw = turnTo(bot.yaw ?? c.turn, facing, Math.min(1, dt * 6));
     bot.root.rotation.y = bot.yaw;
     if (bot.pose) {
       let reach = null;
@@ -1126,7 +1211,7 @@ export async function createScene(root) {
       const f = fighters[side];
       const at = f.bot.root.getWorldPosition(new THREE.Vector3());
       const facing = f.bot.root.getWorldDirection(new THREE.Vector3());
-      return { x: at.x, z: at.z, fx: facing.x, fz: facing.z, pose: f.pose };
+      return { x: at.x, z: at.z, fx: facing.x, fz: facing.z, pose: f.pose, gesture: f.gesture ?? null };
     },
     excite(side, amount) {
       for (const s of side ? [side] : ['red', 'blue']) state.exc[s] = Math.min(1, Math.max(state.exc[s], amount));
