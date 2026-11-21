@@ -66,7 +66,7 @@ export default {
         const html = await withPreview(await page.text(), new URL(path + url.search, url.origin), { rpc: env.RPC_URL, arena: env.ARENA, deployBlock: Number(env.DEPLOY_BLOCK ?? 0), site: url.origin });
         return new Response(html, { headers: { ...NO_STORE, 'content-type': 'text/html; charset=utf-8' } });
       }
-      return await handleFight(url, { ...env, SITE_URL: env.SITE_URL ?? url.origin });
+      return await handleFight(url, { ...env, SITE_URL: env.SITE_URL ?? url.origin }, { authorization: request.headers.get('authorization') });
     } catch {
       return new Response('The chain could not be read. Try again in a few seconds.\n', { status: 502, headers: NO_STORE });
     }

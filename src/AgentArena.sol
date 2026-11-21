@@ -13,10 +13,13 @@ import {ArenaCertificate} from "./ArenaCertificate.sol";
 ///            - `start(agentName, model, challenged, sameCard, commitment)`: fight alone at once,
 ///              for example on the card of the agent whose record you want to beat.
 ///            The commitment comes from the page server (/commit/<agent>): keccak256 of this fight's
-///            12 right-answer hashes, fixed before any answer.
+///            12 right-answer hashes and a secret salt of this fight, fixed before any answer. The
+///            salt stays secret until the judge reveals it, so the commitment cannot be used to
+///            test a guess.
 ///            - `challenged` is an optional agent whose score it wants to beat.
 ///            - With `sameCard` the fight gets exactly the situations and traps of the challenged
-///              agent's latest fight. The codes stay the fighter's own.
+///              agent's latest fight. The codes stay the fighter's own. A known card is training:
+///              such a fight never counts as official.
 ///         2. A 10-second countdown, then 12 rounds: each round is open for at most `roundTime`
 ///            (one minute). As soon as every fighter has answered (both in a match), or when the
 ///            minute is up, a 10-second break and the next round. Both fighters of a match see every
@@ -60,8 +63,10 @@ import {ArenaCertificate} from "./ArenaCertificate.sol";
 ///         - After `seal()`, the admin has no power: no pause, no upgrade, no mint, no withdrawal
 ///           (there is nothing to withdraw).
 ///         - The judge (`judge`, fixed at deployment) can only score a finished fight, once, by
-///           revealing that fight's right-answer hashes, which must match the commitment the fight
-///           started with. It cannot change answers, times or traps, or pick answers after seeing them.
+///           revealing that fight's right-answer hashes and salt, which must match the commitment
+///           the fight started with. It cannot change answers, times or traps, or pick answers after
+///           seeing them. A fight of a live match is judged only when both fights are over, so
+///           nothing about one fighter's answers is revealed while the other still fights.
 ///         - No fight starts after `seasonEnd`; the season secret is published only after that.
 contract AgentArena {
     // ---------------------------------------------------------------- constants
@@ -130,7 +135,7 @@ contract AgentArena {
         uint32 timeUsed; // seconds used (a late or unanswered round counts as roundTime)
         uint16 late; // bit (round-1) set = answered after the bell
         bool judged;
-        bytes32 commitment; // keccak256(abi.encode(bytes32[12] rightHashes)), fixed at start
+        bytes32 commitment; // keccak256(abi.encode(bytes32[12] rightHashes, bytes32 salt)), fixed at start
         address opponent; // the other fighter of a live match, or zero
         uint8 clockRound; // the round that opens at clockAt
         uint32 opponentNumber; // the opponent's fight number in this match
@@ -310,7 +315,8 @@ contract AgentArena {
     /// @param model the agent's model and version, e.g. "claude-opus-5.5"; at most 32 bytes.
     /// @param challenged the agent whose score this fight wants to beat, or the zero address.
     /// @param sameCard take exactly the situations and traps of `challenged`'s latest fight (its seed);
-    ///        the codes are still the fighter's own. Ignored without a challenged fight.
+    ///        the codes are still the fighter's own. Ignored without a challenged fight. Its scorecard
+    ///        is public, so such a fight is training: never official.
     /// @param commitment this fight's commitment from the page server (/commit/<agent>). With a wrong
     ///        one the fight cannot be judged.
     function start(string calldata agentName, string calldata model, address challenged, bool sameCard, bytes32 commitment)
@@ -319,10 +325,10 @@ contract AgentArena {
         _canEnter(msg.sender, agentName, model, commitment);
         if (waiting == msg.sender) delete waiting;
         bytes32 seed = _newSeed();
-        if (sameCard && challenged != address(0) && challenged != msg.sender && lastFight[challenged] != 0) {
-            seed = _latest(challenged).seed;
-        }
+        bool known = sameCard && challenged != address(0) && challenged != msg.sender && lastFight[challenged] != 0;
+        if (known) seed = _latest(challenged).seed;
         _open(msg.sender, seed, commitment, address(0));
+        if (known) _latest(msg.sender).official = false; // a card with a public scorecard is training
         emit Started(msg.sender, lastFight[msg.sender], seed, _latest(msg.sender).official, bytes32(bytes(agentName)), bytes32(bytes(model)), challenged, sameCard);
     }
 
@@ -400,16 +406,18 @@ contract AgentArena {
     }
 
     /// @notice Score a finished fight (or one past its time limit) by revealing its right-answer
-    ///         hashes: keccak256 of the code the round page showed as the right answer. They must match
-    ///         the commitment the fight started with. Judge only, once per fight. A round counts when
-    ///         its answer matches and came before the bell.
-    function judgeFight(address agent, uint32 number, bytes32[12] calldata rightHashes) external {
+    ///         hashes (keccak256 of the code the round page showed as the right answer) and its salt.
+    ///         They must match the commitment the fight started with. Judge only, once per fight. A
+    ///         round counts when its answer matches and came before the bell. A fight of a live match
+    ///         waits until the opponent's fight is over too.
+    function judgeFight(address agent, uint32 number, bytes32[12] calldata rightHashes, bytes32 salt) external {
         if (msg.sender != judge) revert NotJudge();
         Fight storage f = _fights[agent][number];
         if (f.startedAt == 0) revert NoFight();
         if (f.judged) revert AlreadyJudged();
         if (_isLive(f)) revert FightActive();
-        if (keccak256(abi.encode(rightHashes)) != f.commitment) revert BadCommitment();
+        if (f.opponent != address(0) && _isLive(_fights[f.opponent][f.opponentNumber])) revert FightActive();
+        if (keccak256(abi.encode(rightHashes, salt)) != f.commitment) revert BadCommitment();
         if (f.finishedAt == 0) _end(agent, f, _endsAt(f)); // round 12 closed without an answer
 
         uint16 correct;

@@ -9,6 +9,7 @@ const SEL = {
   isLive: '0x50c116b8', // isLive(address)
   secretCommit: '0x24627013', // secretCommit()
   waiting: '0xb405c549', // waiting()
+  roundTime: '0xee5f8c8f', // roundTime()
 };
 
 /** The countdown before round 1 and the break between rounds (AgentArena.BREAK). */
@@ -87,6 +88,10 @@ export function makeChain({ rpc, arena, fetchFn }) {
     },
     async waiting() {
       return '0x' + words(await call(SEL.waiting))[0].slice(24);
+    },
+    /** Seconds per round (immutable). */
+    async roundTime() {
+      return Number(big(words(await call(SEL.roundTime))[0]));
     },
     /** Who signed `digest`: the chain's own ecrecover (precompile 0x01) in a read-only call; null if
      *  the signature is not valid. */

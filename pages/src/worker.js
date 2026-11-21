@@ -35,6 +35,14 @@ function text(status, body) {
   return new Response(body + '\n', { status, headers: { ...HEADERS, 'content-type': 'text/plain; charset=utf-8' } });
 }
 
+/** The arena's round time, read from the contract once per arena (it is immutable). */
+const ROUND_TIMES = new Map();
+async function roundTimeOf(chain, arena) {
+  if (!ROUND_TIMES.has(arena)) ROUND_TIMES.set(arena, await chain.roundTime());
+  return ROUND_TIMES.get(arena);
+}
+
+/** deps: { chain } to read the arena through, { authorization } the request's Authorization header. */
 export async function handleFight(url, env, deps = {}) {
   if (url.pathname === '/skill.md') {
     const body = skillMd({ arena: env.ARENA, chainId: env.CHAIN_ID ?? 56, site: env.SITE_URL ?? url.origin, roundTime: Number(env.ROUND_TIME ?? 60) });
@@ -67,23 +75,29 @@ export async function handleFight(url, env, deps = {}) {
   }
 
   const f = await chain.fight(agent);
-  if (f.startedAt === 0) {
-    const waiting = (await chain.waiting()).toLowerCase() === agent;
-    return text(404, waiting
-      ? 'You are in the queue, waiting for an opponent. When one joins, the match starts after a 10-second countdown: reload this page.'
-      : 'This agent has not stepped into the ring yet. Get your commitment at /commit/<your address>, then call join(agentName, model, commitment) to wait for an opponent, or start(agentName, model, challenged, sameCard, commitment) to fight alone.');
+  if (f.startedAt === 0 || !(await chain.isLive(agent))) {
+    // between fights: in the queue for the next one (asked first: an old fight is over), or not
+    if ((await chain.waiting()).toLowerCase() === agent) {
+      return text(404, 'You are in the queue, waiting for an opponent. When one joins, the match starts after a 10-second countdown: reload this page.');
+    }
+    return f.startedAt === 0
+      ? text(404, 'This agent has not stepped into the ring yet. Get your commitment at /commit/<your address>, then call join(agentName, model, commitment) to wait for an opponent, or start(agentName, model, challenged, sameCard, commitment) to fight alone.')
+      : text(410, 'This fight is over. The scorecard is on the site.');
   }
-  if (!(await chain.isLive(agent))) return text(410, 'This fight is over. The scorecard is on the site.');
   if (f.round < 1 || f.round > 12) return text(410, 'All 12 rounds are answered. The scorecard is on the site.');
   if (f.commitment.toLowerCase() !== keys.commitment(env.ARENA, agent, f.number).toLowerCase()) {
     return text(409, 'This fight was started with a wrong commitment, so it cannot be judged. Call finish(), wait for the cooldown, get the commitment at /commit/<your address> and start again.');
   }
-  if (!(await signedBy(chain, { arena: env.ARENA, chainId, agent, number: f.number, sig: url.searchParams.get('sig') }))) {
-    return text(401, `These pages are for the fighter only. Sign the request at /access/<your address> with your own wallet (EIP-712, eth_signTypedData_v4; it moves no funds and grants no permission), then open /fight/<your address>?sig=<the signature>. A signature is good for one fight (this is fight #${f.number}): sign it before you start.`);
+  // the signature: in the Authorization header (best: it stays out of links and logs), or in ?sig=
+  // for an agent that can only open links
+  const header = /^(?:Signature|Bearer)\s+(0x[0-9a-fA-F]+)\s*$/.exec(deps.authorization ?? '');
+  const sig = header?.[1] ?? url.searchParams.get('sig');
+  if (!(await signedBy(chain, { arena: env.ARENA, chainId, agent, number: f.number, sig }))) {
+    return text(401, `These pages are for the fighter only. Sign the request at /access/<your address> with your own wallet (EIP-712, eth_signTypedData_v4; it moves no funds and grants no permission). Then send the signature with every request as the header "Authorization: Signature <the signature>", or, if you can only open links, open /fight/<your address>?sig=<the signature> and keep that link to yourself. A signature is good for one fight (this is fight #${f.number}): sign it before you start.`);
   }
 
-  // the fixed clock: a 10-second countdown, then each round open for one minute, 10-second breaks
-  const roundTime = Number(env.ROUND_TIME ?? 60);
+  // the fixed clock: a 10-second countdown, then each round open for roundTime, 10-second breaks
+  const roundTime = await roundTimeOf(chain, env.ARENA);
   const now = await chain.now();
   const c = clockOf(f, now, roundTime);
   if (c.phase === 'over') return text(410, 'This fight is over. The scorecard is on the site.');
@@ -125,7 +139,7 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     try {
-      return await handleFight(url, env);
+      return await handleFight(url, env, { authorization: request.headers.get('authorization') });
     } catch (e) {
       return text(502, 'The chain could not be read. Try again in a few seconds.');
     }

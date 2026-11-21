@@ -63,6 +63,8 @@ contract Deploy is Script {
         string memory decoyJson = vm.serializeAddress(d, vm.toString(uint256(DECOY_TRAPS[8])), decoys[8]);
         vm.serializeString(o, "decoys", decoyJson);
         vm.serializeUint(o, "chainId", block.chainid);
+        // the arena's first block: the judge and the site read its events from here, not from block 0
+        vm.serializeUint(o, "block", block.number);
         string memory json = vm.serializeAddress(o, "arena", address(arena));
         string memory out = vm.envOr("OUT", string.concat("./deployments/", vm.toString(block.chainid), ".json"));
         vm.writeJson(json, out);

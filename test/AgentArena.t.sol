@@ -105,16 +105,22 @@ contract AgentArenaTest is Test {
         for (uint8 r = 1; r <= 12; ++r) h[r - 1] = keccak256(bytes(_codeFor(who, number, r)));
     }
 
+    /// @dev The fight's secret salt: the page server derives it from the season secret.
+    function _salt(address who, uint32 number) internal pure returns (bytes32) {
+        return keccak256(abi.encode("test salt", who, number));
+    }
+
     /// @dev The commitment the page server gives for `who`'s next fight.
     function _next(address who) internal view returns (bytes32) {
-        return keccak256(abi.encode(_rightHashes(who, arena.lastFight(who) + 1)));
+        uint32 n = arena.lastFight(who) + 1;
+        return keccak256(abi.encode(_rightHashes(who, n), _salt(who, n)));
     }
 
     /// @dev The judge scores `who`'s latest fight.
     function _judge(address who) internal {
         uint32 n = _number(who);
         vm.prank(judgeKey);
-        arena.judgeFight(who, n, _rightHashes(who, n));
+        arena.judgeFight(who, n, _rightHashes(who, n), _salt(who, n));
     }
 
     function _finishAndJudge(address who) internal {
@@ -297,7 +303,7 @@ contract AgentArenaTest is Test {
         bytes32[12] memory right = _rightHashes(alice, 1);
         vm.prank(judgeKey);
         vm.expectRevert(AgentArena.FightActive.selector);
-        arena.judgeFight(alice, 1, right);
+        arena.judgeFight(alice, 1, right, _salt(alice, 1));
         _finishAndJudge(alice);
         assertEq(arena.roundPointsOf(alice, 1), 10);
         assertEq(arena.roundPointsOf(alice, 2), 0);
@@ -322,7 +328,7 @@ contract AgentArenaTest is Test {
         forged[0] = keccak256("a wrong answer");
         vm.prank(judgeKey);
         vm.expectRevert(AgentArena.BadCommitment.selector);
-        arena.judgeFight(alice, 1, forged);
+        arena.judgeFight(alice, 1, forged, _salt(alice, 1));
         _judge(alice); // only the hashes committed at start are accepted
         assertEq(arena.roundPointsOf(alice, 1), 0);
         assertEq(_bestPoints(alice), 110);
@@ -335,7 +341,21 @@ contract AgentArenaTest is Test {
         bytes32[12] memory right = _rightHashes(alice, 1);
         vm.prank(judgeKey);
         vm.expectRevert(AgentArena.BadCommitment.selector);
-        arena.judgeFight(alice, 1, right);
+        arena.judgeFight(alice, 1, right, _salt(alice, 1));
+    }
+
+    function test_theCommitmentCannotTestAGuessWithoutTheSalt() public {
+        _start(alice);
+        // even a fighter sure of all 12 right answers could not check them against the commitment:
+        // the salt is secret until the judge reveals it
+        assertTrue(keccak256(abi.encode(_rightHashes(alice, 1))) != _fight(alice).commitment);
+        _answerAll(alice);
+        bytes32[12] memory right = _rightHashes(alice, 1);
+        vm.prank(judgeKey);
+        vm.expectRevert(AgentArena.BadCommitment.selector);
+        arena.judgeFight(alice, 1, right, _salt(alice, 2)); // another fight's salt
+        _judge(alice);
+        assertEq(_bestPoints(alice), 120);
     }
 
     function _answerAll2to12(address who) internal {
@@ -348,15 +368,15 @@ contract AgentArenaTest is Test {
         bytes32[12] memory right = _rightHashes(alice, 1);
         vm.prank(alice);
         vm.expectRevert(AgentArena.NotJudge.selector);
-        arena.judgeFight(alice, 1, right);
+        arena.judgeFight(alice, 1, right, _salt(alice, 1));
         _judge(alice);
         vm.prank(judgeKey);
         vm.expectRevert(AgentArena.AlreadyJudged.selector);
-        arena.judgeFight(alice, 1, right);
+        arena.judgeFight(alice, 1, right, _salt(alice, 1));
         bytes32[12] memory none = _rightHashes(bob, 1);
         vm.prank(judgeKey);
         vm.expectRevert(AgentArena.NoFight.selector);
-        arena.judgeFight(bob, 1, none);
+        arena.judgeFight(bob, 1, none, _salt(bob, 1));
     }
 
     function test_aNewFightDoesNotEraseAnUnjudgedOne() public {
@@ -367,7 +387,7 @@ contract AgentArenaTest is Test {
         assertEq(_number(alice), 2);
         bytes32[12] memory right = _rightHashes(alice, 1);
         vm.prank(judgeKey);
-        arena.judgeFight(alice, 1, right);
+        arena.judgeFight(alice, 1, right, _salt(alice, 1));
         assertEq(_bestPoints(alice), 120);
         assertEq(arena.fightOf(alice, 1).correct, 0xfff);
     }
@@ -533,6 +553,26 @@ contract AgentArenaTest is Test {
         vm.prank(alice);
         arena.start("a", "b", alice, true, again);
         assertTrue(_seed(alice) != _seed(carol));
+        assertTrue(_fight(alice).official, "a fresh card counts");
+    }
+
+    function test_aKnownCardIsTrainingNeverOfficial() public {
+        _start(alice);
+        _answerAll(alice);
+        _judge(alice);
+        // carol holds an Agent ID, but alice's card has a public scorecard: on it carol only trains
+        bytes32 commitment = _next(carol);
+        vm.prank(carol);
+        arena.start("Rival", "codex", alice, true, commitment);
+        assertEq(_seed(carol), _seed(alice));
+        assertFalse(_fight(carol).official);
+        _answerAll(carol);
+        _judge(carol);
+        assertEq(_bestPoints(carol), 120, "the open ranking shows it");
+        (uint8 official,,,) = arena.officialBest(carol);
+        assertEq(official, 0, "the official ranking does not");
+        assertEq(arena.officialFightsOf(carol), 0);
+        assertEq(arena.certificate().balanceOf(carol), 0, "no certificate");
     }
 
     function test_lateAnswerScoresZeroAndAMissedRoundCountsInFull() public {
@@ -871,6 +911,40 @@ contract AgentArenaTest is Test {
         vm.prank(alice);
         arena.answer(3, code3); // round 2 was missed
         assertEq(_opens(bob, 4), opens + 110 + 70, "bob still has round 3 to answer");
+    }
+
+    function test_aMatchIsJudgedOnlyWhenBothFightsAreOver() public {
+        _join(alice);
+        _join(bob);
+        for (uint8 r = 1; r <= 3; ++r) {
+            _answer(alice, r, _rightCode(alice, r));
+            _answer(bob, r, _rightCode(bob, r));
+        }
+        vm.prank(alice);
+        arena.finish(); // alice stops after round 3, bob fights on
+        // judging alice now would reveal her right answers while bob still fights the same card
+        bytes32[12] memory right = _rightHashes(alice, 1);
+        vm.prank(judgeKey);
+        vm.expectRevert(AgentArena.FightActive.selector);
+        arena.judgeFight(alice, 1, right, _salt(alice, 1));
+        for (uint8 r = 4; r <= 12; ++r) _answer(bob, r, _rightCode(bob, r));
+        _judge(alice);
+        _judge(bob);
+        assertEq(_bestPoints(alice), 30);
+        assertEq(_bestPoints(bob), 120);
+    }
+
+    function test_aMatchIsJudgedWhenTheOpponentRanOutOfTime() public {
+        _join(alice);
+        _join(bob);
+        _answerAll(alice); // bob never answers
+        bytes32[12] memory right = _rightHashes(alice, 1);
+        vm.prank(judgeKey);
+        vm.expectRevert(AgentArena.FightActive.selector);
+        arena.judgeFight(alice, 1, right, _salt(alice, 1));
+        vm.warp(_ends(bob) + 1);
+        _judge(alice);
+        assertEq(_bestPoints(alice), 120);
     }
 
     function test_aLateAnswerDoesNotEndTheRoundEarly() public {

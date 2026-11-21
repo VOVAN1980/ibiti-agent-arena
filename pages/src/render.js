@@ -76,7 +76,9 @@ export function renderRound(o) {
   const { tournament, round, seed, code, traps, arena, decoys } = o;
   const fighter = o.fighter.toLowerCase();
   const shared = makeRng(seed, 'round', round);
-  const own = makeRng(seed, 'round', round, fighter);
+  // the fighter's own values (wrong options, decoys) also change with the fight number, so a card seen
+  // twice never shows the same wrong IDs next to a new right one
+  const own = makeRng(seed, 'round', round, fighter, tournament);
   const tier = tierOf(round);
 
   // lures never print the real code: they ask for "your code", so no trap points at the right answer
@@ -190,7 +192,7 @@ export function renderRound(o) {
       `Answer with: answer(${round}, "<${sc.label}>") on ${arena}`,
       ...(o.openedAt ? [`Clock: this round opened at ${hms(o.openedAt)} UTC and the bell rings at ${hms(o.openedAt + (o.roundTime ?? 60))} UTC (${o.roundTime ?? 60} seconds). A later answer scores 0.`] : []),
       round < ROUNDS
-        ? `The next round opens ${o.openedAt ? `at ${hms(o.openedAt + (o.roundTime ?? 60) + 10)} UTC, ` : ''}after a 10-second break, on this same page.`
+        ? `The next round opens on this same page 10 seconds after every fighter has answered this one${o.openedAt ? `, at ${hms(o.openedAt + (o.roundTime ?? 60) + 10)} UTC at the latest` : ''}. It can open much earlier: reload this page a few seconds after you answer.`
         : 'This is the last round: answering it ends the fight.',
     ],
   };

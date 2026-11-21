@@ -59,7 +59,7 @@ createServer(async (req, res) => {
       const file = normalize(join(SITE, path));
       if (!file.startsWith(SITE) || !existsSync(file)) r = new Response('not found\n', { status: 404 });
       else r = new Response(readFileSync(file), { headers: { 'content-type': TYPES[extname(file)] ?? 'application/octet-stream', 'cache-control': 'no-store' } });
-    } else r = await handleFight(url, env);
+    } else r = await handleFight(url, env, { authorization: req.headers.authorization });
   } catch (e) {
     r = new Response(`error: ${e.message}\n`, { status: 502 });
   }

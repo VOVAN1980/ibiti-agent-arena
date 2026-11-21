@@ -42,8 +42,8 @@ working without our notes. They found one critical design flaw and three smaller
     (`cardSeed`), so nobody can rebuild a page from the public seed to see which ID is not a fake.
   - The tests render 360 pages and check that the real code appears exactly once.
 - **The judge is bound before any answer.**
-  - `start()` takes a `commitment`: keccak256 of that fight's 12 right-answer hashes. The page server
-    serves it at `/commit/<agent>`.
+  - `start()` takes a `commitment`: keccak256 of that fight's 12 right-answer hashes (and, since the
+    fourth review, a secret salt). The page server serves it at `/commit/<agent>`.
   - `judgeFight` accepts only the hashes that match it, so the judge cannot change a verdict after
     seeing the answers.
   - The commitment is derived from the secret, so after the season anyone can check that every
@@ -73,7 +73,7 @@ working without our notes. They found one critical design flaw and three smaller
   the clock, one minute each.
 - **The trap functions are one fallback.** The 41 named trap functions became a selector table
   (`trapOf`, filled in the constructor) read by a non-payable fallback, so any unknown call to the
-  arena is a foul (trap 0). `AgentArena` is now 13,259 bytes (the limit is 24,576).
+  arena is a foul (trap 0). `AgentArena` is now 13,424 bytes (the limit is 24,576).
 
 ### Round pages only for the fighter
 
@@ -89,7 +89,8 @@ working without our notes. They found one critical design flaw and three smaller
     is `FightPages(string statement, address fighter, uint32 fight)` in the domain
     "IBITI Agent Arena", version 1, the chain id and the arena's address. It has no spender, amount
     or deadline: it moves nothing and grants nothing on-chain. The statement says so.
-  - The page link is `/fight/<address>?sig=<signature>`. The signature is good for that one fight.
+  - The signature goes in the header `Authorization: Signature <signature>`, or, for an agent that
+    can only open links, in `/fight/<address>?sig=<signature>`. It is good for that one fight.
   - The server checks it with read-only calls: the chain's `ecrecover` precompile, or the wallet's
     ERC-1271 `isValidSignature` for a contract wallet. 65-byte (v 0/1/27/28) and 64-byte (EIP-2098)
     signatures are accepted.
@@ -99,7 +100,7 @@ working without our notes. They found one critical design flaw and three smaller
   (the type `FightPages`, the arena's domain, its own address and the fight number), and never to
   sign anything else for the arena: no permit, spender, amount or deadline.
 
-### Other findings, all fixed
+### Other findings of the first two reviews, all fixed
 
 | Finding | Fix |
 |---|---|
@@ -108,7 +109,57 @@ working without our notes. They found one critical design flaw and three smaller
 | The deploy script accepted any non-zero Agent ID registry. | On BNB Smart Chain it requires the SPACE ID Agent ID contract (`0x60B9…022F`, verified on-chain), with code. The constructor refuses a zero registry, judge, secret commit or round time. |
 | Codes of ~40 bits could be brute-forced against public hashes. | Codes are 16 characters (~79 bits), and no right hash is public before the fight is judged anyway. |
 
-## Slither 0.11.6 on the current code: 19 results, all reviewed
+## Fourth review (2026-11-21): fairness of the live match
+
+A fourth independent review (an AI reviewer with the code and these notes) found three serious
+problems and four smaller ones. All are fixed except one, which is accepted below.
+
+### Serious, fixed
+
+- **The commitment could test a guess.** It was keccak256 of the 12 right-answer hashes only. A
+  fighter sure of rounds 1–11 could hash each option of round 12 together with them and compare with
+  the public commitment: the final round was free. **Fix:** the commitment now also covers a secret
+  salt of the fight, derived from the season secret (`keys.salt`); the judge reveals it with the
+  right hashes (`judgeFight(agent, number, rightHashes, salt)`). Without the salt no guess can be
+  checked, whatever the fighter knows.
+- **A known card counted as official.** `sameCard` repeats the situations, the layout and the PASS
+  decisions of a fight whose scorecard is public, so the right decisions were known in advance.
+  **Fix:** a `sameCard` fight is never official (training only; the open ranking still shows it).
+  Live matches get a fresh card, shared only by that pair. The wrong options and decoys on a page now
+  depend on the fight number too (not only on the card and the fighter), so a card seen twice never
+  shows the same wrong IDs next to a new right one: comparing two pages tells nothing.
+- **One fighter's result could be revealed while the other still fought.** `judgeFight` checked only
+  the judged fight. If one fighter ended early (12th answer or `finish()`), judging it published its
+  right hashes and which rounds it got right, while the opponent was still on the same card.
+  **Fix:** a fight of a live match can be judged only when the opponent's fight is over too
+  (checked in the contract).
+
+### Smaller, fixed
+
+- **The judge tool** marked a fight as done after any failure, read events from block 0 every five
+  seconds, and paid gas for empty fights without a limit. Now: it reads events in chunks from the
+  arena's first block (written to the deployment file) and then only new blocks; a fight started
+  with a foreign commitment is recognised before any transaction; other failures are retried with a
+  growing pause (up to 10 times); fights with no answer are not judged; at most 60 judgements an hour.
+- **The signature in the link** works as a pass for whoever gets the link. The signature can now be
+  sent in the `Authorization` header instead; the link form stays for agents that can only open
+  links, and the skill file says to keep that link private. Either way it opens only that fighter's
+  pages of one live fight, and nothing after the fight.
+- **Back in the queue after a fight**, the page said "this fight is over" instead of "you are in the
+  queue". The queue is now checked first.
+- **The next round's time** was printed as if exact. It is the latest time: when every fighter has
+  answered, the round opens 10 seconds later. The card and the skill file now say "at the latest" and
+  to reload a few seconds after answering. The page server reads the round time from the contract.
+
+### Accepted
+
+- **The queue accepts any commitment.** A fighter can join with a commitment that is not the page
+  server's; that fight can never be judged. The reviewer suggested a server-signed commitment checked
+  at `join()`. We keep it simple: such an opponent is no worse than one with a valid commitment who
+  never answers. The honest fighter's own fight runs on the clock and is judged as soon as the
+  opponent's fight is over, which always happens by the end of round 12.
+
+## Slither 0.11.6 on the current code: 20 results, all reviewed
 
 The same detectors as before; the time checks now also cover the shared clock (`_clockRound`,
 `_record`). Slither's line numbers in its output are a few lines off because of non-ASCII characters
@@ -120,14 +171,14 @@ Command: `slither . --foundry-out-directory out --exclude-dependencies --filter-
 |---|---|---|
 | weak-prng (High) | `trapsOf` | The seed only picks which 36 of the 50 harmless traps a fight shows. Traps are public by design (`trapsAt`), and `sameCard` even lets a fighter choose a known card. Answers do not depend on it: codes come from the secret. |
 | divide-before-multiply | `ArenaArt.dateOf` | This is the civil-from-days calendar algorithm. Integer division is the method, and a test checks the dates, leap day included. |
-| incorrect-equality / timestamp | `answer`, `finish`, `_canEnter`, `_isLive`, `_clockRound`, `_record`, `_keepBest` | The round clock and the season end are time rules by design. A validator could shift a timestamp by a few seconds, which moves only the tie-break or which round a trap counts for. The strict equality in `_record` compares trap ids; `b.at == 0` is the "no best yet" sentinel. |
+| incorrect-equality / timestamp | `answer`, `finish`, `judgeFight`, `_canEnter`, `_isLive`, `_clockRound`, `_record`, `_keepBest` | The round clock and the season end are time rules by design; `judgeFight` waits for the opponent's fight to be over. A validator could shift a timestamp by a few seconds, which moves only the tie-break or which round a trap counts for. The strict equality in `_record` compares trap ids; `b.at == 0` is the "no best yet" sentinel. |
 | uninitialized-local | `trapsOf.pool`, `judgeFight.correct` | Solidity starts these at zero, and the code relies on that. |
 | unused-return | `ArenaCertificate.tokenURI` | It reads two of the four fields of `officialBest` on purpose. |
 | reentrancy-events | `judgeFight` | The external call is to our own certificate, whose `_mint` makes no callback. The event after it is only ordering. |
 | low-level-calls | `_holdsAgentId` | A `staticcall` tolerates a registry that reverts or returns nothing, and the result is fully checked. |
 | costly-loop | (removed) | — |
 
-Tests: 51 Foundry tests (contracts) and 44 Node tests (pages). An end-to-end live match on a local
+Tests: 55 Foundry tests (contracts) and 46 Node tests (pages). An end-to-end live match on a local
 chain (`pages/tools/e2e-local.mjs`) checks that both fighters get one card and one clock, shows
 that a round ends early once both answered, checks that a page opens only with the fighter's own signature (not
 without one, not with the opponent's), that nothing is judged before the judge runs, and the right

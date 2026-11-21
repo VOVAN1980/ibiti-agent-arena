@@ -23,11 +23,16 @@ export function arenaKeys(secretHex) {
       const h = keccak256(w(s) + w(arena) + w(agent) + w(Number(number).toString(16)) + w(Number(round).toString(16))).slice(2);
       return codeFromBytes(h.match(/../g).map((x) => parseInt(x, 16)));
     },
-    /** The commitment for start(): keccak256(abi.encode(bytes32[12] rightHashes)) of that fight. */
+    /** The fight's secret salt: without it the commitment cannot be used to test a guess (the 12th
+     *  answer, say, once the first 11 are known). The judge reveals it with the right hashes. */
+    salt(arena, agent, number) {
+      return keccak256(w(s) + w('73616c74') + w(arena) + w(agent) + w(Number(number).toString(16))); // "salt"
+    },
+    /** The commitment for start(): keccak256(abi.encode(bytes32[12] rightHashes, bytes32 salt)). */
     commitment(arena, agent, number) {
       let enc = '';
       for (let r = 1; r <= 12; r++) enc += w(answerHash(this.code(arena, agent, number, r)));
-      return keccak256(enc);
+      return keccak256(enc + w(this.salt(arena, agent, number)));
     },
     /** The seed the pages are built from: the card's on-chain seed mixed with the secret, the same for
      *  every fighter on the card, impossible to rebuild without the secret. */

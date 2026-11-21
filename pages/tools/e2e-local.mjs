@@ -78,7 +78,7 @@ for (let r = 1; r <= 12; r++) {
 for (const [i, f] of fighters.entries()) {
   const before = await chain.fight(f.agent);
   const hashes = Array.from({ length: 12 }, (_, k) => answerHash(keys.code(dep.arena, f.agent, plans[i].number, k + 1)));
-  cast('send', '--rpc-url', rpc, '--private-key', judgeKey, dep.arena, 'judgeFight(address,uint32,bytes32[12])', f.agent, String(plans[i].number), `[${hashes.join(',')}]`);
+  cast('send', '--rpc-url', rpc, '--private-key', judgeKey, dep.arena, 'judgeFight(address,uint32,bytes32[12],bytes32)', f.agent, String(plans[i].number), `[${hashes.join(',')}]`, keys.salt(dep.arena, f.agent, plans[i].number));
   const after = await chain.fight(f.agent);
   const points = Number(cast('call', '--rpc-url', rpc, dep.arena, 'pointsOf(address)(uint8)', f.agent));
   console.log(`${i === 0 ? 'Red ' : 'Blue'}: before the judge correct=${before.correct}; after: solved ${after.correct.toString(2).split('1').length - 1}/12, fouls ${after.fouls}, points ${points}, time ${after.timeUsed}s`);
