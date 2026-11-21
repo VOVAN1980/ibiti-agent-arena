@@ -22,7 +22,7 @@ export default {
   accepted: '✓ 답변 접수 · {0}초', afterBell: '종료 벨 이후 답변 · {0}초',
   answeredIn: '{0}라운드: {1}초 만에 답변', noAnswerRound: '{0}라운드: 답변 없음', roundsAnswered: '{0}라운드 답변', noAnswers: '답변 없음',
   getReady: '준비', countdown: '카운트다운', round: '{0}라운드 / 12', breakTitle: '휴식', nextRound: '다음: {0}라운드',
-  finalBellTitle: '경기 종료', judgedOnChain: '온체인 판정 완료', waitingJudge: '심판 대기 중', over: '종료', end: '끝',
+  finalBellTitle: '경기 종료', judgedOnChain: '온체인 판정 완료', waitingJudge: '심판 대기 중', waitLock: "심판이 계획을 봉인하는 중", waitLockShort: "심판 대기 중", notStarted: "시작 안 됨", cancelledTitle: "시작되지 않음", cancelledText: "이 경기는 첫 공이 울리기 전에 취소되었습니다. 심판이 계획을 봉인하기 전에 선수가 떠났거나 시즌에 남은 시간이 없었습니다. 열린 라운드가 없고, 채점도 없으며, 시도 횟수도 차감되지 않습니다.", noRoundOpened: "이 경기에서는 열린 라운드가 없어 다시 볼 내용이 없습니다.", over: '종료', end: '끝',
   fightGo: '파이트!', roundBig: '{0}라운드',
   soundOn: '소리 켜짐', soundOff: '소리 꺼짐',
   wins: '🏆 {0} 승리', winsOnTime: '🏆 {0} 시간 차 승리', draw: '무승부',

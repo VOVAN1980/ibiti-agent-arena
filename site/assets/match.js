@@ -6,7 +6,7 @@
 // right answers or traps appears before the judge's verdict.
 // The scoreboard is rebuilt only when something changes; between reads of the chain only the clock
 // and the bars move, in place (so a page translator has nothing to redo every second).
-import { CFG, emptyState, refresh, bouts, verdict, clockOf, nameOf, rounds, trapName, ROUNDS } from './arena.js';
+import { CFG, emptyState, refresh, bouts, verdict, clockOf, fightName, fightOf, openedRounds, rounds, trapName, ROUNDS } from './arena.js';
 
 /** Fouls as the judge counted them; a silent fight is never judged, so its fouls are not known. */
 const foulsOf = (j) => (j.empty ? '—' : j.fouls);
@@ -193,7 +193,7 @@ function cornerView(f, c) {
 
 function cornerHtml(f, side, v) {
   const who = s.fighters.get(f.agent) ?? {};
-  const nm = nameOf(s, f.agent);
+  const nm = fightName(s, f);
   return `<div class="corner ${side}">
     <div class="fighter">${avatar(nm, side)}<a href="${agentUrl(f.agent)}"><div class="nm">${keep(nm)}</div><div class="tiny">${keep(who.model || '')} ${f.official ? '<span class="badge id" translate="no">Agent ID</span>' : ''}</div></a><div class="run" translate="no"></div></div>
     <div class="bar${v.hurry ? ' hurry' : ''}"><i data-bar="${side}" style="width:${v.pct.toFixed(1)}%"></i></div>
@@ -207,6 +207,7 @@ function gongView(c, judged, waitingJudge) {
   if (c.phase === 'countdown') return { title: t('getReady'), value: String(c.left), label: t('countdown'), part: c.left / 10 };
   if (c.phase === 'open') return { title: t('round', c.round), value: mmss(c.left), label: themeName(c.round), part: c.left / RT, hurry: c.left <= 10 };
   if (c.phase === 'break') return { title: t('breakTitle'), value: String(c.left), label: t('nextRound', c.round), part: c.left / 10 };
+  if (c.phase === 'waiting') return { title: t('getReady'), value: '…', label: t('waitLock'), part: 1 };
   return { title: t('finalBellTitle'), value: '—', label: waitingJudge ? t('waitingJudge') : t('over'), part: 0 };
 }
 
@@ -277,19 +278,20 @@ function celebrate(b, v) {
   if (b.blue) confetti();
   const wn = b.blue && v.winner !== 'draw' ? v.winner : null;
   scene.pyro('win', wn ?? 'red');
-  if (wn) announce(t('wins', nameOf(s, (wn === 'red' ? b.red : b.blue).agent)));
+  if (wn) announce(t('wins', fightName(s, wn === 'red' ? b.red : b.blue)));
 }
 
 /** Poses, lights, music and the lower third, from where the fight stands. */
 function stage(b, c, v, views) {
   scene.setFighters({ blue: !!b.blue });
-  const names = `${nameOf(s, b.red.agent)}${b.blue ? ` · ${nameOf(s, b.blue.agent)}` : ''}`;
+  const names = `${fightName(s, b.red)}${b.blue ? ` · ${fightName(s, b.blue)}` : ''}`;
   if (v) {
     const wn = b.blue && v.winner !== 'draw' ? (v.winner === 'red' ? b.red : b.blue) : b.red;
-    scene.setBoard([nameOf(s, wn.agent), b.blue ? `${b.red.judged.points} : ${b.blue.judged.points}` : `${b.red.judged.points}`, t('pointsOf120')]);
+    scene.setBoard([fightName(s, wn), b.blue ? `${b.red.judged.points} : ${b.blue.judged.points}` : `${b.red.judged.points}`, t('pointsOf120')]);
   } else if (c.phase === 'open') scene.setBoard([t('round', c.round), mmss(c.left), names]);
   else if (c.phase === 'countdown') scene.setBoard([t('getReady'), String(c.left), names]);
   else if (c.phase === 'break') scene.setBoard([t('breakTitle'), String(c.left), t('nextRound', c.round)]);
+  else if (c.phase === 'waiting') scene.setBoard([t('getReady'), '…', t('waitLock')]);
   else scene.setBoard([t('finalBellTitle'), '—', names]);
   if (v) {
     const wn = b.blue && v.winner !== 'draw' ? v.winner : null;
@@ -328,12 +330,22 @@ function stage(b, c, v, views) {
     crowdLevel(0.5);
     banner('text', 0, t('judgingNote'));
   }
-  scene.setTicker(`IBITI AGENT ARENA   ◆   ${nameOf(s, b.red.agent)}${b.blue ? `  VS  ${nameOf(s, b.blue.agent)}` : ''}   ◆   ${c.phase === 'open' ? t('round', c.round) : t('live')}`);
+  scene.setTicker(`IBITI AGENT ARENA   ◆   ${fightName(s, b.red)}${b.blue ? `  VS  ${fightName(s, b.blue)}` : ''}   ◆   ${c.phase === 'open' ? t('round', c.round) : t('live')}`);
 }
 
 function renderRing(b) {
   const red = b.red;
   const blue = b.blue;
+  if (b.cancelled) {
+    // the match never started: no round, no score, no replay
+    document.title = `${fightName(s, red)}${blue ? ` vs ${fightName(s, blue)}` : ''} — IBITI Agent Arena`;
+    if (ringSig === 'cancelled') return;
+    ringSig = 'cancelled';
+    $('#ring').innerHTML = `<div class="hudmsg"><b>${esc(t('cancelledTitle'))}</b><br><span class="tiny">${esc(t('cancelledText'))}</span></div>`;
+    $('#watchReplay').style.display = 'none';
+    scene.setBoard([t('cancelledTitle'), '—', `${fightName(s, red)}${blue ? ` · ${fightName(s, blue)}` : ''}`]);
+    return;
+  }
   // the clock of a fighter still in the ring (one who gave up keeps an old clock)
   const fighting = [red, blue].find((f) => f?.clock?.clockAt && !f.ended && !(f.clock.finishedAt > 0));
   const clock = fighting?.clock ?? (red.clock?.clockAt ? red.clock : blue?.clock);
@@ -344,7 +356,7 @@ function renderRing(b) {
   const vr = cornerView(red, c);
   const vb = blue ? cornerView(blue, c) : null;
   const g = gongView(c, !!v, ended && !v);
-  document.title = `${nameOf(s, red.agent)}${blue ? ` vs ${nameOf(s, blue.agent)}` : ''} — IBITI Agent Arena`;
+  document.title = `${fightName(s, red)}${blue ? ` vs ${fightName(s, blue)}` : ''} — IBITI Agent Arena`;
   stage(b, c, v, { red: vr, blue: vb });
 
   // everything that is not a moving clock or bar
@@ -369,12 +381,12 @@ function renderRing(b) {
   let top = '';
   if (v && blue) {
     const wn = v.winner === 'draw' ? null : v.winner === 'red' ? red : blue;
-    top = `<div class="winner"><div class="crown">${wn ? tName(v.byTime ? 'winsOnTime' : 'wins', nameOf(s, wn.agent)) : t('draw')}</div>
+    top = `<div class="winner"><div class="crown">${wn ? tName(v.byTime ? 'winsOnTime' : 'wins', fightName(s, wn)) : t('draw')}</div>
       <div class="score" translate="no"><span class="red">${red.judged.points}</span> : <span class="blue">${blue.judged.points}</span></div>
       <div class="pts-cap">${esc(t('pointsOf120'))}</div>
       <div class="tiny">${t('statLine', red.judged.solved, foulsOf(red.judged), red.judged.timeUsed)} &nbsp;|&nbsp; ${t('statLine', blue.judged.solved, foulsOf(blue.judged), blue.judged.timeUsed)}</div></div>`;
   } else if (v) {
-    top = `<div class="winner"><div class="crown">${keep(nameOf(s, red.agent))}</div><div class="score" translate="no"><span class="red">${red.judged.points}</span> / 120</div>
+    top = `<div class="winner"><div class="crown">${keep(fightName(s, red))}</div><div class="score" translate="no"><span class="red">${red.judged.points}</span> / 120</div>
       <div class="tiny">${esc(t('statLine', red.judged.solved, foulsOf(red.judged), red.judged.timeUsed))} · ${esc(t('solo'))}</div></div>`;
   }
   $('#ring').innerHTML = `<div class="corners">${cornerHtml(red, 'red', vr)}${gongHtml(g, !ended && !v)}${blue ? cornerHtml(blue, 'blue', vb) : `<div class="corner blue solo"><div class="tiny">${t('soloFight')}</div></div>`}</div>`;
@@ -402,10 +414,10 @@ function shareAndChallenge(b, v) {
   if (blue && v.winner !== 'draw') {
     const [w, l] = v.winner === 'red' ? [red, blue] : [blue, red];
     champ = w;
-    text = t('shareWin', nameOf(s, w.agent), nameOf(s, l.agent), w.judged.points, l.judged.points);
-  } else text = t('shareSolo', nameOf(s, red.agent), red.judged.points);
+    text = t('shareWin', fightName(s, w), fightName(s, l), w.judged.points, l.judged.points);
+  } else text = t('shareSolo', fightName(s, red), red.judged.points);
   $('#share').innerHTML = shareButtons(text, url);
-  $('#challengeWinner').innerHTML = `<div class="cta" style="margin:0;align-items:center"><a class="btn red" href="index.html?challenge=${champ.agent}#enter">${tName('challengeWinner', nameOf(s, champ.agent))}</a><span class="tiny">${esc(t('challengeHint'))}</span></div>`;
+  $('#challengeWinner').innerHTML = `<div class="cta" style="margin:0;align-items:center"><a class="btn red" href="index.html?challenge=${champ.agent}#enter">${tName('challengeWinner', fightName(s, champ))}</a><span class="tiny">${esc(t('challengeHint'))}</span></div>`;
   $('#sharePanel').style.display = '';
 }
 
@@ -429,7 +441,7 @@ function renderRounds(b) {
   roundsSig = sig;
   const rr = rounds(b.red);
   const rb = b.blue ? rounds(b.blue) : [];
-  $('#rounds').innerHTML = `<tr><th>${t('roundCol')}</th><th><span class="dot red"></span>${keep(nameOf(s, b.red.agent))}</th>${b.blue ? `<th><span class="dot blue"></span>${keep(nameOf(s, b.blue.agent))}</th>` : ''}</tr>` +
+  $('#rounds').innerHTML = `<tr><th>${t('roundCol')}</th><th><span class="dot red"></span>${keep(fightName(s, b.red))}</th>${b.blue ? `<th><span class="dot blue"></span>${keep(fightName(s, b.blue))}</th>` : ''}</tr>` +
     rr.map((r, i) => `<tr class="r"><td><b>${r.round}</b> <span class="tiny">${esc(themeName(r.round))}</span></td>${cell(r, 'red')}${b.blue ? cell(rb[i], 'blue') : ''}</tr>`).join('');
   $('#after').style.display = '';
 }
@@ -439,7 +451,14 @@ function renderRounds(b) {
 async function playReplay(b) {
   if (replaying || !b || !verdict(b)) return;
   replaying = true;
-  await loadAll(); // the fight is over: every theme is open
+  const clocks = await Promise.all([b.red, b.blue].filter(Boolean).map((f) => fightOf(f.agent, f.number).catch(() => null)));
+  const last = Math.max(0, ...clocks.map((c) => (c ? openedRounds(c, s.now) : ROUNDS)));
+  if (last === 0) {
+    replaying = false;
+    banner('text', 0, t('noRoundOpened'));
+    return;
+  }
+  await loadAll(); // the fight is over: every theme that opened is open
   const hud = $('#ring');
   $('#arena').scrollIntoView({ behavior: 'smooth', block: 'start' });
   const sides = b.blue ? ['red', 'blue'] : ['red'];
@@ -463,11 +482,11 @@ async function playReplay(b) {
   scene.setLights('sweep');
   setMusic('hype');
   banner('text', 0, t('replayTitle'));
-  scene.setBoard([t('replayTitle'), '', `${nameOf(s, b.red.agent)}${b.blue ? ` · ${nameOf(s, b.blue.agent)}` : ''}`]);
+  scene.setBoard([t('replayTitle'), '', `${fightName(s, b.red)}${b.blue ? ` · ${fightName(s, b.blue)}` : ''}`]);
   fists();
   await sleep(2200);
 
-  for (let r = 1; r <= ROUNDS; r++) {
+  for (let r = 1; r <= last; r++) {
     hud.querySelector('.gong .rdt').textContent = t('round', r);
     hud.querySelector('.gong .ph').textContent = themeName(r);
     hud.querySelector('.gong .tm').textContent = mmss(RT);

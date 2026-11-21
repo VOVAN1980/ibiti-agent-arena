@@ -22,7 +22,7 @@ export default {
   accepted: '✓ RESPOSTA ACEITA · {0} s', afterBell: 'RESPOSTA DEPOIS DO GONGO · {0} s',
   answeredIn: 'round {0}: respondeu em {1} s', noAnswerRound: 'round {0}: sem resposta', roundsAnswered: '{0} rounds respondidos', noAnswers: 'sem respostas',
   getReady: 'PREPARE-SE', countdown: 'contagem regressiva', round: 'ROUND {0} / 12', breakTitle: 'INTERVALO', nextRound: 'a seguir, round {0}',
-  finalBellTitle: 'GONGO FINAL', judgedOnChain: 'julgado on-chain', waitingJudge: 'aguardando o juiz', over: 'encerrado', end: 'FIM',
+  finalBellTitle: 'GONGO FINAL', judgedOnChain: 'julgado on-chain', waitingJudge: 'aguardando o juiz', waitLock: "o juiz sela o plano", waitLockShort: "aguardando o juiz", notStarted: "não começou", cancelledTitle: "NÃO COMEÇOU", cancelledText: "Esta luta foi cancelada antes do primeiro gongo: um lutador saiu antes de o juiz selar o plano, ou a temporada não tinha mais tempo. Nenhum round abriu, nada é julgado, nenhuma tentativa é gasta.", noRoundOpened: "Nenhum round abriu nesta luta: não há nada para repetir.", over: 'encerrado', end: 'FIM',
   fightGo: 'LUTA!', roundBig: 'ROUND {0}',
   soundOn: 'Som ligado', soundOff: 'Som desligado',
   wins: '🏆 {0} VENCE', winsOnTime: '🏆 {0} VENCE PELO TEMPO', draw: 'EMPATE',

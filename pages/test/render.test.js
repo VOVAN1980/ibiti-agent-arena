@@ -477,11 +477,14 @@ const BELL = 1795200000;
 const PAGE_KEY = 'c0'.repeat(32);
 const PAGE_KEY_HASH = '0xba71975203170949a83539fc450e1488efe18f0c19a82896026cebfd12a61a36'; // cast keccak 0xc0c0…c0
 
+/** The trap plan the judge locks for the fake card (this server's own). */
+const LOCKED = KEYS.trapsCommit(planOf(KEYS.cardSeed(SEED)).traps, KEYS.trapSalt(ARENA, SEED));
+
 /** A fake arena: fight 2 of A, `round` = the first round not answered yet; the clock stands in
  *  `clockRound` (5 s into it), or in the countdown, or in the break after it. */
-function fakeChain({ round = 3, clockRound = round, live = true, startedAt = 1, commitment = KEYS.commitment(ARENA, A, 2), secretCommit = KEYS.commit, countdown = false, inBreak = false, inHall = false, opponent = null, pageKeyHash = PAGE_KEY_HASH, trapsCommit = '0x' + '77'.repeat(32) } = {}) {
+function fakeChain({ round = 3, clockRound = round, live = true, startedAt = 1, commitment = KEYS.commitment(ARENA, A, 2), secretCommit = KEYS.commit, countdown = false, inBreak = false, inHall = false, opponent = null, pageKeyHash = PAGE_KEY_HASH, trapsCommit = LOCKED, finishedAt = 0 } = {}) {
   const now = countdown ? BELL - 4 : BELL + (Math.min(clockRound, 12) - 1) * 70 + (inBreak ? 64 : 5);
-  const mine = { seed: SEED, startedAt, finishedAt: 0, hits: 0n, number: 2, correct: 0, round, fouls: 0, official: true, clockAt: BELL, clockRound: 1, timeUsed: 0, late: 0, judged: false, commitment, opponent: opponent ? B : ZERO_ADDR, opponentNumber: opponent ? 1 : 0, pageKeyHash, trapsCommit };
+  const mine = { seed: SEED, startedAt, finishedAt, hits: 0n, number: 2, correct: 0, round, fouls: 0, official: true, clockAt: BELL, clockRound: 1, timeUsed: 0, late: 0, judged: false, commitment, opponent: opponent ? B : ZERO_ADDR, opponentNumber: opponent ? 1 : 0, pageKeyHash, trapsCommit };
   return {
     lastFight: async () => 2,
     fight: async () => mine,
@@ -526,6 +529,7 @@ test('/join: the registration transaction, ready for a wallet preview, and the p
   assert.deepEqual({ ...j.transaction, inputData: undefined }, { chainId: 56, to: ARENA, value: '0', inputData: undefined });
   assert.equal(j.pageKeyHash, keccak256(j.pageKey), 'the hash of the key it gives');
   assert.equal(j.firstPage, `https://x/fight/${A}?key=${j.pageKey}&step=1`);
+  assert.equal(j.firstPageByHeader, `https://x/fight/${A}?step=1`, 'for a header client: no key in any link');
   // the transaction: register(name, model, commitment, the judge's signature, pageKeyHash, no challenge)
   const signature = '0x8a3eac63e078ffd5549f12a1e1ec8eaf63d5cddbbb7eaed894d6e63cbc9ed3c325923b3020b9d26ea37eac5098a750be951ce2393af5b367931b11658f0dea6d1c'; // `cast wallet sign` of fight 3's commitment digest
   assert.equal(j.transaction.inputData, registerData({ name: 'Night Owl', model: 'claude-opus-5.5', commitment: KEYS.commitment(ARENA, A, 3), signature, pageKeyHash: j.pageKeyHash, challenge: '' }));
@@ -691,6 +695,25 @@ test('the access digest is standard EIP-712 (checked against cast), and signatur
   assert.equal(splitSig('ab'), null);
 });
 
+test('a match that never started is said as such, and no card is shown from a plan the judge did not lock', async () => {
+  const get = async (chain) => {
+    const r = await handleFight(new URL(`https://x/fight/${A}?format=md&key=${PAGE_KEY}`), ENV, { chain });
+    return { status: r.status, body: await r.text() };
+  };
+  const cancelled = await get(fakeChain({ live: false, finishedAt: BELL - 10, trapsCommit: '0x' + '0'.repeat(64) }));
+  assert.equal(cancelled.status, 410);
+  assert.match(cancelled.body, /Fight #2 was cancelled before its first bell: no round opened, nothing is judged, no attempt is spent/);
+  assert.ok(cancelled.body.includes(`https://x/join/${A}?name=`), 'where to register again');
+  assert.match((await get(fakeChain({ live: false }))).body, /This fight is over/, 'a fight that ran is over, not cancelled');
+  // the judge locked another plan (another version of the server): no card, no code, not even the countdown
+  for (const chain of [fakeChain({ trapsCommit: '0x' + 'ee'.repeat(32) }), fakeChain({ countdown: true, round: 1, trapsCommit: '0x' + 'ee'.repeat(32) })]) {
+    const r = await get(chain);
+    assert.equal(r.status, 503);
+    assert.match(r.body, /not the one the judge locked, so it shows no card/);
+    assert.ok(!r.body.includes(KEYS.code(ARENA, A, 2, 3)));
+  }
+});
+
 test('the server refuses: no fight yet, fight over, all rounds answered, bad path', async () => {
   const get = (path, chain) => handleFight(new URL(`https://x${path}`), ENV, { chain });
   assert.equal((await get(`/fight/${A}`, fakeChain({ startedAt: 0 }))).status, 404);
@@ -739,6 +762,17 @@ test('the Cloudflare host: site settings, a read-only RPC, the fighters\' side',
   // this arena only, in bounded ranges: the judge shares the node
   const ask = (method, params) => get('/rpc', { method: 'POST', body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) }).then((r) => r.json());
   assert.equal((await ask('eth_call', [{ to: '0x' + '99'.repeat(20), data: '0x' }, 'latest'])).error.message, 'this arena only');
+  assert.equal((await ask('eth_call', [{ to: ARENA, data: '0x1c932116' }, 'latest'])).error.message, 'the views the site reads only', 'register(): not a view');
+  assert.equal((await ask('eth_call', [{ to: ARENA, data: '0x78a2ce59' + '00'.repeat(200) }, 'latest'])).error.message, 'the views the site reads only', 'too long');
+  assert.equal((await ask('eth_call', [{ to: ARENA, data: '0x78a2ce59', from: ARENA, gas: '0x1' }, 'latest'])).error.message, 'a plain call of a view');
+  assert.equal((await ask('eth_call', [{ to: ARENA, data: '0x78a2ce59' }, 'latest', { [ARENA]: { code: '0x00' } }])).error.message, 'a plain call of a view', 'no state override');
+  const big = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode('x'.repeat(5000))); c.close(); } });
+  assert.equal((await get('/rpc', { method: 'POST', body: big, duplex: 'half' })).status, 413, 'too large, without a length: read only up to the limit');
+  let limited = 0;
+  const slow = { ...env, RPC_LIMIT: { limit: async () => ({ success: limited++ < 1 }) } };
+  const viaLimit = () => host.fetch(new Request('https://arena.example/rpc', { method: 'POST', body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_chainId', params: [] }) }), slow);
+  await viaLimit().catch(() => {});
+  assert.equal((await viaLimit()).status, 429, 'past the visitor limit');
   assert.equal((await ask('eth_getLogs', [{ address: '0x' + '99'.repeat(20), fromBlock: '0x1', toBlock: '0x2' }])).error.message, 'this arena only');
   assert.equal((await ask('eth_getLogs', [{ address: ARENA, fromBlock: '0x0', toBlock: '0x' + (60000).toString(16) }])).error.message, 'a range of at most 50000 blocks');
   assert.equal((await ask('eth_getBlockByNumber', ['latest', true])).error.message, 'no full blocks');
@@ -774,7 +808,7 @@ test('the Cloudflare judge signs exactly what Foundry signs', async () => {
 });
 
 /** A fake chain for judgeRun: `fights` by "agent#number" as fightOf words, Started `logs`, nonces. */
-function fakeJudgeChain({ fights = {}, logs = [], pending = 5, mined = 5, now = 100000, latest = 10000 }, sent) {
+function fakeJudgeChain({ fights = {}, logs = [], pending = 5, mined = 5, now = 100000, latest = 10000, hall = null }, sent) {
   const word = (h) => String(h).replace(/^0x/, '').padStart(64, '0');
   return async (url, { body }) => {
     const q = JSON.parse(body);
@@ -785,6 +819,9 @@ function fakeJudgeChain({ fights = {}, logs = [], pending = 5, mined = 5, now = 
         if (p.data.startsWith('0x24627013')) return ok(KEYS.commit);
         if (p.data.startsWith('0x32799e5d')) return ok(fights[`0x${p.data.slice(34, 74)}#${parseInt(p.data.slice(74), 16)}`] ?? '0x' + word('0').repeat(19));
         if (p.data.startsWith('0xee5f8c8f')) return ok('0x' + word('3c'));
+        if (hall && p.data.startsWith('0x748e1910')) return ok('0x' + word(hall.nextDrawAt.toString(16))); // nextDrawAt()
+        if (hall && p.data.startsWith('0xb5c81661')) return ok('0x' + word(hall.count.toString(16))); // hallCount()
+        if (hall && p.data.startsWith('0xe757b20d')) return ok('0x' + word(hall.seasonEnd.toString(16))); // seasonEnd()
         if (p.data.startsWith('0xef92e6ba') || p.data.startsWith('0x748e1910')) return ok('0x' + word('0'));
         return ok('0x' + word('70997970c51812dc3a010c7d01b50e0d17dc79c8')); // judge()
       }
@@ -795,6 +832,7 @@ function fakeJudgeChain({ fights = {}, logs = [], pending = 5, mined = 5, now = 
       case 'eth_estimateGas': return ok('0x30000');
       case 'eth_gasPrice': return ok('0x5f5e100');
       case 'eth_sendRawTransaction': sent.push(q.params[0]); return ok('0x' + 'aa'.repeat(32));
+      case 'eth_getTransactionReceipt': return ok({ status: '0x1' });
       default: throw new Error(q.method);
     }
   };
@@ -825,6 +863,21 @@ test('the judge locks the trap plan of a fresh match before its bell, once for b
   const none = [];
   await judgeRun(env, { fetchFn: fakeJudgeChain({ fights: over('ee'.repeat(32)), logs: [{ ...started(A, 1, '0'), blockNumber: '0x2328' }] }, none), log: () => {}, wait: async () => {} });
   assert.equal(none.length, 0, 'a locked plan that is not this server\'s is never revealed as if it were');
+});
+
+test("the judge closes a hall of one by the current time once no fight fits the season's end", async () => {
+  const { judgeRun } = await import('../src/judge-cron.js');
+  const env = { RPC_URL: 'http://rpc', ARENA, CHAIN_ID: 56, DEPLOY_BLOCK: 0, BLOCKS_PER_WEEK: 604800, SECRET: '11'.repeat(32), JUDGE_KEY };
+  const draw = keccak256(Buffer.from('draw()').toString('hex')).slice(2, 10);
+  const run = async (hall) => {
+    const sent = [];
+    await judgeRun(env, { fetchFn: fakeJudgeChain({ hall }, sent), log: () => {}, wait: async () => {} });
+    return sent.filter((tx) => tx.includes(draw)).length;
+  };
+  // the stored cutoff is long past (a fight from it would have fitted); now (100000) a fight would not
+  assert.equal(await run({ nextDrawAt: 1000, count: 1, seasonEnd: 100500 }), 1, 'the draw that closes the hall is held');
+  assert.equal(await run({ nextDrawAt: 1000, count: 1, seasonEnd: 200000 }), 0, 'mid-season: no fight without an opponent');
+  assert.equal(await run({ nextDrawAt: 1000, count: 2, seasonEnd: 200000 }), 1, 'two in the hall: the draw');
 });
 
 test('the judge replaces a transaction that is stuck instead of waiting for ever', async () => {
@@ -869,6 +922,7 @@ test('the Cloudflare judge keeps to 60 judgements an hour, counted on the chain'
         case 'eth_estimateGas': return ok('0x30000');
         case 'eth_gasPrice': return ok('0x5f5e100');
         case 'eth_sendRawTransaction': sent.push(q.params[0]); return ok('0x' + 'aa'.repeat(32));
+        case 'eth_getTransactionReceipt': return ok({ status: '0x1' });
         default: throw new Error(q.method);
       }
     };

@@ -1002,6 +1002,154 @@ contract AgentArenaTest is Test {
         assertEq(arena.hall()[0], alice);
     }
 
+    /// @dev Locks fight `number` of `who` (and its opponent's) as the judge, with its own plan.
+    function _lock(address who, uint32 number) internal {
+        bytes32 seed = arena.fightOf(who, number).seed;
+        address[] memory a = new address[](1);
+        uint32[] memory n = new uint32[](1);
+        bytes32[] memory c = new bytes32[](1);
+        (a[0], n[0], c[0]) = (who, number, keccak256(abi.encode(_plan(seed), _trapSalt(seed))));
+        vm.prank(judgeKey);
+        arena.lockTraps(a, n, c);
+    }
+
+    function test_aLateLockThatWouldEndAfterTheSeasonCancelsTheMatch() public {
+        // a season with room for one fight drawn at the next cutoff, and 30 seconds to spare
+        uint64 slot = uint64((block.timestamp / DRAW_EVERY + 1) * DRAW_EVERY);
+        seasonEnd = slot + arena.COUNTDOWN() + 12 * ROUND_TIME + 11 * 10 + 30;
+        arena = _deploy(true);
+        lockOnDraw = false;
+        _match(alice, bob);
+        assertTrue(arena.isLive(alice), "the draw fits the season");
+        vm.warp(_fight(alice).clockAt + 1); // the judge comes after the bell time: a new countdown would not fit
+        vm.expectEmit(true, true, false, false, address(arena));
+        emit AgentArena.Cancelled(alice, 1);
+        vm.expectEmit(true, true, false, false, address(arena));
+        emit AgentArena.Cancelled(bob, 1);
+        _lock(alice, 1);
+        assertEq(_fight(alice).trapsCommit, bytes32(0), "not locked");
+        assertEq(_fight(bob).trapsCommit, bytes32(0));
+        assertFalse(arena.isLive(alice) || arena.isLive(bob), "cancelled for both: no fight runs past the season");
+        vm.prank(alice);
+        vm.expectRevert(AgentArena.FightOver.selector);
+        arena.answer(1, "x");
+        bytes32[12] memory right = _rightHashes(alice, 1);
+        uint8[36] memory none;
+        vm.prank(judgeKey);
+        vm.expectRevert(AgentArena.BadTraps.selector);
+        arena.judgeFight(alice, 1, right, _salt(alice, 1), none, bytes32(0)); // never judged
+    }
+
+    function test_leavingBeforeTheLockCancelsTheMatchForBoth() public {
+        lockOnDraw = false;
+        _match(alice, bob);
+        vm.expectEmit(true, true, false, false, address(arena));
+        emit AgentArena.Cancelled(bob, 1);
+        vm.expectEmit(true, true, false, false, address(arena));
+        emit AgentArena.Cancelled(alice, 1);
+        vm.prank(bob);
+        arena.finish(); // bob leaves before the plan is locked: no match, no fight without an opponent
+        assertFalse(arena.isLive(alice) || arena.isLive(bob));
+        _register(bob); // no attempt spent: bob is back in the hall at once
+        _lock(alice, 1); // the judge comes late: nothing to lock any more
+        assertEq(_fight(alice).trapsCommit, bytes32(0));
+        assertEq(arena.fightOf(bob, 1).trapsCommit, bytes32(0), "bob's old fight is never changed afterwards");
+        _register(alice); // alice too, at once
+        _draw();
+        assertEq(_fight(alice).opponent, bob, "a new match, a new fight number");
+        assertEq(_number(alice), 2);
+        // once the plan is locked, leaving is giving up: the other fights on and is judged
+        _lock(alice, 2);
+        vm.prank(bob);
+        arena.finish();
+        assertTrue(arena.isLive(alice));
+    }
+
+    function test_aLoneAgentCanAlwaysLeave() public {
+        _register(alice);
+        vm.warp(arena.nextDrawAt());
+        arena.draw(); // sealed with alice alone on the list
+        assertGt(arena.pendingCutoff(), 0);
+        vm.prank(alice);
+        arena.leave(); // nobody else: no pair its leaving could change
+        assertEq(arena.hallCount(), 0);
+        _register(alice);
+        vm.warp(arena.nextDrawAt() + 1); // past the next cutoff too, nobody has sealed it
+        vm.prank(alice);
+        arena.leave();
+        assertEq(arena.hall().length, 0);
+    }
+
+    function test_theNextListClosesAtItsCutoffWhileTheOldOneWaits() public {
+        _register(alice);
+        _register(bob);
+        vm.warp(arena.nextDrawAt());
+        arena.draw(); // the first list sealed, its draw not held yet
+        uint64 second = arena.nextDrawAt();
+        _register(carol);
+        _register(dave);
+        vm.warp(second + 1); // the second cutoff passes while the first draw still waits
+        vm.prank(carol);
+        vm.expectRevert(AgentArena.DrawPending.selector);
+        arena.leave(); // carol is on the second list: closed by its own cutoff
+        address erin = makeAddr("erin");
+        _register(erin);
+        vm.prank(erin);
+        arena.leave(); // registered after both cutoffs: free to go
+    }
+
+    function test_aCallBeforeTheFirstBellIsAFoulEvenAfterTheLock() public {
+        _spar(alice); // locked at the draw; the bell is a minute away
+        uint8[36] memory traps = _traps(alice);
+        assertLt(vm.getBlockTimestamp(), _fight(alice).clockAt);
+        _takeTrap(alice, traps[0]); // round 1's punch, but before the bell: nothing of the task is known yet
+        assertEq(arena.callsOf(alice, 1)[0], uint16(traps[0]), "recorded as round 0");
+        _answerAll(alice);
+        _judge(alice);
+        assertEq(_fight(alice).hits, 0, "never a punch of round 1");
+        assertEq(_fight(alice).fouls, 1, "a foul");
+        assertEq(arena.pointsOf(alice), 118);
+    }
+
+    function test_aPairConfirmedInTimeNeverExpiresWhileAFullDrawKeepsItWaiting() public {
+        for (uint256 i; i < 31; ++i) _register(makeAddr(string.concat("early", vm.toString(i))), makeAddr(string.concat("absent", vm.toString(i))));
+        _register(alice, carol);
+        uint256 expires = vm.getBlockTimestamp() + uint256(arena.CHALLENGE_WAIT()) * DRAW_EVERY;
+        while (arena.nextDrawAt() < expires) _draw(); // everyone waits for an answer
+        // the cutoff at which all these challenges expire: carol answers just in time, dave comes too
+        _register(carol, alice);
+        _register(dave);
+        _draw();
+        assertFalse(arena.isLive(alice) || arena.isLive(carol), "the 31 freed and dave fill the draw: the pair waits whole");
+        _draw();
+        assertEq(_fight(alice).opponent, carol, "still a pair, although alice's waiting time is over");
+    }
+
+    function test_manyWaitingChallengesNeverHideAReadyPair() public {
+        for (uint256 i; i < 120; ++i) _register(makeAddr(string.concat("challenger", vm.toString(i))), makeAddr(string.concat("absent", vm.toString(i))));
+        _register(bob);
+        _register(dave);
+        _draw();
+        assertEq(_fight(bob).opponent, dave, "drawn behind 120 waiting challenges");
+        assertEq(arena.hall().length, 120);
+    }
+
+    function test_ofTwoEqualFightsTheEarlierIsTheBestWhateverTheJudgingOrder() public {
+        _spar(alice);
+        _answerAll(alice);
+        vm.warp(vm.getBlockTimestamp() + COOLDOWN);
+        _spar(alice);
+        _answerAll(alice);
+        _judge(alice); // fight 2 judged first
+        AgentArena.Fight memory f1 = arena.fightOf(alice, 1);
+        vm.prank(judgeKey);
+        arena.judgeFight(alice, 1, _rightHashes(alice, 1), _salt(alice, 1), _plan(f1.seed), _trapSalt(f1.seed));
+        (uint8 p, uint64 fight,, uint32 used) = arena.best(alice);
+        assertEq(p, 120);
+        assertEq(used, f1.timeUsed);
+        assertEq(fight, 1, "equal points and time: the earlier fight");
+    }
+
     function test_twoAgentsThatChallengedEachOtherAreDrawnTogetherOrWaitTogether() public {
         // 31 agents first, then alice naming carol, 5 more, then carol naming alice: the pair does not
         // fit in the 32 places of this draw, so neither takes one

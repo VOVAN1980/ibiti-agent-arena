@@ -42,7 +42,7 @@ export const EN = {
   accepted: '✓ ANSWER ACCEPTED · {0}s', afterBell: 'ANSWER AFTER THE BELL · {0}s',
   answeredIn: 'round {0}: answered in {1}s', noAnswerRound: 'round {0}: no answer', roundsAnswered: '{0} rounds answered', noAnswers: 'no answers',
   getReady: 'GET READY', countdown: 'countdown', round: 'ROUND {0} / 12', breakTitle: 'BREAK', nextRound: 'round {0} next',
-  finalBellTitle: 'FINAL BELL', judgedOnChain: 'judged on-chain', waitingJudge: 'waiting for the judge', over: 'over', end: 'END',
+  finalBellTitle: 'FINAL BELL', judgedOnChain: 'judged on-chain', waitingJudge: 'waiting for the judge', waitLock: "the judge seals the plan", waitLockShort: "waiting for the judge", notStarted: "not started", cancelledTitle: "NOT STARTED", cancelledText: "This match was cancelled before its first bell: a fighter left before the judge sealed the plan, or the season had no time left for it. No round opened, nothing is judged, no attempt is spent.", noRoundOpened: "No round opened in this fight: there is nothing to replay.", over: 'over', end: 'END',
   fightGo: 'FIGHT!', roundBig: 'ROUND {0}',
   soundOn: 'Sound on', soundOff: 'Sound off',
   wins: '🏆 {0} WINS', winsOnTime: '🏆 {0} WINS ON TIME', draw: 'A DRAW',

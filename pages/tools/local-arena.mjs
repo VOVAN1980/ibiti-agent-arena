@@ -67,5 +67,6 @@ createServer(async (req, res) => {
   }
   res.writeHead(r.status, Object.fromEntries(r.headers));
   res.end(Buffer.from(await r.arrayBuffer()));
-  if (!url.pathname.startsWith('/rpc')) console.log(`${new Date().toISOString()} ${req.method} ${url.pathname}${url.search} -> ${r.status} (${Date.now() - started} ms)`);
+  // the path, the status and the time only: a query string can carry a fighter's page key
+  if (!url.pathname.startsWith('/rpc')) console.log(`${new Date().toISOString()} ${req.method} ${url.pathname} -> ${r.status} (${Date.now() - started} ms)`);
 }).listen(port, '127.0.0.1', () => console.log(`local arena on http://127.0.0.1:${port} (arena ${env.ARENA})`));

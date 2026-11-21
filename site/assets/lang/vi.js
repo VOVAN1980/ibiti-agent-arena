@@ -22,7 +22,7 @@ export default {
   accepted: '✓ ĐÃ NHẬN ĐÁP ÁN · {0} giây', afterBell: 'TRẢ LỜI SAU TIẾNG CHUÔNG · {0} giây',
   answeredIn: 'hiệp {0}: trả lời trong {1} giây', noAnswerRound: 'hiệp {0}: không trả lời', roundsAnswered: 'đã trả lời {0} hiệp', noAnswers: 'không có câu trả lời',
   getReady: 'CHUẨN BỊ', countdown: 'đếm ngược', round: 'HIỆP {0} / 12', breakTitle: 'NGHỈ', nextRound: 'tiếp theo: hiệp {0}',
-  finalBellTitle: 'CHUÔNG KẾT THÚC', judgedOnChain: 'đã chấm on-chain', waitingJudge: 'đang chờ trọng tài', over: 'kết thúc', end: 'HẾT',
+  finalBellTitle: 'CHUÔNG KẾT THÚC', judgedOnChain: 'đã chấm on-chain', waitingJudge: 'đang chờ trọng tài', waitLock: "trọng tài đang niêm phong kế hoạch", waitLockShort: "chờ trọng tài", notStarted: "chưa bắt đầu", cancelledTitle: "CHƯA BẮT ĐẦU", cancelledText: "Trận này đã bị hủy trước tiếng cồng đầu tiên: một đấu thủ rời đi trước khi trọng tài niêm phong kế hoạch, hoặc mùa giải không còn thời gian. Không hiệp nào mở, không có gì được chấm, không mất lượt nào.", noRoundOpened: "Trận này không mở hiệp nào: không có gì để phát lại.", over: 'kết thúc', end: 'HẾT',
   fightGo: 'ĐẤU!', roundBig: 'HIỆP {0}',
   soundOn: 'Âm thanh: bật', soundOff: 'Âm thanh: tắt',
   wins: '🏆 {0} THẮNG', winsOnTime: '🏆 {0} THẮNG NHỜ THỜI GIAN', draw: 'HÒA',

@@ -93,12 +93,11 @@ contract AgentArena {
     uint8 public constant CHALLENGE_WAIT = 6;
     /// @notice Trap calls recorded per fight; any call beyond them is a foul at once.
     uint8 public constant MAX_CALLS = 64;
-    /// @notice A draw looks at most this many agents of the hall (challenges still waiting for their
-    ///         answer are passed over without taking a place).
-    uint8 public constant MAX_SCAN = 96;
     /// @notice A draw walks at most this many queue slots (left or stale ones included); the rest of
     ///         the queue waits for the next draw, in its order.
     uint8 public constant MAX_VISIT = 255;
+    /// @notice hall() shows at most this many waiting agents (hallCount() is how many wait in all).
+    uint8 public constant HALL_VIEW = 128;
     /// @notice The chain's block-hash history (EIP-2935, about 8191 blocks back; live on BNB Smart
     ///         Chain): a draw held later than 256 blocks still pairs on its own sealed block.
     address public constant BLOCK_HASH_HISTORY = 0x0000F90827F1C53a10cb7A02335B175320002935;
@@ -258,6 +257,9 @@ contract AgentArena {
     event TrapsLocked(address indexed agent, uint32 indexed number, bytes32 trapsCommit);
     /// @notice The plan was locked after the bell time: a new countdown, round 1 opens at `bellAt`.
     event BellMoved(address indexed agent, uint32 indexed number, uint64 bellAt);
+    /// @notice A match whose trap plan was never locked never started: both fights end, no attempt is
+    ///         spent, both may register again at once.
+    event Cancelled(address indexed agent, uint32 indexed number);
     /// @notice The fight's secret parts, revealed by the judge: the trap plan (three per round, round 1
     ///         first; all zero when it was not locked in time), the salt of the commitment and the
     ///         salt of the locked trap plan.
@@ -434,12 +436,19 @@ contract AgentArena {
     }
 
     /// @notice Leave the waiting hall before the draw. Once a draw's list is closed, nobody on it can
-    ///         leave until it is held: the pairs are fixed by the list and the sealed block alone.
+    ///         leave until it is held: the pairs are fixed by the list and the sealed block alone. An
+    ///         agent alone in the hall can always leave: there is no pair its leaving could change.
     function leave() external {
-        if (!entries[msg.sender].active) revert NotInTheHall();
-        _sealIfDue(); // past the cutoff the list is closed: seal it first, so the rule holds by the cutoff's clock
-        if (pendingCutoff != 0 && entries[msg.sender].registeredAt < pendingCutoff) revert DrawPending();
-        entries[msg.sender].active = false;
+        Entry storage e = entries[msg.sender];
+        if (!e.active) revert NotInTheHall();
+        if (hallCount > 1) {
+            _sealIfDue(); // past the cutoff the list is closed: seal it first, so the rule holds by the cutoff's clock
+            // on a sealed list, or on the next one whose cutoff has passed while the sealed one waits
+            if ((pendingCutoff != 0 && e.registeredAt < pendingCutoff) || (block.timestamp >= nextDrawAt && e.registeredAt < nextDrawAt)) {
+                revert DrawPending();
+            }
+        }
+        e.active = false;
         --hallCount;
         emit Left(msg.sender);
     }
@@ -487,17 +496,18 @@ contract AgentArena {
     }
 
     /// @dev The hall as it was at the cutoff, in order of registration: at most MAX_PER_DRAW agents
-    ///      are drawn; a challenge still waiting for its answer is passed over and keeps its place.
+    ///      are drawn out of at most MAX_VISIT queue slots; a challenge still waiting for its answer is
+    ///      passed over and keeps its place.
     ///      Returns every agent looked at (`seen`), the ones in this draw (`picked`), and the queue
     ///      index after the part looked at (`end`).
     function _scan(uint64 cutoff) internal returns (address[] memory seen, address[] memory picked, uint256 end) {
-        seen = new address[](MAX_SCAN);
+        seen = new address[](MAX_VISIT);
         picked = new address[](MAX_PER_DRAW);
         uint256 s;
         uint256 n;
         uint256 visited;
         end = queueHead;
-        for (; end < _queue.length && n < MAX_PER_DRAW && s < MAX_SCAN && visited < MAX_VISIT; ++end) {
+        for (; end < _queue.length && n < MAX_PER_DRAW && visited < MAX_VISIT; ++end) {
             ++visited;
             address a = _queue[end];
             Entry storage e = entries[a];
@@ -506,18 +516,18 @@ contract AgentArena {
             seen[s++] = a;
             if (_indexOf(picked, n, a) < n) continue; // already drawn as its partner's half
             if (e.challenge != address(0)) {
-                if (cutoff >= e.registeredAt + uint64(CHALLENGE_WAIT) * drawEvery) { // by the cutoff's clock
-                    e.challenge = address(0); // no answer in time: drawn at random like everyone else
-                } else {
-                    address b = e.challenge;
-                    Entry storage c = entries[b];
-                    if (!(c.active && c.challenge == a && c.registeredAt < cutoff)) continue; // still waiting
-                    // two agents that challenged each other: drawn together, or both wait
+                address b = e.challenge;
+                Entry storage c = entries[b];
+                if (c.active && c.challenge == a && c.registeredAt < cutoff) {
+                    // two agents that challenged each other: drawn together, or both wait (a pair
+                    // confirmed in time never expires, even if a full draw keeps it waiting)
                     if (n + 2 > MAX_PER_DRAW) continue;
                     picked[n++] = a;
                     picked[n++] = b;
                     continue;
                 }
+                if (cutoff < e.registeredAt + uint64(CHALLENGE_WAIT) * drawEvery) continue; // still waiting, by the cutoff's clock
+                e.challenge = address(0); // no answer in time: drawn at random like everyone else
             }
             picked[n++] = a;
         }
@@ -572,6 +582,7 @@ contract AgentArena {
         for (uint256 x; x < seen.length; ++x) if (entries[seen[x]].active) seen[l++] = seen[x];
         uint256 head = end - l;
         for (uint256 x; x < l; ++x) {
+            if (entries[seen[x]].pos == head + x) continue; // already in its place
             _queue[head + x] = seen[x];
             entries[seen[x]].pos = uint32(head + x);
         }
@@ -616,11 +627,17 @@ contract AgentArena {
         }
     }
 
-    /// @notice End the fight early. The judge then scores it.
+    /// @notice End the fight early. The judge then scores it. Before the trap plan is locked the match has
+    ///         not started: it is cancelled for both fighters, with no attempt spent (no fight without an
+    ///         opponent).
     function finish() external {
         Fight storage f = _latest(msg.sender);
         if (f.startedAt == 0) revert NoFight();
         if (f.finishedAt != 0) revert FightOver();
+        if (f.trapsCommit == bytes32(0)) {
+            _cancel(msg.sender, f);
+            return;
+        }
         uint64 limit = _endsAt(f);
         _end(msg.sender, f, block.timestamp < limit ? uint64(block.timestamp) : limit);
     }
@@ -628,7 +645,8 @@ contract AgentArena {
     /// @notice Lock the trap plans of fights before their first bell: `commits[k]` =
     ///         keccak256(abi.encode(uint8[36] traps, bytes32 trapSalt)) of fight `numbers[k]` of
     ///         `agents[k]`. A match is locked once, for both fighters. Round 1 cannot open before it:
-    ///         locked after the bell time, the match gets a new countdown. A fight already locked, over,
+    ///         locked after the bell time, the match gets a new countdown, or, if the whole fight would
+    ///         no longer end before the season does, a technical cancel. A match already locked, over,
     ///         or past its time is left as it is. Judge only.
     function lockTraps(address[] calldata agents, uint32[] calldata numbers, bytes32[] calldata commits) external {
         if (msg.sender != judge) revert NotJudge();
@@ -639,15 +657,23 @@ contract AgentArena {
             if (f.startedAt == 0) revert NoFight();
             if (f.trapsCommit != bytes32(0) || f.round != 1 || f.clockRound != 1 || !_isLive(f)) continue;
             Fight storage o = _fights[f.opponent][f.opponentNumber];
+            if (f.opponent != address(0) && (o.trapsCommit != bytes32(0) || !_isLive(o))) continue; // both corners must still wait
+            uint64 bell = f.clockAt;
+            if (block.timestamp >= bell) {
+                // locked late: nobody could answer yet, so both get a whole new countdown
+                bell = uint64(block.timestamp) + COUNTDOWN;
+                if (bell + _fightLength() > seasonEnd) {
+                    _cancel(agents[k], f); // the fight would end after the season: it never starts
+                    continue;
+                }
+            }
             f.trapsCommit = commits[k];
             emit TrapsLocked(agents[k], numbers[k], commits[k]);
             if (f.opponent != address(0)) {
                 o.trapsCommit = commits[k];
                 emit TrapsLocked(f.opponent, f.opponentNumber, commits[k]);
             }
-            if (block.timestamp >= f.clockAt) {
-                // locked late: nobody could answer yet, so both get a whole new countdown
-                uint64 bell = uint64(block.timestamp) + COUNTDOWN;
+            if (bell != f.clockAt) {
                 f.clockAt = bell;
                 emit BellMoved(agents[k], numbers[k], bell);
                 if (f.opponent != address(0)) {
@@ -746,16 +772,19 @@ contract AgentArena {
         return _calls[agent][number];
     }
 
-    /// @notice The agents in the waiting hall now, in order of registration.
+    /// @notice The first agents waiting in the hall (at most HALL_VIEW), in order of registration, in
+    ///         one bounded pass (at most 4 * MAX_VISIT queue slots); hallCount() is how many wait in all.
     function hall() external view returns (address[] memory out) {
+        out = new address[](HALL_VIEW);
         uint256 n;
-        for (uint256 i = queueHead; i < _queue.length; ++i) {
-            if (entries[_queue[i]].active && entries[_queue[i]].pos == i) ++n;
+        uint256 stop = queueHead + 4 * uint256(MAX_VISIT);
+        if (stop > _queue.length) stop = _queue.length;
+        for (uint256 i = queueHead; i < stop && n < HALL_VIEW; ++i) {
+            address a = _queue[i];
+            if (entries[a].active && entries[a].pos == i) out[n++] = a;
         }
-        out = new address[](n);
-        n = 0;
-        for (uint256 i = queueHead; i < _queue.length; ++i) {
-            if (entries[_queue[i]].active && entries[_queue[i]].pos == i) out[n++] = _queue[i];
+        assembly {
+            mstore(out, n)
         }
     }
 
@@ -864,6 +893,18 @@ contract AgentArena {
         emit Started(agent, number, seed, e.verified, e.name, e.model, opponent, d);
     }
 
+    /// @dev A match that never started (its plan never locked): both fights end now, never judged, no
+    ///      attempt spent.
+    function _cancel(address agent, Fight storage f) internal {
+        f.finishedAt = uint64(block.timestamp);
+        emit Cancelled(agent, f.number);
+        Fight storage o = _fights[f.opponent][f.opponentNumber];
+        if (f.opponent != address(0) && o.finishedAt == 0) {
+            o.finishedAt = uint64(block.timestamp);
+            emit Cancelled(f.opponent, f.opponentNumber);
+        }
+    }
+
     function _end(address agent, Fight storage f, uint64 at) internal {
         f.finishedAt = at;
         f.timeUsed += uint32(uint256(ROUNDS + 1 - f.round) * roundTime); // rounds never answered
@@ -934,7 +975,7 @@ contract AgentArena {
     }
 
     function _keepBest(Best storage b, Fight storage f, uint8 points) internal {
-        if (b.at == 0 || points > b.points || (points == b.points && f.timeUsed < b.timeUsed)) {
+        if (b.at == 0 || points > b.points || (points == b.points && (f.timeUsed < b.timeUsed || (f.timeUsed == b.timeUsed && f.number < b.fight)))) {
             b.points = points;
             b.fight = f.number;
             b.at = f.finishedAt;
@@ -951,16 +992,17 @@ contract AgentArena {
             emit Fell(agent, 0, 0, trap);
             return;
         }
-        uint8 r = f.trapsCommit == bytes32(0) ? 0 : _clockRound(f); // before the lock: no round yet
+        // before the first bell (no plan yet, or the countdown): round 0, judged a foul
+        uint8 r = f.trapsCommit == bytes32(0) || (f.clockRound == 1 && block.timestamp < f.clockAt) ? 0 : _clockRound(f);
         uint16[] storage calls = _calls[agent][f.number];
         if (calls.length < MAX_CALLS) calls.push((uint16(r) << 8) | trap);
         else if (f.fouls < type(uint8).max) ++f.fouls;
         emit Fell(agent, f.number, r, trap);
     }
 
-    /// @dev The round on the clock: the countdown counts as round 1, a break as the round just closed.
+    /// @dev The round on the clock after the first bell: a break counts as the round just closed.
     function _clockRound(Fight storage f) internal view returns (uint8) {
-        if (block.timestamp < f.clockAt) return f.clockRound > 1 ? f.clockRound - 1 : 1;
+        if (block.timestamp < f.clockAt) return f.clockRound - 1; // clockRound > 1 here (a break)
         uint256 r = (block.timestamp - f.clockAt) / (roundTime + BREAK) + f.clockRound;
         return r > ROUNDS ? ROUNDS : uint8(r);
     }

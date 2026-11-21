@@ -25,9 +25,16 @@
 // - simulates every transaction first (eth_estimateGas), signs it here with the judge key (a Worker
 //   secret) and sends it as a raw transaction.
 //
+// - sends nothing new after RUN_SECONDS (default 40) of a run, so a run never sends while the next
+//   minute's run starts: one sender per key at a time, and a transaction found pending at the start of
+//   a run is at least a quarter of a minute old (stuck);
+// - checks the receipts of what it sent before it ends (a reverted or lost transaction is not
+//   counted; the next run finds the same work on the chain and does it again: the chain itself is the
+//   list of what is still to do).
+//
 // Environment: RPC_URL, ARENA, CHAIN_ID, DEPLOY_BLOCK, BLOCKS_PER_WEEK, SECRET (Worker secret),
 // JUDGE_KEY (Worker secret), LOOKBACK_BLOCKS (default 20000), MAX_PER_RUN (default 16),
-// MAX_PER_HOUR (default 240).
+// MAX_PER_HOUR (default 240), RUN_SECONDS (default 40).
 
 import { secp256k1 } from '@noble/curves/secp256k1.js';
 import { keccak256 } from './keccak.js';
@@ -119,6 +126,7 @@ export function lockCalldata(items) {
 // ------------------------------------------------------------------ one run
 
 export async function judgeRun(env, { fetchFn = fetch, log = console.log, wait = sleep } = {}) {
+  const deadline = Date.now() + Number(env.RUN_SECONDS ?? 40) * 1000;
   const rpcUrl = env.RPC_URL;
   const rpc = async (method, params) => {
     const res = await fetchFn(rpcUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
@@ -153,7 +161,12 @@ export async function judgeRun(env, { fetchFn = fetch, log = console.log, wait =
     return { judged: 0, drew: false, waiting: true };
   }
   let nonce = pendingNonce;
+  const sent = []; // [hash, what]: their receipts are checked before the run ends
   const send = async (data, what) => {
+    if (Date.now() > deadline) {
+      log(what + ': left for the next run (this run\'s time is up)');
+      return null;
+    }
     let gas;
     try {
       gas = (BigInt(await rpc('eth_estimateGas', [{ from: me, to: arena, data }])) * 12n) / 10n;
@@ -165,7 +178,19 @@ export async function judgeRun(env, { fetchFn = fetch, log = console.log, wait =
     const hash = await rpc('eth_sendRawTransaction', [signTx({ nonce, gasPrice, gas, to: arena, data, chainId }, env.JUDGE_KEY)]);
     nonce++;
     log(what + ': sent ' + hash);
+    sent.push([hash, what]);
     return hash;
+  };
+  /** Waits (a little) for the receipts of what this run sent; returns how many went through. */
+  const receipts = async () => {
+    let ok = 0;
+    for (const [hash, what] of sent) {
+      let r = null;
+      for (let i = 0; i < 15 && !(r = await rpc('eth_getTransactionReceipt', [hash])); i++) await wait(1000);
+      if (r?.status === '0x1') ok++;
+      else log(what + (r ? ': reverted on chain' : ': no receipt yet') + ' (the next run finds it on the chain and does it again)');
+    }
+    return ok;
   };
   const word = async (data) => Number(BigInt(await rpc('eth_call', [{ to: arena, data }, 'latest'])));
   const blockNow = async () => parseInt(await rpc('eth_blockNumber', []), 16);
@@ -179,7 +204,7 @@ export async function judgeRun(env, { fetchFn = fetch, log = console.log, wait =
     const inHall = await word(HALL_COUNT);
     // no fight without an opponent; but at the season's end the draw closes the hall, one agent included
     const rt = await chain.roundTime();
-    const closing = at + 60 + 12 * rt + 11 * BREAK > (await word(SEASON_END));
+    const closing = t + 60 + 12 * rt + 11 * BREAK > (await word(SEASON_END)); // a draw held now would bell at t + 60
     if (at !== 0 && t >= at && (inHall >= 2 || (closing && inHall >= 1))) {
       const sealed = await send(DRAW, 'seal the draw');
       for (let i = 0; sealed && i < 20 && !(await rpc('eth_getTransactionReceipt', [sealed])); i++) await wait(1000);
@@ -199,19 +224,21 @@ export async function judgeRun(env, { fetchFn = fetch, log = console.log, wait =
     const recent = Math.max(Number(env.DEPLOY_BLOCK ?? 0), latestNow - Math.ceil(Number(env.BLOCKS_PER_WEEK ?? 604800) / (7 * 24 * 60)) * 20); // twenty minutes of blocks: a fight lasts at most 15
     const logs = await rpc('eth_getLogs', [{ address: arena, fromBlock: '0x' + recent.toString(16), toBlock: '0x' + latestNow.toString(16), topics: [STARTED] }]);
     const t = await timeNow();
+    const rt = await chain.roundTime();
     const items = [];
     const seen = new Set();
     for (const l of logs) {
+      if (items.length >= 32) break; // the rest in the next run
       if (l.topics?.[0] !== STARTED || !l.data) continue;
       const agent = '0x' + l.topics[1].slice(26);
       const number = parseInt(l.topics[2], 16);
       const seed = '0x' + l.data.slice(2, 66);
-      if (seen.has(seed)) continue; // the other fighter of a match: one lock covers both
-      const f = await chain.fightOf(agent, number);
-      const rt = await chain.roundTime();
-      const endsAt = f.clockAt + 11 * (rt + BREAK) + rt;
-      if (BigInt(f.trapsCommit) !== 0n || f.round !== 1 || f.clockRound !== 1 || f.finishedAt !== 0 || t > endsAt) continue;
+      if (seen.has(seed)) continue; // the other corner of a match: read once, one lock covers both
       seen.add(seed);
+      const f = await chain.fightOf(agent, number);
+      const endsAt = f.clockAt + 11 * (rt + BREAK) + rt;
+      // locked already, over (a cancelled match included) or past its time: nothing to lock
+      if (BigInt(f.trapsCommit) !== 0n || f.round !== 1 || f.clockRound !== 1 || f.finishedAt !== 0 || t > endsAt) continue;
       const { traps } = planOf(keys.cardSeed(f.seed));
       items.push({ agent, number, commit: keys.trapsCommit(traps, keys.trapSalt(arena, f.seed)) });
     }
@@ -239,7 +266,7 @@ export async function judgeRun(env, { fetchFn = fetch, log = console.log, wait =
   const budget = Math.min(Number(env.MAX_PER_RUN ?? 16), Number(env.MAX_PER_HOUR ?? 240) - lastHour);
   if (budget <= 0) {
     log('hourly limit reached: ' + lastHour + ' judgements in the last hour');
-    return { judged: 0, drew, waiting: false, limited: true };
+    return { judged: 0, drew, waiting: false, limited: true, confirmed: await receipts(), sent: sent.length };
   }
 
   const over = (f) => f.finishedAt !== 0 || now > f.clockAt + (12 - f.clockRound) * (roundTime + BREAK) + roundTime;
@@ -264,5 +291,5 @@ export async function judgeRun(env, { fetchFn = fetch, log = console.log, wait =
     const data = judgeCalldata(agent, number, hashes, keys.salt(arena, agent, number), traps, trapSalt);
     if ((await send(data, agent + '#' + number + ' judged')) !== null) judged++;
   }
-  return { judged, drew, waiting: false };
+  return { judged, drew, waiting: false, confirmed: await receipts(), sent: sent.length };
 }

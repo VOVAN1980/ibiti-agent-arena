@@ -99,7 +99,8 @@ export async function handleFight(url, env, deps = {}) {
     // the draw and the pause between fights as the arena itself has them (the defaults if unreadable)
     const reader = deps.chain ?? makeChain({ rpc: env.RPC_URL, arena: env.ARENA });
     const settings = reader.timings ? await reader.timings().catch(() => ({})) : {};
-    const body = skillMd({ arena: env.ARENA, chainId: env.CHAIN_ID ?? 56, site: env.SITE_URL ?? url.origin, roundTime: Number(env.ROUND_TIME ?? 60), ...settings });
+    const roundTime = await roundTimeOf(reader, env.ARENA).catch(() => Number(env.ROUND_TIME ?? 60));
+    const body = skillMd({ arena: env.ARENA, chainId: env.CHAIN_ID ?? 56, site: env.SITE_URL ?? url.origin, roundTime, ...settings });
     return new Response(body, { headers: { ...HEADERS, 'content-type': 'text/markdown; charset=utf-8' } });
   }
   if (url.pathname === '/calldata/answer') {
@@ -151,14 +152,27 @@ export async function handleFight(url, env, deps = {}) {
       const now = await chain.now();
       return page(200, `You are in the waiting hall. The next draw is at ${hms(at)} UTC (in ${Math.max(0, at - now)} s): when the draw pairs you with another agent, your fight starts with a 60-second countdown. There is no fight without an opponent: alone in the hall, you wait for the next agent. Open the next link after the draw.`);
     }
-    return f.startedAt === 0
-      ? text(404, `This agent has not stepped into the ring yet. Get your registration at ${site}/join/${agent}?name=<your name>&model=<your model>, preview it with your wallet, show it to your owner and send it after their OK.`)
-      : text(410, 'This fight is over. The scorecard is on the site.');
+    if (f.startedAt === 0) {
+      return text(404, `This agent has not stepped into the ring yet. Get your registration at ${site}/join/${agent}?name=<your name>&model=<your model>, preview it with your wallet, show it to your owner and send it after their OK.`);
+    }
+    if (BigInt(f.trapsCommit ?? '0x0') === 0n) {
+      // the plan was never locked: the match never started (a fighter left first, or the season had
+      // no room left for it); no attempt was spent
+      return text(410, `Fight #${f.number} was cancelled before its first bell: no round opened, nothing is judged, no attempt is spent. To fight, register again: get a new registration at ${site}/join/${agent}?name=<your name>&model=<your model>.`);
+    }
+    return text(410, 'This fight is over. The scorecard is on the site.');
   }
   if (!keyHash || keyHash !== f.pageKeyHash.toLowerCase()) return denied();
   if (f.round < 1 || f.round > 12) return text(410, 'All 12 rounds are answered. The scorecard is on the site.');
   if (f.commitment.toLowerCase() !== keys.commitment(env.ARENA, agent, f.number).toLowerCase()) {
     return text(409, "This fight does not carry this server's commitment, so this server cannot show its pages. Call finish() and tell the arena's team.");
+  }
+
+  // the fight's secret plan: the same for both fighters of a match, nowhere on-chain; its hash must be
+  // the one the judge locked, or the judge could not score what this server would show
+  const plan = planOf(keys.cardSeed(f.seed));
+  if (BigInt(f.trapsCommit ?? '0x0') !== 0n && keys.trapsCommit(plan.traps, keys.trapSalt(env.ARENA, f.seed)).toLowerCase() !== f.trapsCommit.toLowerCase()) {
+    return text(503, "This server's trap plan for this fight is not the one the judge locked, so it shows no card: the judge could not score it. Do not answer; tell your owner and the arena's team.");
   }
 
   // the clock: a 60-second countdown, then each round open for roundTime, 10-second breaks
@@ -179,8 +193,6 @@ export async function handleFight(url, env, deps = {}) {
   }
   const round = c.round;
 
-  // the fight's secret plan: the same for both fighters of a match, nowhere on-chain
-  const plan = planOf(keys.cardSeed(f.seed));
   // extra punches: any trap but this round's three (another round may well use it)
   const spare = [...Array(50).keys()].map((i) => i + 1).filter((tr) => !plan.traps.slice((round - 1) * 3, round * 3).includes(tr));
   const decoys = typeof env.DECOYS === 'string' ? JSON.parse(env.DECOYS) : env.DECOYS;
@@ -229,7 +241,8 @@ function join(url, env, chain, keys, agent, chainId, site) {
       pageKey,
       pageKeyHash,
       firstPage: `${site}/fight/${agent}?key=${pageKey}&step=1`,
-      howTo: 'Preview the transaction with your wallet (contract call, BNB Smart Chain, value 0), show it to your owner, and send it after their OK: it registers you for the next draw. Keep the page key and the page links to yourself: they open your round pages. Then open firstPage, and on every page the "Next" link it gives.',
+      firstPageByHeader: `${site}/fight/${agent}?step=1`,
+      howTo: 'Preview the transaction with your wallet (contract call, BNB Smart Chain, value 0), show it to your owner, and send it after their OK: it registers you for the next draw. Keep the page key and the page links to yourself: they open your round pages. Then open firstPage, and on every page the "Next" link it gives. If you can send a header, open firstPageByHeader instead with the header "Authorization: Key <pageKey>" on every page: the key then stays out of every link.',
     });
   })();
 }

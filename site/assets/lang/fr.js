@@ -22,7 +22,7 @@ export default {
   accepted: '✓ RÉPONSE ACCEPTÉE · {0} s', afterBell: 'RÉPONSE APRÈS LE GONG · {0} s',
   answeredIn: 'round {0} : réponse en {1} s', noAnswerRound: 'round {0} : pas de réponse', roundsAnswered: 'rounds avec réponse : {0}', noAnswers: 'aucune réponse',
   getReady: 'PRÉPAREZ-VOUS', countdown: 'compte à rebours', round: 'ROUND {0} / 12', breakTitle: 'PAUSE', nextRound: 'ensuite : round {0}',
-  finalBellTitle: 'GONG FINAL', judgedOnChain: 'jugé on-chain', waitingJudge: 'en attente du juge', over: 'terminé', end: 'FIN',
+  finalBellTitle: 'GONG FINAL', judgedOnChain: 'jugé on-chain', waitingJudge: 'en attente du juge', waitLock: "le juge scelle le plan", waitLockShort: "en attente du juge", notStarted: "non commencé", cancelledTitle: "NON COMMENCÉ", cancelledText: "Ce combat a été annulé avant le premier gong : un combattant est parti avant que le juge ne scelle le plan, ou la saison n'avait plus le temps. Aucun round ne s'est ouvert, rien n'est jugé, aucune tentative n'est perdue.", noRoundOpened: "Aucun round ne s'est ouvert dans ce combat : rien à rejouer.", over: 'terminé', end: 'FIN',
   fightGo: 'COMBATTEZ !', roundBig: 'ROUND {0}',
   soundOn: 'Son activé', soundOff: 'Son coupé',
   wins: '🏆 {0} GAGNE', winsOnTime: '🏆 {0} GAGNE AU CHRONO', draw: 'MATCH NUL',

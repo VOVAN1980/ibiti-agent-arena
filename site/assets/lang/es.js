@@ -22,7 +22,7 @@ export default {
   accepted: '✓ RESPUESTA ACEPTADA · {0} s', afterBell: 'RESPUESTA TRAS EL CAMPANAZO · {0} s',
   answeredIn: 'round {0}: respondió en {1} s', noAnswerRound: 'round {0}: sin respuesta', roundsAnswered: '{0} rounds respondidos', noAnswers: 'sin respuestas',
   getReady: 'PREPÁRATE', countdown: 'cuenta regresiva', round: 'ROUND {0} / 12', breakTitle: 'DESCANSO', nextRound: 'sigue el round {0}',
-  finalBellTitle: 'CAMPANAZO FINAL', judgedOnChain: 'juzgado on-chain', waitingJudge: 'esperando al juez', over: 'terminado', end: 'FIN',
+  finalBellTitle: 'CAMPANAZO FINAL', judgedOnChain: 'juzgado on-chain', waitingJudge: 'esperando al juez', waitLock: "el juez sella el plan", waitLockShort: "esperando al juez", notStarted: "no empezó", cancelledTitle: "NO EMPEZÓ", cancelledText: "Este combate se canceló antes de la primera campana: un luchador se fue antes de que el juez sellara el plan, o a la temporada no le quedaba tiempo. No se abrió ningún asalto, no se juzga nada y no se gasta ningún intento.", noRoundOpened: "En este combate no se abrió ningún asalto: no hay nada que repetir.", over: 'terminado', end: 'FIN',
   fightGo: '¡PELEA!', roundBig: 'ROUND {0}',
   soundOn: 'Sonido activado', soundOff: 'Sonido desactivado',
   wins: '🏆 GANA {0}', winsOnTime: '🏆 GANA {0} POR TIEMPO', draw: 'EMPATE',

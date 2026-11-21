@@ -13,6 +13,7 @@ import { makeChain } from '../src/chain.js';
 import { isPassRound } from '../src/keccak.js';
 import { arenaKeys } from '../src/keys.js';
 import { judgeRun } from '../src/judge-cron.js';
+import { planOf } from '../src/plan.js';
 
 const [rpc, depPath, keyA, keyB, secretPath, judgeKey] = process.argv.slice(2);
 const dep = JSON.parse(readFileSync(depPath, 'utf8'));
@@ -100,6 +101,15 @@ for (let round = 1; round <= 12; round++) {
 }
 console.log('the themes of this fight, round by round:', themes.join(' · '));
 
+// what the judge must find, worked out from the card's plan before it comes: Red called claimBonus()
+// (trap 31) in round 2, a punch of round 2 if 31 is one of its three traps, else a foul
+const CLAIM_BONUS = 31;
+const round2 = planOf(keys.cardSeed(plans[0].seed)).traps.slice(3, 6);
+const expected = round2.includes(CLAIM_BONUS)
+  ? { hits: 1n << BigInt(3 + round2.indexOf(CLAIM_BONUS)), fouls: 0, what: 'a punch of round 2' }
+  : { hits: 0n, fouls: 1, what: 'a foul' };
+console.log(`round 2's traps are ${round2.join(', ')}: Red's claimBonus() call must be ${expected.what}`);
+
 const before = await Promise.all(fighters.map((f) => chain.fight(f.agent)));
 const j = await judge();
 for (const [i, f] of fighters.entries()) {
@@ -116,7 +126,9 @@ const solved = (f) => f.correct.toString(2).split('1').length - 1;
 if (BigInt(red.trapsCommit) === 0n || red.trapsCommit !== blue.trapsCommit) throw new Error('not one locked plan for both');
 if (solved(red) !== 11 || solved(blue) !== 11 || (red.correct & (1 << 4)) || (blue.correct & (1 << 6))) throw new Error('the solved rounds are not what was played');
 const pointsOf = (f) => Number(cast('call', '--rpc-url', rpc, dep.arena, 'pointsOf(address)(uint8)', f.agent));
-const redHit = red.hits !== 0n;
+const ALL = 0xfff;
+if (red.correct !== (ALL & ~(1 << 4)) || blue.correct !== (ALL & ~(1 << 6))) throw new Error('the solved masks are not exactly what was played');
+if (red.hits !== expected.hits || red.fouls !== expected.fouls) throw new Error(`Red: hits ${red.hits} fouls ${red.fouls}, the plan says ${expected.what}`);
+if (blue.hits !== 0n || blue.fouls !== 0) throw new Error('Blue made no trap call: no hit, no foul');
 if (pointsOf(fighters[0]) !== 108 || pointsOf(fighters[1]) !== 110) throw new Error('the points are not what the rules give');
-if (redHit ? red.fouls !== 0 : red.fouls !== 1) throw new Error("Red's trap call is neither one hit nor one foul");
-console.log(`checked: one locked plan, 11 rounds solved each, Red's call ${redHit ? 'a punch of round 2' : 'a foul'}, points 108 and 110`);
+console.log(`checked: one locked plan, the exact solved masks (Red all but 5, Blue all but 7), Red's call ${expected.what} as the plan said, Blue clean, points 108 and 110`);

@@ -22,7 +22,7 @@ export default {
   accepted: '✓ JAWABAN DITERIMA · {0} dtk', afterBell: 'JAWABAN SETELAH BEL · {0} dtk',
   answeredIn: 'ronde {0}: dijawab dalam {1} dtk', noAnswerRound: 'ronde {0}: tidak menjawab', roundsAnswered: '{0} ronde dijawab', noAnswers: 'tidak ada jawaban',
   getReady: 'BERSIAP', countdown: 'hitung mundur', round: 'RONDE {0} / 12', breakTitle: 'JEDA', nextRound: 'berikutnya ronde {0}',
-  finalBellTitle: 'BEL AKHIR', judgedOnChain: 'dinilai on-chain', waitingJudge: 'menunggu juri', over: 'selesai', end: 'SELESAI',
+  finalBellTitle: 'BEL AKHIR', judgedOnChain: 'dinilai on-chain', waitingJudge: 'menunggu juri', waitLock: "juri menyegel rencana", waitLockShort: "menunggu juri", notStarted: "belum dimulai", cancelledTitle: "TIDAK DIMULAI", cancelledText: "Pertandingan ini dibatalkan sebelum gong pertama: seorang petarung pergi sebelum juri menyegel rencana, atau musim tidak punya waktu lagi. Tidak ada ronde yang dibuka, tidak ada yang dinilai, tidak ada kesempatan yang terpakai.", noRoundOpened: "Tidak ada ronde yang dibuka dalam pertarungan ini: tidak ada yang bisa diputar ulang.", over: 'selesai', end: 'SELESAI',
   fightGo: 'TARUNG!', roundBig: 'RONDE {0}',
   soundOn: 'Suara aktif', soundOff: 'Suara mati',
   wins: '🏆 {0} MENANG', winsOnTime: '🏆 {0} MENANG KARENA WAKTU', draw: 'SERI',

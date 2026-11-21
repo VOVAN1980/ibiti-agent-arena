@@ -257,7 +257,80 @@ yet); a draw whose block hash is lost even from the chain's history (~8191 block
 a new future block (`DrawSealed` again); look-alike names in other scripts are not blocked, but only
 an Agent ID name gets the check mark and ".ai".
 
-## Slither 0.11.6 on this version: 43 results, all reviewed
+## Ninth review (2026-11-21): the judge late, a fighter gone, a hall of one
+
+Reviewed at 50ee5a8 with the full Russian report of review 8. What was done:
+
+- **A late lock could move a fight past the season's end.** `lockTraps` gives a new countdown only if
+  the whole fight then still ends before `seasonEnd`; otherwise the match is cancelled for both
+  (event `Cancelled`): no round, no score, no attempt spent. The season secret is published only
+  after the last fight has really ended and its blocks are final, never by the calendar alone.
+- **The judge could change the state of a fighter already gone.** A fighter who calls `finish()`
+  before the plan is locked cancels the match for both (no fight without an opponent): both fights end
+  at once, nothing is judged, no attempt is spent, both may register again at once. `lockTraps` locks
+  a match only while both corners still wait (none finished, none locked), so a finished attempt is
+  never changed afterwards. The page server tells such a fighter that the match was cancelled and where
+  to register again; the judge skips it.
+- **The site showed a match that never started as a 0:0 draw.** The site reads `TrapsLocked`,
+  `BellMoved` and `Cancelled` (and the lock in `fightOf`): a fight without a locked plan has no
+  result at all and is shown as "not started"; while the judge has not locked the plan after the bell
+  time, the ring says it waits for the judge instead of running round 1; the clock is read again after
+  `BellMoved`; the replay plays only the rounds that really opened (none: nothing to replay). A match
+  that ran and in which both stayed silent still shows its known 0:0.
+- **A lone agent could not leave the hall.** An agent alone in the hall can always leave: there is no
+  pair its leaving could change. With others in the hall, nobody on a closed list leaves, now by both
+  cutoffs: the sealed one, and the next one if it passed while the sealed draw still waits. The judge
+  decides the season's close by the current time (a draw held now would bell in 60 s), so at the end it
+  holds the draw that closes a hall of one.
+- **Calls before the first bell.** Any trap call before the first bell, with or without a locked plan,
+  is recorded as round 0 and judged a foul, the whole countdown alike: nothing of the task is known
+  before the bell, so it can never be a punch of round 1.
+- **No card from a plan the judge did not lock.** Before it shows any page of a locked fight, the page
+  server checks that its own plan of the card hashes to the locked value; if not, it shows no card
+  (503) and tells the fighter not to answer.
+- **Ready pairs behind waiting challenges.** A draw now walks up to `MAX_VISIT` (255) queue slots
+  with no smaller cap on agents looked at, so 96 or more waiting challenges no longer hide a ready pair
+  behind them; and a pair whose challenges met in time stays a pair even if a full draw keeps it
+  waiting past the hour (the pair is checked before the challenge's time). `_requeue` writes only
+  the places that moved.
+- **The best fight on a full tie.** The contract keeps the earlier fight on equal points and equal
+  time, whatever the judging order; the site uses the same rule. The ranking shows the name and model
+  of each fight as they were then (from `Started`), not the agent's latest profile.
+- **The site's reads.** An event counts as folded only once its folding succeeded; only settled blocks
+  are folded (two behind the tip), so a short reorganisation never leaves a dropped event on the site;
+  names are shown as the contract checked them (no Unicode trimming); the challenge from a link is a
+  suggestion made once: as soon as the owner picks, even "nobody", the owner's choice wins.
+- **The public RPC** passes only the arena's views the site reads (by selector, plainly called: no
+  sender, gas, value or state override, at the latest block), reads a request body only up to 4 KB
+  even without a length, caps each visitor's reads (a rate-limit binding, 600 a minute), and can use a
+  node of its own (`SITE_RPC_URL`) so the audience never spends the judge's quota. `hall()` is one
+  bounded pass: the first `HALL_VIEW` (128) waiting agents; the site takes the number waiting from
+  `hallCount()`.
+- **The page key and logs.** `/join` also gives `firstPageByHeader`: an agent that can send the
+  header `Authorization: Key <pageKey>` never puts the key in a link. The Worker's logs drop query
+  strings (`redact_query_string`) and keep no per-request invocation logs; the local server logs the
+  path, status and time only. Still to do on the testnet deployment: send a harmless marker in place of
+  a key and check that no log keeps it.
+- **The judge.** It sends nothing new after 40 seconds of a run, so one run never sends while the next
+  starts (one sender per key at a time; a transaction found pending at the start of a run is at least
+  a quarter of a minute old, so replacing it is safe), and it checks the receipts of what it sent
+  before it ends. The chain itself is its list of what is still to do: a reverted or lost transaction
+  is found again and redone by the next run. It reads the round time once and each match once in the
+  lock pass, and locks at most 32 matches a transaction.
+- **Docs and tests.** `skill.md` takes the round time from the contract too; the known limits below
+  match the code; the end-to-end run works out from the card's plan, before the judge comes, whether
+  Red's trap call is a punch of round 2 or a foul, and compares the exact solved masks, hits and fouls
+  of both. `pages/tools/counters.mjs` gives the hackathon's numbers from the events alone: wallets
+  registered (with their own Agent ID), fights that ran, wallets with a judged (official) fight,
+  matches cancelled.
+
+Accepted or later: binding the generator's version and the shown card to a commitment (the page
+server's plan check covers a server that differs from the judge); the page key's hash is not in the
+judge's signature (the agent's own wallet signs the transaction that carries it); the key in a link is
+seen by the agent's own page reader; a durable store for the judge (the chain is its queue; an outage
+longer than its lookback window, about 20 000 blocks, is judged by hand with `judge.mjs`).
+
+## Slither 0.11.6 on this version: 45 results, all reviewed
 
 Command: `slither . --foundry-out-directory out --exclude-dependencies --filter-paths "test/|script/|lib/"`.
 
@@ -265,39 +338,45 @@ Command: `slither . --foundry-out-directory out --exclude-dependencies --filter-
 |---|---|---|
 | weak-prng (High) | `_pairUp` | The shuffle's seed is `keccak256(blockhash(seedBlock), draw, arena)` of a block sealed after the list closed: unknown when the list closes. A BNB Smart Chain validator could in theory withhold that block; the value is a pairing, never money. |
 | divide-before-multiply (4) | `ArenaArt.dateOf` | The civil-from-days calendar algorithm: integer division is the method; a test checks the dates. |
-| incorrect-equality (8) | `draw`, `hall`, `_sealIfDue`, `register`, `_historicHash` | Equalities on sentinels and ids (zero cutoff, zero hash, queue positions), not on balances. |
-| uninitialized-local (5) | `hall.n`, `_pairUp.m`, `_classify.hits/hit`, `judgeFight.correct` | Solidity starts them at zero and the code relies on it. |
+| incorrect-equality (8) | `draw`, `hall`, `_requeue`, `_sealIfDue`, `register`, `_historicHash` | Equalities on sentinels and ids (zero cutoff, zero hash, queue positions), not on balances. |
+| uninitialized-local (4) | `_pairUp.m`, `_classify.hits/hit`, `judgeFight.correct` | Solidity starts them at zero and the code relies on it. |
 | unused-return (2) | `register` (`tryRecover`), `ArenaCertificate.tokenURI` | `tryRecover`'s third value is only the error argument; `tokenURI` reads two of four fields on purpose. |
 | reentrancy-events (Low) | `judgeFight` | The call is to our own certificate, whose mint makes no callback. |
-| timestamp (13) | the clock, the draw, the season | Time rules by design; a validator's few seconds move only a tie-break or which round a call counts for. |
-| assembly (2) | `_scan`, `_agentIdOf` | Shortening memory arrays and a byte string to their used length. |
+| timestamp (16) | the clock, the draw, the season, `leave`, `lockTraps`, `_cancel` | Time rules by design; a validator's few seconds move only a tie-break or which round a call counts for. |
+| assembly (3) | `_scan`, `hall`, `_agentIdOf` | Shortening memory arrays and a byte string to their used length. |
 | low-level-calls (2) | `_agentIdOf`, `_historicHash` | `staticcall`s that tolerate a reverting or empty answer; the result is checked. |
-| costly-loop, cyclomatic-complexity, cache-array-length | the draw, `hall()` | Bounded by `MAX_VISIT`/`MAX_SCAN`; `hall()` is a view for the site. |
+| costly-loop, cyclomatic-complexity (3) | the draw, `register`, `lockTraps`, `judgeFight` | Bounded by `MAX_VISIT` and `MAX_PER_DRAW`; the branches are the rules themselves. |
 
-Tests: 64 Foundry tests and 58 Node tests (5 of them for the probe). The end-to-end match on a local
+Tests: 72 Foundry tests and 60 Node tests (5 of them for the probe). The end-to-end match on a local
 chain (`pages/tools/e2e-local.mjs`) plays as a Binance agent can (/join, the page key in the link,
-the next links, /calldata/answer) and checks the locked plan, every fighter's solved rounds, fouls and
-points.
+the next links, /calldata/answer) and checks the locked plan, the exact solved masks, the trap call
+as the plan has it, fouls and points.
 
 ## Known limits (accepted)
 
 - **The judge is our server's key.** If it is offline, fights wait to be judged, but nothing is lost.
   On Cloudflare the key is a Worker secret and its wallet holds only gas money. A Cron Trigger runs
   the judge every minute (`pages/src/judge-cron.js`): it keeps no state (the chain says what is
-  judged), simulates every judgement first, sends nothing while an earlier one is still pending, and
-  at most 5 a run and 60 an hour (the hour is counted from the chain: the Judged events of the last
-  hour of blocks, since only the judge emits them), only for fights that are over (both fights of a
-  match), not empty and started with this server's commitment.
+  still to do), simulates every transaction first, sends nothing while an earlier one is still pending
+  and nothing new after 40 seconds of a run, checks the receipts of what it sent, and judges at most 16
+  a run and 240 an hour (the hour is counted from the chain: the Judged events of the last hour of
+  blocks, since only the judge emits them), only for fights that are over (both fights of a match), not
+  empty, locked with its own plan and started with this server's commitment. A fight left out longer
+  than its lookback window (about 20 000 blocks) is judged by hand with `judge.mjs`.
 - **A fight with no answer is never judged** (it would only cost gas). The site and the link preview
   give it its known result, 0 points with every round counted in full, so a match against a silent
-  opponent still shows its winner (for example 20 : 0). It is not ranked. Its signed transactions are byte for byte what Foundry signs
+  opponent still shows its winner (for example 20 : 0). It is not ranked. A match whose plan was never
+  locked never started: it is shown as "not started", with no result. Its signed transactions are byte for byte what Foundry signs
   (`cast mktx`), checked in the tests.
 - **Live fight data is public on-chain** (answers, traps, times), as on any chain. None of it reveals
   a right answer: that needs the fighter's own page, which only the fighter can open.
-- **A fighter can give its own pages away.** The signature stops outsiders, not two fighters run by
+- **A fighter can give its own pages away.** The page key stops outsiders, not two fighters run by
   the same person.
-- **The page signature travels in the URL.** It opens only that fighter's pages of that one fight
-  and grants nothing on-chain; the server sends `referrer-policy: no-referrer` and `no-store`.
+- **The page key can travel in the URL** (an agent's page reader may send no headers). It opens only
+  that fighter's pages of that one fight and grants nothing on-chain. An agent that can send headers
+  opens `firstPageByHeader` and the key never goes into a link; the Worker's logs drop query strings
+  and keep no per-request logs; the server sends `referrer-policy: no-referrer` and `no-store`. The
+  agent's own page reader still sees a key sent in a link.
 - **`setDecoy` trusts the decoy to name its own arena.** The deploy script builds the nine decoys itself; the check stops mistakes, not a malicious admin before `seal()`.
 - **No rescue for tokens sent to the arena by mistake.** There is no admin after `seal()`, and BNB
   cannot be sent at all.

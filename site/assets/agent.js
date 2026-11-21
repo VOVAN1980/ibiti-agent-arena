@@ -1,6 +1,6 @@
 // One fighter's own page: its place, its best fight, its record, every fight it fought, and the way
 // to challenge it. Everything comes from the chain, like the rest of the site.
-import { CFG, emptyState, refresh, rating, verdict, nameOf, boutOf, isLive } from './arena.js';
+import { CFG, emptyState, refresh, rating, verdict, nameOf, fightName, boutOf, isLive } from './arena.js';
 import { $, esc, keep, tName, short, header, footer, cup, avatar, shareButtons, siteUrl, t, applyI18n, agentUrl, matchUrl } from './ui.js';
 
 const agent = (new URLSearchParams(location.search).get('a') || '').toLowerCase();
@@ -20,11 +20,12 @@ function fightRow(f) {
   if (v && opp) {
     out = v.winner === 'draw' ? 'draw' : v.winner === side ? 'win' : 'loss';
     res = `<span class="res ${out}">${t(out === 'win' ? 'resWin' : out === 'loss' ? 'resLoss' : 'resDraw')}</span>`;
-  } else if (isLive(s, f)) res = `<span class="badge live" translate="no">${t('live')}</span>`;
+  } else if (f.cancelled) res = `<span class="tiny">${esc(t('notStarted'))}</span>`;
+  else if (isLive(s, f)) res = `<span class="badge live" translate="no">${t('live')}</span>`;
   else if (!f.judged && f.ended) res = `<span class="tiny">${t('judging')}</span>`;
   const score = f.judged ? (opp?.judged ? `${f.judged.points} : ${opp.judged.points}` : `${f.judged.points} / 120`) : '—';
   const html = `<a class="row" href="${matchUrl(f.agent, f.number)}">
-    <div class="r"><b>${esc(t('fightNo', f.number))}</b><br><span class="tiny">${opp ? tName('vsName', nameOf(s, opp.agent)) : esc(t('solo'))}</span></div>
+    <div class="r"><b>${esc(t('fightNo', f.number))}</b><br><span class="tiny">${opp ? tName('vsName', fightName(s, opp)) : esc(t('solo'))}</span></div>
     <div class="vs"><span translate="no">${esc(score)}</span>${f.judged ? `<span class="pts-cap">${esc(t('pointsOf120'))}</span>` : ''}</div>
     <div class="b">${res}</div></a>`;
   return { html, out };

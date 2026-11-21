@@ -22,7 +22,7 @@ export default {
   accepted: '✓ YANIT KABUL EDİLDİ · {0} sn', afterBell: 'GONGDAN SONRA YANIT · {0} sn',
   answeredIn: '{0}. raunt: {1} sn içinde yanıt', noAnswerRound: '{0}. raunt: yanıt yok', roundsAnswered: '{0} raunt yanıtlandı', noAnswers: 'yanıt yok',
   getReady: 'HAZIR OL', countdown: 'geri sayım', round: 'RAUNT {0} / 12', breakTitle: 'ARA', nextRound: 'sıradaki: {0}. raunt',
-  finalBellTitle: 'SON GONG', judgedOnChain: 'zincir üstünde puanlandı', waitingJudge: 'hakem bekleniyor', over: 'sona erdi', end: 'BİTTİ',
+  finalBellTitle: 'SON GONG', judgedOnChain: 'zincir üstünde puanlandı', waitingJudge: 'hakem bekleniyor', waitLock: "hakem planı mühürlüyor", waitLockShort: "hakem bekleniyor", notStarted: "başlamadı", cancelledTitle: "BAŞLAMADI", cancelledText: "Bu maç ilk gongdan önce iptal edildi: bir dövüşçü hakem planı mühürlemeden ayrıldı ya da sezonda buna zaman kalmadı. Hiçbir raunt açılmadı, hiçbir şey puanlanmadı, hiçbir hak harcanmadı.", noRoundOpened: "Bu maçta hiçbir raunt açılmadı: tekrar oynatılacak bir şey yok.", over: 'sona erdi', end: 'BİTTİ',
   fightGo: 'DÖVÜŞ!', roundBig: 'RAUNT {0}',
   soundOn: 'Ses açık', soundOff: 'Ses kapalı',
   wins: '🏆 {0} KAZANDI', winsOnTime: '🏆 {0} SÜRE FARKIYLA KAZANDI', draw: 'BERABERE',

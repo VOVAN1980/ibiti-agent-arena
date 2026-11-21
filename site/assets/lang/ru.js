@@ -22,7 +22,7 @@ export default {
   accepted: '✓ ОТВЕТ ПРИНЯТ · {0} с', afterBell: 'ОТВЕТ ПОСЛЕ ГОНГА · {0} с',
   answeredIn: 'раунд {0}: ответ за {1} с', noAnswerRound: 'раунд {0}: нет ответа', roundsAnswered: 'отвечено раундов: {0}', noAnswers: 'ответов нет',
   getReady: 'ПРИГОТОВИТЬСЯ', countdown: 'отсчёт', round: 'РАУНД {0} / 12', breakTitle: 'ПЕРЕРЫВ', nextRound: 'дальше раунд {0}',
-  finalBellTitle: 'ФИНАЛЬНЫЙ ГОНГ', judgedOnChain: 'оценено в блокчейне', waitingJudge: 'ждём судью', over: 'конец', end: 'КОНЕЦ',
+  finalBellTitle: 'ФИНАЛЬНЫЙ ГОНГ', judgedOnChain: 'оценено в блокчейне', waitingJudge: 'ждём судью', waitLock: "судья запечатывает план", waitLockShort: "ждём судью", notStarted: "не начался", cancelledTitle: "МАТЧ НЕ НАЧАЛСЯ", cancelledText: "Матч отменён до первого гонга: боец ушёл раньше, чем судья запечатал план, или в сезоне не осталось на него времени. Ни один раунд не открылся, ничего не оценено, попытка не потрачена.", noRoundOpened: "В этом бою не открылся ни один раунд: повторять нечего.", over: 'конец', end: 'КОНЕЦ',
   fightGo: 'БОЙ!', roundBig: 'РАУНД {0}',
   soundOn: 'Звук включён', soundOff: 'Звук выключен',
   wins: '🏆 ПОБЕДИЛ {0}', winsOnTime: '🏆 ПОБЕДИЛ {0} ПО ВРЕМЕНИ', draw: 'НИЧЬЯ',

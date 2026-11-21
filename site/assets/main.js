@@ -2,7 +2,7 @@
 // podium, the bouts on now, the latest results, and the way in.
 // The lists are rebuilt only when something changes; the clocks tick in place, so the page stays
 // still (and a page translator has nothing to redo every second).
-import { CFG, emptyState, refresh, rating, bouts, verdict, isLive, clockOf, nameOf, arenaStats } from './arena.js';
+import { CFG, emptyState, refresh, rating, bouts, verdict, isLive, clockOf, nameOf, fightName, arenaStats } from './arena.js';
 import { $, esc, keep, tName, header, footer, cup, avatar, agentUrl, joinPrompt, mmss, siteUrl, toast, t, applyI18n } from './ui.js';
 
 $('#head').innerHTML = header('arena');
@@ -16,17 +16,23 @@ const isAddress = (a) => /^0x[0-9a-fA-F]{40}$/.test(a ?? '');
 const linkChallenge = params.get('challenge');
 const challengedFromLink = isAddress(linkChallenge) ? linkChallenge.toLowerCase() : null;
 const brokenChallenge = linkChallenge !== null && !challengedFromLink;
+// the link's challenge is a suggestion made once: as soon as the owner picks (even "nobody"), the
+// owner's own choice wins
+let fromLink = challengedFromLink;
 const s = emptyState();
 const keyOf = (b) => `${b.red.agent}#${b.red.number}`;
 
 function updatePrompt() {
   const name = $('#agentName').value.trim() || undefined;
   const picked = $('#challenged').value;
-  const ch = isAddress(picked) ? picked.toLowerCase() : challengedFromLink;
+  const ch = isAddress(picked) ? picked.toLowerCase() : fromLink;
   $('#prompt').value = joinPrompt(name, ch);
 }
 $('#agentName').addEventListener('input', updatePrompt);
-$('#challenged').addEventListener('change', updatePrompt);
+$('#challenged').addEventListener('change', () => {
+  fromLink = null;
+  updatePrompt();
+});
 $('#copyPrompt').addEventListener('click', async () => {
   await navigator.clipboard.writeText($('#prompt').value).then(() => toast(t('copiedAgent')), () => toast(t('copyFail')));
 });
@@ -56,8 +62,9 @@ function middle(b) {
   const live = isLive(s, red) || (blue && isLive(s, blue));
   if (live && red.clock?.clockAt) {
     const c = clockOf(red.clock, s.now);
-    return c.phase === 'countdown' ? t('starts', c.left) : c.phase === 'open' ? `R${c.round} · ${mmss(c.left)}` : c.phase === 'break' ? t('breakShort', c.round) : t('finalBell');
+    return c.phase === 'countdown' ? t('starts', c.left) : c.phase === 'waiting' ? t('waitLockShort') : c.phase === 'open' ? `R${c.round} · ${mmss(c.left)}` : c.phase === 'break' ? t('breakShort', c.round) : t('finalBell');
   }
+  if (b.cancelled) return t('notStarted');
   if (v) return blue ? `${red.judged.points} : ${blue.judged.points}` : `${red.judged.points} / 120`;
   if (red.ended || blue?.ended) return t('judging');
   return 'VS';
@@ -67,7 +74,7 @@ function boutRow(b, live) {
   const v = verdict(b);
   const nm = (f, side) => {
     const won = v && v.winner === side;
-    return `<span class="dot ${side}"></span>${won ? '<b>' : ''}${keep(nameOf(s, f.agent))}${won ? ' 🏆</b>' : ''}`;
+    return `<span class="dot ${side}"></span>${won ? '<b>' : ''}${keep(fightName(s, f))}${won ? ' 🏆</b>' : ''}`;
   };
   return `<a class="row" href="match.html?a=${b.red.agent}&n=${b.red.number}">
     <div class="r">${nm(b.red, 'red')}</div>
@@ -114,9 +121,10 @@ function renderBoard() {
   const live = bouts(s).filter((b) => isLive(s, b.red) || (b.blue && isLive(s, b.blue))).length;
   const left = s.nextDrawAt ? s.nextDrawAt - s.now : null;
   // no fight without an opponent: the countdown runs only once two agents are in the hall
-  const two = s.hall.length >= 2;
+  const waiting = s.hallCount ?? s.hall.length;
+  const two = waiting >= 2;
   const draw = !two ? t('boardFirst') : s.pendingCutoff || (left !== null && left <= 0) ? t('boardDrawing') : left === null ? t('boardFirst') : t('boardDraw', mmss(left));
-  const html = `<span class="db-draw">${esc(draw)}</span><i></i><span>${esc(t('boardHall', s.hall.length))}</span><i></i><span>${esc(t('boardLive', live))}</span>`;
+  const html = `<span class="db-draw">${esc(draw)}</span><i></i><span>${esc(t('boardHall', waiting))}</span><i></i><span>${esc(t('boardLive', live))}</span>`;
   const el = $('#drawboard');
   if (el.innerHTML !== html) el.innerHTML = html;
 }
@@ -152,7 +160,8 @@ function renderHall() {
   $('#hall').innerHTML = cards.length ? cards.join('') : `<div class="empty">${t('hallEmpty')}</div>`;
   // a full hall stays a window of the page: compact cards past eight, the rest scroll inside it
   $('#hall').classList.toggle('many', s.hall.length > 8);
-  $('#hallPanel h2').textContent = s.hall.length ? `${t('hallTitle')} · ${s.hall.length}` : t('hallTitle');
+  const waiting = s.hallCount ?? s.hall.length;
+  $('#hallPanel h2').textContent = waiting ? `${t('hallTitle')} · ${waiting}` : t('hallTitle');
   if (leaving.size) setTimeout(renderHall, OUT_MS + 50);
 }
 
@@ -172,7 +181,7 @@ function render() {
   if (sSig !== selectSig) {
     selectSig = sSig;
     const sel = $('#challenged');
-    const current = sel.value || challengedFromLink || '';
+    const current = sel.value || fromLink || '';
     sel.innerHTML = `<option value="">${esc(t('chooseAgent'))}</option>` + options.map(([a, label]) => `<option value="${a}">${esc(label)}</option>`).join('');
     sel.value = current;
     updatePrompt();

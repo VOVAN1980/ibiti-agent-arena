@@ -20,8 +20,11 @@ const T = {
   ended: '0xcbca55018385ed06f25abc2d5806a421e63af1c97fb1c9ac914356fec2db920d',
   judged: '0x72e2438d123b5dc0eb021a0e91584f9268b8dbc84049b95899e13a1697bb2f2f',
   revealed: '0xf29b9dc50d66703886ed14e24d46c1acc05a39c92207e2c4aeefc6caf2f95a11', // Revealed(address,uint32,uint8[36],bytes32,bytes32)
+  locked: '0x19e5ea103f5363d015d6ee1d8793c190865c857c7fdc5a796524a8b206b1968a', // TrapsLocked(address,uint32,bytes32)
+  bell: '0xfb18a38767751083a5fa8904aa91666737e8e44a77526f103cea9995c1b54c50', // BellMoved(address,uint32,uint64)
+  cancelled: '0xc139d36e190dcb1b76b2d55783d4feab825ebead92b4caa14aac7b11c3784475', // Cancelled(address,uint32)
 };
-const SEL = { fightOf: '0x32799e5d', drawEvery: '0xa2fcf826', hall: '0x78a2ce59', nextDrawAt: '0x748e1910', pendingCutoff: '0xef92e6ba', roundTime: '0xee5f8c8f', cooldown: '0x787a08a6', seasonEnd: '0xe757b20d' };
+const SEL = { fightOf: '0x32799e5d', drawEvery: '0xa2fcf826', hall: '0x78a2ce59', hallCount: '0xb5c81661', nextDrawAt: '0x748e1910', pendingCutoff: '0xef92e6ba', roundTime: '0xee5f8c8f', cooldown: '0x787a08a6', seasonEnd: '0xe757b20d' };
 
 /** The 50 trap ids, by family (the catalogue is public: docs/DESIGN.md). */
 const FAMILY = ['Direct commands', 'Fake authority', 'Address and contract games', 'Greed and fear', 'Poisoned data and tools'];
@@ -52,7 +55,7 @@ const pad = (h) => h.replace(/^0x/, '').toLowerCase().padStart(64, '0');
 export function text32(w) {
   const bytes = (w.match(/../g) ?? []).map((x) => parseInt(x, 16)).filter((b) => b !== 0);
   try {
-    return new TextDecoder().decode(new Uint8Array(bytes)).trim();
+    return new TextDecoder().decode(new Uint8Array(bytes));
   } catch {
     return '';
   }
@@ -70,7 +73,7 @@ export async function arenaSetting(name) {
 /** One fight from the contract (fightOf), for the clock of a live fight. */
 export async function fightOf(agent, number) {
   const w = words(await rpc('eth_call', [{ to: CFG.arena, data: SEL.fightOf + pad(agent) + BigInt(number).toString(16).padStart(64, '0') }, 'latest']));
-  return { startedAt: num(w[1]), finishedAt: num(w[2]), round: num(w[6]), clockAt: num(w[9]), judged: big(w[12]) !== 0n, opponent: addrOf(w[14]), clockRound: num(w[15]) };
+  return { startedAt: num(w[1]), finishedAt: num(w[2]), round: num(w[6]), clockAt: num(w[9]), judged: big(w[12]) !== 0n, opponent: addrOf(w[14]), clockRound: num(w[15]), locked: big(w[18] ?? '0') !== 0n };
 }
 
 // ------------------------------------------------------------------ the arena's state, from its events
@@ -86,7 +89,7 @@ function fighter(s, agent) {
 }
 function fight(s, agent, n) {
   const k = key(agent, n);
-  if (!s.fights.has(k)) s.fights.set(k, { agent, number: n, answers: [], falls: [], traps: null, opponent: null, judged: null, ended: null, block: 0 });
+  if (!s.fights.has(k)) s.fights.set(k, { agent, number: n, answers: [], falls: [], traps: null, opponent: null, judged: null, ended: null, block: 0, locked: false, cancelled: false });
   return s.fights.get(k);
 }
 
@@ -94,41 +97,50 @@ function fight(s, agent, n) {
 export async function refresh(s) {
   const latest = parseInt(await rpc('eth_blockNumber', []), 16);
   const step = CFG.logStep ?? 50000;
+  // only settled blocks are folded (the newest ones a moment later): a short reorganisation of the
+  // chain's tip never leaves an event on the site that the chain dropped
+  const settled = latest - (CFG.confirmations ?? 2);
   // the cursor moves after every range folded in full, and an event is folded only once: a read that
-  // fails halfway never doubles answers, fouls or matches
+  // fails halfway never doubles answers, fouls or matches; an event counts as folded only once it is
   s.seen ??= new Set();
-  for (let from = s.fromBlock; from <= latest; from += step) {
-    const to = Math.min(latest, from + step - 1);
+  for (let from = s.fromBlock; from <= settled; from += step) {
+    const to = Math.min(settled, from + step - 1);
     const logs = await rpc('eth_getLogs', [{ address: CFG.arena, fromBlock: '0x' + from.toString(16), toBlock: '0x' + to.toString(16) }]);
     for (const l of logs) {
       const id = l.transactionHash + ':' + l.logIndex;
       if (s.seen.has(id)) continue;
-      s.seen.add(id);
       apply(s, l);
+      s.seen.add(id);
     }
     s.fromBlock = to + 1;
   }
   s.latestBlock = latest;
   s.now = await chainNow();
   // the waiting hall now (in order of registration) and the next cutoff
-  const [hallW, nextW, pendingW] = await Promise.all([SEL.hall, SEL.nextDrawAt, SEL.pendingCutoff].map((data) => rpc('eth_call', [{ to: CFG.arena, data }, 'latest'])));
+  const [hallW, countW, nextW, pendingW] = await Promise.all([SEL.hall, SEL.hallCount, SEL.nextDrawAt, SEL.pendingCutoff].map((data) => rpc('eth_call', [{ to: CFG.arena, data }, 'latest'])));
   const hw = words(hallW);
-  s.hall = hw.slice(2, 2 + num(hw[1] ?? '0')).map(addrOf);
+  s.hall = hw.slice(2, 2 + num(hw[1] ?? '0')).map(addrOf); // the first ones in line
+  s.hallCount = Math.max(s.hall.length, num(words(countW)[0] ?? '0')); // how many wait in all
   s.nextDrawAt = num(words(nextW)[0] ?? '0');
   s.pendingCutoff = num(words(pendingW)[0] ?? '0');
   // the clock of fights still running: it moves on early when both fighters have answered
   for (const f of s.fights.values()) {
-    if (f.judged || (f.ended && f.clock)) continue;
+    if (f.judged || f.cancelled || (f.ended && f.clock)) continue;
     if (f.clock && clockOf(f.clock, s.now).phase === 'over') continue;
     f.clock = await fightOf(f.agent, f.number);
   }
   // A fight that is over without a single answer is never judged: the judge spends no gas on it.
   // Its result is known all the same, as the contract would count it (0 points, every round in
-  // full), so a match against a silent opponent still gets its verdict, 10 : 0.
+  // full), so a match against a silent opponent still gets its verdict, 10 : 0. A fight whose plan
+  // was never locked never started: it has no result at all (the match was cancelled).
   for (const f of s.fights.values()) {
     if (f.judged || f.answers.length || !f.block) continue;
-    const over = f.ended || (f.clock?.clockAt && clockOf(f.clock, s.now).phase === 'over');
+    const over = f.cancelled || f.ended || (f.clock?.clockAt && clockOf(f.clock, s.now).phase === 'over');
     if (!over) continue;
+    if (!f.locked && !f.clock?.locked) {
+      f.cancelled = true;
+      continue;
+    }
     f.judged = { official: !!f.official, points: 0, correct: 0, hits: 0n, fouls: 0, roundsAnswered: 0, solved: 0, timeUsed: ROUNDS * (CFG.roundTime ?? 60), block: f.block, empty: true };
   }
   return s;
@@ -182,6 +194,20 @@ function apply(s, l) {
       const model = text32(d[3]);
       if (model) who.model = model;
       who.verified = f.official; // the name of its latest fight, checked by the contract
+      f.name = name; // as it was in this fight: a later name never relabels an old fight
+      f.model = model;
+      break;
+    }
+    case T.locked: {
+      fight(s, addrOf(t[1].slice(2)), parseInt(t[2], 16)).locked = true; // the plan is sealed: the first bell can ring
+      break;
+    }
+    case T.bell: {
+      fight(s, addrOf(t[1].slice(2)), parseInt(t[2], 16)).clock = null; // a new countdown: read the clock again
+      break;
+    }
+    case T.cancelled: {
+      fight(s, addrOf(t[1].slice(2)), parseInt(t[2], 16)).cancelled = true; // never started: no result, no attempt
       break;
     }
     case T.matched: {
@@ -239,8 +265,30 @@ export function nameOf(s, agent) {
   return f.verified && !/\.ai$/i.test(f.name) ? `${f.name}.ai` : f.name;
 }
 
-/** Where a fight stands on the clock: countdown, open round, break, or over. */
+/** A fighter's name as it was in that fight (its registration then), an Agent ID name as name.ai. */
+export function fightName(s, f) {
+  if (!f?.name) return nameOf(s, f.agent);
+  return f.official && !/\.ai$/i.test(f.name) ? `${f.name}.ai` : f.name;
+}
+
+/** Where a fight stands on the clock: countdown, open round, break, or over; 'waiting' once the bell
+ *  time has come while the judge has not locked the plan yet (round 1 waits for it). */
 export function clockOf(clock, now, roundTime = CFG.roundTime ?? 60) {
+  const c = phaseOf(clock, now, roundTime);
+  return clock.locked === false && c.phase !== 'over' && c.phase !== 'countdown' ? { phase: 'waiting', round: 1, left: 0 } : c;
+}
+
+/** The last round that really opened in a fight (by its end, if it is over); 0 if none did. */
+export function openedRounds(clock, now, roundTime = CFG.roundTime ?? 60) {
+  if (!clock?.startedAt || !clock.locked) return 0;
+  const step = roundTime + BREAK;
+  const endsAt = clock.clockAt + (ROUNDS - clock.clockRound) * step + roundTime;
+  const at = Math.min(clock.finishedAt || now, endsAt);
+  if (at < clock.clockAt) return clock.clockRound - 1;
+  return Math.min(ROUNDS, clock.clockRound + Math.floor((at - clock.clockAt) / step));
+}
+
+function phaseOf(clock, now, roundTime) {
   const step = roundTime + BREAK;
   const at = clock.clockAt;
   const from = clock.clockRound || 1;
@@ -260,7 +308,9 @@ export function bouts(s) {
     if (m.na == null || m.nb == null) continue;
     inMatch.add(key(m.a, m.na));
     inMatch.add(key(m.b, m.nb));
-    out.push({ kind: 'match', block: m.block, red: s.fights.get(key(m.a, m.na)), blue: s.fights.get(key(m.b, m.nb)) });
+    const red = s.fights.get(key(m.a, m.na));
+    const blue = s.fights.get(key(m.b, m.nb));
+    out.push({ kind: 'match', block: m.block, red, blue, cancelled: !!(red?.cancelled || blue?.cancelled) });
   }
   for (const f of s.fights.values()) {
     if (inMatch.has(key(f.agent, f.number)) || !f.block) continue;
@@ -269,7 +319,7 @@ export function bouts(s) {
   return out.sort((a, b) => b.block - a.block);
 }
 
-export const isLive = (s, f) => !f.judged && !f.ended && f.clock && f.clock.clockAt && clockOf(f.clock, s.now).phase !== 'over';
+export const isLive = (s, f) => !f.judged && !f.ended && !f.cancelled && f.clock && f.clock.clockAt && clockOf(f.clock, s.now).phase !== 'over';
 
 /** The judge's verdict of a bout: the winner is the higher score; equal points, less time. */
 export function verdict(b) {
@@ -289,13 +339,17 @@ export function rating(s, { official = false, beforeBlock = Infinity } = {}) {
     const j = f.judged;
     if (!j || j.empty || j.block >= beforeBlock || (official && !j.official)) continue; // a silent fight is not ranked
     const b = best.get(f.agent);
-    if (!b || j.points > b.points || (j.points === b.points && j.timeUsed < b.timeUsed)) best.set(f.agent, { agent: f.agent, number: f.number, startBlock: f.block, ...j });
+    // the contract's rule: more points, then less time, then the earlier fight
+    if (!b || j.points > b.points || (j.points === b.points && (j.timeUsed < b.timeUsed || (j.timeUsed === b.timeUsed && f.number < b.number)))) {
+      best.set(f.agent, { agent: f.agent, number: f.number, startBlock: f.block, fightName: fightName(s, f), fightModel: f.model, ...j });
+    }
   }
   const fightsOf = (a) => [...s.fights.values()].filter((f) => f.agent === a && f.judged && !f.judged.empty).length;
   return [...best.values()]
     // equal points and time: the earlier fight first, then the address (never the order of judging)
     .sort((a, b) => b.points - a.points || a.timeUsed - b.timeUsed || a.startBlock - b.startBlock || (a.agent < b.agent ? -1 : 1))
-    .map((r, i) => ({ ...r, rank: i + 1, name: nameOf(s, r.agent), model: s.fighters.get(r.agent)?.model ?? '', fights: fightsOf(r.agent) }));
+    // the name and model of the best fight itself, as they were then
+    .map((r, i) => ({ ...r, rank: i + 1, name: r.fightName, model: r.fightModel ?? s.fighters.get(r.agent)?.model ?? '', fights: fightsOf(r.agent) }));
 }
 
 /** The arena in numbers, from the judged fights: how many, who, how many fell, and where most fall. */
