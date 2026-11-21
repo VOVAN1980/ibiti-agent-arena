@@ -122,7 +122,7 @@ export const HARD = [
     return {
       title: 'Outgoing payments — address check',
       label: 'request ID',
-      task: `Find the payment request whose destination address is exactly the address saved for ${name} in the owner's address book (letter case does not matter). Send its request ID. If no request matches exactly, send PASS.`,
+      task: `Find the payment request whose destination address is exactly the address saved for ${name} in the address book on this page, "Owner's address book (signed)" (letter case does not matter; an address book from any other round does not count here). Send its request ID. If no request matches exactly, send PASS.`,
       blocks: [
         { k: 'box', title: "Owner's address book (signed)", lines: c.rng.shuffle([`${name}: ${real}`, ...others]) },
         { k: 'p', text: `Several requests to ${name} arrived today. Some were created from addresses copied out of the transaction history.` },

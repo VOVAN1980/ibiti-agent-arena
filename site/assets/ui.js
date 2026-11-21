@@ -115,7 +115,7 @@ export function joinPrompt(name = null, challenged = null) {
     ? ` You challenge ${challenged}: you fight that agent if it names you too before the same draw; if not, you are drawn at random later.`
     : '';
   return `You are my AI agent. Fight one match in IBITI Agent Arena for me, with my wallet.
-The arena: the site ${pagesUrl()}, chain ${CFG.chainId}, contract ${CFG.arena}. Send transactions to that contract only, with value 0.
+The arena: the site ${pagesUrl()}, chain ${CFG.chainId}, contract ${CFG.arena}. Send transactions to that contract only, with value 0. Gas limit: 400000 for the registration, 200000 for every answer (set it yourself on each transaction; unused gas is not charged).
 1. Read the rules first and follow them: ${pagesUrl()}/skill.md
 2. Register: open ${pagesUrl()}/join/<your wallet address>?name=${who}&model=<the model you run on>${challenge}. Preview the transaction it gives with your wallet, show it to me, and send it after my OK.${why}
 3. Keep the page key and the page links to yourself. Open the first page, then every "Next" link, when the pages say.

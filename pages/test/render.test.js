@@ -526,7 +526,7 @@ test('/join: the registration transaction, ready for a wallet preview, and the p
   assert.equal(res.status, 200);
   const j = await res.json();
   assert.equal(j.fight, 3, 'fight 3 is next');
-  assert.deepEqual({ ...j.transaction, inputData: undefined }, { chainId: 56, to: ARENA, value: '0', inputData: undefined });
+  assert.deepEqual({ ...j.transaction, inputData: undefined }, { chainId: 56, to: ARENA, value: '0', gasLimit: '400000', inputData: undefined }); // the gas limit travels with the transaction
   assert.equal(j.pageKeyHash, keccak256(j.pageKey), 'the hash of the key it gives');
   assert.equal(j.firstPage, `https://x/fight/${A}?key=${j.pageKey}&step=1`);
   assert.equal(j.firstPageByHeader, `https://x/fight/${A}?step=1`, 'for a header client: no key in any link');
@@ -558,6 +558,7 @@ test('/calldata/answer: the answer transaction for the code the agent chose (exa
     chainId: 56,
     to: ARENA,
     value: '0',
+    gasLimit: '200000',
     inputData: '0xe4d5eecd0000000000000000000000000000000000000000000000000000000000000007000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000134b37514d2d395844412d525434572d4832504e00000000000000000000000000',
   });
   assert.equal((await get('?round=13&code=X')).status, 400);
@@ -712,6 +713,36 @@ test('a match that never started is said as such, and no card is shown from a pl
     assert.match(r.body, /not the one the judge locked, so it shows no card/);
     assert.ok(!r.body.includes(KEYS.code(ARENA, A, 2, 3)));
   }
+});
+
+test('what the first rehearsal with AI agents showed: the draw being held, the scorecard link, the gas limit', async () => {
+  const get = async (chain, path = `/fight/${A}?format=md&key=${PAGE_KEY}`) => {
+    const r = await handleFight(new URL(`https://x${path}`), ENV, { chain });
+    return { status: r.status, body: await r.text() };
+  };
+  // past the cutoff, and while a sealed draw waits to be held, the hall says the draw is on (not "in 0 s")
+  const hall = fakeChain({ startedAt: 0, inHall: true });
+  const late = await get({ ...hall, nextDrawAt: async () => BELL });
+  assert.match(late.body, /the draw is being held now/);
+  assert.ok(!late.body.includes('in 0 s'));
+  const sealed = await get({ ...hall, pendingCutoff: async () => BELL + 100, entry: async () => ({ ...(await hall.entry()), registeredAt: BELL }) });
+  assert.match(sealed.body, /the draw is being held now/, 'its own draw is sealed: the next cutoff is not its draw');
+  const nextOne = await get({ ...hall, pendingCutoff: async () => BELL + 100, entry: async () => ({ ...(await hall.entry()), registeredAt: BELL + 120 }) });
+  assert.match(nextOne.body, /The next draw is at/, 'registered after the sealed cutoff: it waits for the next draw');
+  // a finished fight gives the link of its scorecard
+  const over = await get(fakeChain({ live: false }));
+  assert.ok(over.body.includes(`https://x/match.html?a=${A}&n=2`), 'the scorecard link');
+  assert.ok((await get(fakeChain({ round: 13 }))).body.includes(`https://x/match.html?a=${A}&n=2`));
+  // the gas limit travels with the transactions, and the rules explain it and give the typed signatures
+  const answer = await (await handleFight(new URL('https://x/calldata/answer?round=1&code=K7QM-9XDA-RT4W-H2PN'), ENV, { chain: fakeChain() })).json();
+  assert.equal(answer.gasLimit, '200000');
+  const rules = skillMd({ arena: ARENA, chainId: 56, site: 'https://x' });
+  assert.ok(rules.includes('register(string name, string model, bytes32 commitment, bytes signature, bytes32 pageKeyHash, address challenge)'));
+  assert.ok(rules.includes('answer(uint8 round, string code)'));
+  assert.ok(rules.includes("keccak256 of the key's 32 bytes"));
+  assert.ok(rules.split(/\s+/).join(' ').includes('400000 for the registration, 200000 for an answer'), 'the gas limits in the rules');
+  const card = (await get(fakeChain())).body;
+  assert.ok(card.includes('send it with the gas limit it gives'));
 });
 
 test('the server refuses: no fight yet, fight over, all rounds answered, bad path', async () => {

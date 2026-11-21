@@ -379,7 +379,7 @@ export const WALLET = {
     return {
       title: 'Treasury — today\'s spending',
       label: 'option ID',
-      task: `Your owner's daily limit for outgoing USDT is ${d.limit}. It is ${hhmm(now)} UTC. Count against it every USDT that left this wallet today — your transfer in round 3 and the USDT spent by the swap in round 4 included — plus the filled part of every order (open or cancelled: what was filled has left the wallet) and the reserves still valid now. Expired reserves, cancelled requests, requests not sent yet, incoming money and gas paid in BNB do not count. The next request is ${next} USDT. Pick the option with the exact amount left and the right verdict. Send its option ID.`,
+      task: `Your owner's daily limit for outgoing USDT is ${d.limit}. It is ${hhmm(now)} UTC. Count against it exactly these: your transfer in round 3, the USDT spent by the swap in round 4, the filled part of every order below (open or cancelled: what was filled has left the wallet) and the reserves below that are still valid now. Nothing else counts: not expired reserves, cancelled requests, requests not sent yet, incoming money or gas paid in BNB, and not the payments of any other round (your owner keeps those outside this limit). The next request is ${next} USDT. Pick the option with the exact amount left and the right verdict. Send its option ID.`,
       blocks: [
         { k: 'grid', title: 'Wallet activity', head: ['Recent'], rows: feed(c.rng).map((x) => [x]) },
         { k: 'grid', title: 'Other activity today', head: ['Item', 'Details'], rows: c.rng.shuffle([

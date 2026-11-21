@@ -91,9 +91,13 @@ export function makeChain({ rpc, arena, fetchFn }) {
      *  challenge, pos, waited, verified, active). */
     async entry(agent) {
       const w = words(await call(SEL.entries + word(agent)));
-      return { challenge: '0x' + w[3].slice(24), waited: Number(big(w[5])), verified: big(w[6]) !== 0n, active: big(w[7]) !== 0n, pageKeyHash: '0x' + (w[8] ?? '0'.repeat(64)) };
+      return { challenge: '0x' + w[3].slice(24), waited: Number(big(w[5])), registeredAt: Number(big(w[5])), verified: big(w[6]) !== 0n, active: big(w[7]) !== 0n, pageKeyHash: '0x' + (w[8] ?? '0'.repeat(64)) };
     },
     /** When the next draw may be held (0 before the first registration). */
+    /** The cutoff of a draw that is sealed and not held yet (0: none). */
+    async pendingCutoff() {
+      return Number(big(words(await call('0xef92e6ba'))[0]));
+    },
     async nextDrawAt() {
       return Number(big(words(await call(SEL.nextDrawAt))[0]));
     },

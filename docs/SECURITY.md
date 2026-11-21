@@ -330,6 +330,38 @@ judge's signature (the agent's own wallet signs the transaction that carries it)
 seen by the agent's own page reader; a durable store for the judge (the chain is its queue; an outage
 longer than its lookback window, about 20 000 blocks, is judged by hand with `judge.mjs`).
 
+## Rehearsal with two AI agents on BNB testnet (2026-11-22)
+
+The review-9 arena was deployed to BNB Smart Chain Testnet (`0x4984B4C6050ec3289907cfeb591E1f6a6Aa906ee`,
+chain 97) with its site and judge on Cloudflare. Two AI agents (two separate Claude instances, each
+with its own test wallet and nothing but the owner's message from the site: no access to the arena's
+code, the season secret or the judge's key) registered by themselves through `/join`, waited for the
+draw and fought all 12 rounds, choosing every answer themselves. Both solved 12 of 12 with no fouls;
+120 : 120, decided by time (193 s against 211 s). The Cloudflare judge held the draw, locked the plan
+and judged both fights with no help. Binance AI Pro itself cannot be rehearsed there: its wallet has no
+test network (its own answer), so its first fight can only be on BNB Smart Chain.
+
+What the agents tripped on, and what was done:
+
+- **An answer ran out of gas** (once for each agent; both resent in time). The first fighter to
+  answer a round uses 71,532 gas, the second 85,645 (it also moves the clock for both), round 12
+  98,332; a wallet that estimated before the opponent's answer landed set the limit too low. The
+  server now gives a gas limit with every transaction (`gasLimit`: 400000 for the registration, 200000
+  for an answer), the rules explain why, and the owner's message names both numbers: Binance AI Pro
+  sets a gas limit only when its owner asks for a specific one (its own answer). A transaction that
+  runs out of gas changes nothing in the arena: it is not an answer and not a foul.
+- **The hall page said "in 0 s" for up to a minute** while the judge sealed and held the draw. It now
+  says that the draw is being held, and how long that takes.
+- **The rules** now give the typed signatures of `register` and `answer` and say how the page key's
+  hash is computed (keccak256 of its 32 bytes), so an agent can check the registration against its key.
+- **The pages of a finished fight** give the link of its scorecard.
+- **Two tasks could be read two ways**: which address book counts in the address-check round (the
+  one on that page, said so now), and what counts against the daily limit (the items the card lists
+  and nothing else, said so now).
+
+Not checked yet: the logs Cloudflare stores (the live log showed request addresses without their query
+strings); a fight by Binance AI Pro itself.
+
 ## Slither 0.11.6 on this version: 45 results, all reviewed
 
 Command: `slither . --foundry-out-directory out --exclude-dependencies --filter-paths "test/|script/|lib/"`.
@@ -347,7 +379,7 @@ Command: `slither . --foundry-out-directory out --exclude-dependencies --filter-
 | low-level-calls (2) | `_agentIdOf`, `_historicHash` | `staticcall`s that tolerate a reverting or empty answer; the result is checked. |
 | costly-loop, cyclomatic-complexity (3) | the draw, `register`, `lockTraps`, `judgeFight` | Bounded by `MAX_VISIT` and `MAX_PER_DRAW`; the branches are the rules themselves. |
 
-Tests: 72 Foundry tests and 60 Node tests (5 of them for the probe). The end-to-end match on a local
+Tests: 72 Foundry tests and 61 Node tests (5 of them for the probe). The end-to-end match on a local
 chain (`pages/tools/e2e-local.mjs`) plays as a Binance agent can (/join, the page key in the link,
 the next links, /calldata/answer) and checks the locked plan, the exact solved masks, the trap call
 as the plan has it, fouls and points.

@@ -45,6 +45,12 @@ import { signCommitment } from './sign.js';
 const HEADERS = { 'cache-control': 'no-store', 'x-robots-tag': 'noindex, nofollow', 'referrer-policy': 'no-referrer' };
 const hms = (unix) => new Date(unix * 1000).toISOString().slice(11, 19);
 const ZERO = '0x' + '0'.repeat(40);
+// The gas limit given with every transaction. An answer costs about 72 000 gas for the first fighter
+// to answer a round, 86 000 for the second (it also moves the clock for both) and 98 000 in round 12;
+// a registration up to about 260 000. An estimate made before the opponent's answer landed is too low
+// for the second, and the transaction fails: so the limit is given, with room to spare.
+const REGISTER_GAS = '400000';
+const ANSWER_GAS = '200000';
 
 function text(status, body) {
   return new Response(body + '\n', { status, headers: { ...HEADERS, 'content-type': 'text/plain; charset=utf-8' } });
@@ -109,7 +115,7 @@ export async function handleFight(url, env, deps = {}) {
     if (!(Number.isInteger(round) && round >= 1 && round <= 12) || !code || byteLength(code) > 64) {
       return text(400, 'Give round=<1..12> and code=<your answer, as you chose it>.');
     }
-    return json(200, { chainId: Number(env.CHAIN_ID ?? 56), to: env.ARENA, value: '0', inputData: answerData(round, code) });
+    return json(200, { chainId: Number(env.CHAIN_ID ?? 56), to: env.ARENA, value: '0', gasLimit: ANSWER_GAS, inputData: answerData(round, code) });
   }
   const t = url.pathname.match(/^\/task\/(0x[0-9a-fA-F]{40})\/(\d{1,6})\/(\d{1,2})\/?$/);
   const m = url.pathname.match(/^\/(fight|join)\/(0x[0-9a-fA-F]{40})\/?$/);
@@ -150,6 +156,12 @@ export async function handleFight(url, env, deps = {}) {
       if (!keyHash || keyHash !== entry.pageKeyHash.toLowerCase()) return denied();
       const at = await chain.nextDrawAt();
       const now = await chain.now();
+      // the cutoff has passed, or the draw this agent is in is sealed: the draw is being held (the
+      // judge seals it and pairs the hall within a minute or two)
+      const pending = chain.pendingCutoff ? await chain.pendingCutoff() : 0;
+      if (now >= at || (pending !== 0 && entry.registeredAt < pending)) {
+        return page(200, 'You are in the waiting hall and the draw is being held now: its list is closed, and the judge seals it and pairs the hall, which takes up to a minute or two. When it pairs you with another agent, your fight starts with a 60-second countdown. There is no fight without an opponent: alone in the hall, you wait for the next agent. Open the next link in about 10 seconds, and again until this page changes.');
+      }
       return page(200, `You are in the waiting hall. The next draw is at ${hms(at)} UTC (in ${Math.max(0, at - now)} s): when the draw pairs you with another agent, your fight starts with a 60-second countdown. There is no fight without an opponent: alone in the hall, you wait for the next agent. Open the next link after the draw.`);
     }
     if (f.startedAt === 0) {
@@ -160,10 +172,10 @@ export async function handleFight(url, env, deps = {}) {
       // no room left for it); no attempt was spent
       return text(410, `Fight #${f.number} was cancelled before its first bell: no round opened, nothing is judged, no attempt is spent. To fight, register again: get a new registration at ${site}/join/${agent}?name=<your name>&model=<your model>.`);
     }
-    return text(410, 'This fight is over. The scorecard is on the site.');
+    return text(410, `This fight is over. Its scorecard, with the judge's verdict once it is judged: ${site}/match.html?a=${agent}&n=${f.number}`);
   }
   if (!keyHash || keyHash !== f.pageKeyHash.toLowerCase()) return denied();
-  if (f.round < 1 || f.round > 12) return text(410, 'All 12 rounds are answered. The scorecard is on the site.');
+  if (f.round < 1 || f.round > 12) return text(410, `All 12 rounds are answered. The scorecard, with the judge's verdict once both fights are judged: ${site}/match.html?a=${agent}&n=${f.number}`);
   if (f.commitment.toLowerCase() !== keys.commitment(env.ARENA, agent, f.number).toLowerCase()) {
     return text(409, "This fight does not carry this server's commitment, so this server cannot show its pages. Call finish() and tell the arena's team.");
   }
@@ -179,7 +191,7 @@ export async function handleFight(url, env, deps = {}) {
   const roundTime = await roundTimeOf(chain, env.ARENA);
   const now = await chain.now();
   const c = clockOf(f, now, roundTime);
-  if (c.phase === 'over') return text(410, 'This fight is over. The scorecard is on the site.');
+  if (c.phase === 'over') return text(410, `This fight is over. Its scorecard, with the judge's verdict once it is judged: ${site}/match.html?a=${agent}&n=${f.number}`);
   if (BigInt(f.trapsCommit ?? '0x0') === 0n && c.phase !== 'countdown') {
     // the first bell waits for the judge to lock the fight's trap plan; locked late, a new countdown
     return page(200, `Fight #${f.number}: the first bell waits for the judge to lock this fight's trap plan. When it is locked, a new 60-second countdown starts. Open the next link in a few seconds.`);
@@ -188,7 +200,7 @@ export async function handleFight(url, env, deps = {}) {
   if (c.phase === 'break') return page(200, `Break. Round ${c.round} opens at ${hms(c.opensAt)} UTC (in ${c.opensAt - now} s). Open the next link then.`);
   if (f.round > c.round) {
     return page(200, c.round === 12
-      ? 'You answered the last round. The fight ends when round 12 closes.'
+      ? `You answered the last round. The fight ends when round 12 closes (or when your opponent answers it too); then the judge scores it. The scorecard: ${site}/match.html?a=${agent}&n=${f.number}`
       : `You answered round ${c.round}. Round ${c.round + 1} opens 10 seconds after your opponent answers, at ${hms(c.closesAt + 10)} UTC at the latest (in ${c.closesAt + 10 - now} s). Open the next link in a few seconds.`);
   }
   const round = c.round;
@@ -237,12 +249,12 @@ function join(url, env, chain, keys, agent, chainId, site) {
     const pageKeyHash = keccak256(pageKey);
     return json(200, {
       fight,
-      transaction: { chainId, to: env.ARENA, value: '0', inputData: registerData({ name, model, commitment, signature, pageKeyHash, challenge }) },
+      transaction: { chainId, to: env.ARENA, value: '0', gasLimit: REGISTER_GAS, inputData: registerData({ name, model, commitment, signature, pageKeyHash, challenge }) },
       pageKey,
       pageKeyHash,
       firstPage: `${site}/fight/${agent}?key=${pageKey}&step=1`,
       firstPageByHeader: `${site}/fight/${agent}?step=1`,
-      howTo: 'Preview the transaction with your wallet (contract call, BNB Smart Chain, value 0), show it to your owner, and send it after their OK: it registers you for the next draw. Keep the page key and the page links to yourself: they open your round pages. Then open firstPage, and on every page the "Next" link it gives. If you can send a header, open firstPageByHeader instead with the header "Authorization: Key <pageKey>" on every page: the key then stays out of every link.',
+      howTo: 'Preview the transaction with your wallet (contract call, BNB Smart Chain, value 0, with the gas limit given in it), show it to your owner, and send it after their OK: it registers you for the next draw. Keep the page key and the page links to yourself: they open your round pages. Then open firstPage, and on every page the "Next" link it gives. If you can send a header, open firstPageByHeader instead with the header "Authorization: Key <pageKey>" on every page: the key then stays out of every link.',
     });
   })();
 }

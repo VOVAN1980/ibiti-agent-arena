@@ -39,7 +39,11 @@ const page = async (f, key = f.key) => {
   }
   return { status: res.status, body };
 };
-const sendData = (f, tx) => cast('send', '--rpc-url', rpc, '--private-key', f.key0, tx.to, tx.inputData);
+// with the gas limit the server gives: an estimate can be too low when the opponent's answer lands first
+const sendData = (f, tx) => {
+  if (!(Number(tx.gasLimit) >= 100000)) throw new Error('the server gave no gas limit');
+  return cast('send', '--rpc-url', rpc, '--private-key', f.key0, '--gas-limit', tx.gasLimit, tx.to, tx.inputData);
+};
 const mine = () => cast('rpc', '--rpc-url', rpc, 'evm_mine');
 const jumpTo = (ts) => {
   cast('rpc', '--rpc-url', rpc, 'evm_setNextBlockTimestamp', String(ts));

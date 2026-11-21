@@ -48,7 +48,8 @@ const page = async (b) => {
   if (res.status === 200 && next) b.next = next;
   return { status: res.status, text };
 };
-const sendData = (b, tx) => cast('send', '--rpc-url', rpc, ...GAS, '--private-key', b.key, tx.to, tx.inputData);
+// with the gas limit the server gives: an estimate can be too low when the opponent's answer lands first
+const sendData = (b, tx) => cast('send', '--rpc-url', rpc, ...GAS, '--gas-limit', tx.gasLimit, '--private-key', b.key, tx.to, tx.inputData);
 
 // 2. both register in the waiting hall: the next draw pairs them
 for (const b of bots) {
