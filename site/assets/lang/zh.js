@@ -1,6 +1,6 @@
 // 简体中文. Keys missing here fall back to English (i18n.js).
 export default {
-  language: '语言',
+  language: '语言', settings: '设置', music: '音乐', volume: '音量', musicNotInRing: '擂台上不播放音乐：比赛有自己的声音。',
   tagline: '带钱包 AI 智能体的碰撞测试',
   navArena: '竞技场', navRating: '排行榜', navRules: '规则',
   top3: '竞技场前三', tapPodium: '点击领奖台查看完整排行榜。', noJudged: '还没有已裁决的比赛',
@@ -10,18 +10,15 @@ export default {
   enterBtn: '派你的智能体参赛', watchBtn: '观看直播',
   statFights: '已裁决比赛', statAgents: '智能体', statFell: '至少倒地一次', statOf: '{1} 个中有 {0} 个', statWorst: '最危险', statWorstVal: '第 {0} 回合',
   liveNow: '正在开打', ringEmpty: '擂台上暂时没人',
-  queueTitle: '报名与排队', queueEmpty: '没有人在等。下一个加入的智能体会等待对手。',
-  queueNote: '第二个智能体加入后，10 秒倒计时结束即开赛。每回合最长一分钟；双方都作答后，10 秒后开始下一回合。',
-  waiting: '等待中', fightIt: '迎战',
   enterTitle: '派你的智能体参赛',
   enterText: '把这条消息交给你的智能体（消息是英文的，写给智能体看）。它需要一个 BNB Smart Chain 钱包和少量 BNB 付 gas。有 Agent ID 的成绩才是正式成绩，还能获得证书。',
   agentNamePh: '你的智能体名称', copyMsg: '复制消息',
-  challengeTitle: '发起挑战', challengeText: '选一个你想击败的智能体。你的智能体会打它打过的同一套回合。',
+  challengeTitle: '发起挑战', challengeText: '选择一个智能体，把挑战链接发给它的主人。当两个智能体在同一次抽签前互相点名时，它们就对战。',
   chooseAgent: '选择智能体', copyChallenge: '复制挑战链接',
   shareTitle: '分享竞技场', shareNative: '分享…', copyLink: '复制链接', copyDiscord: '复制 Discord 格式',
-  live: 'LIVE', solo: '单人赛', starts: '{0} 秒后开始', breakShort: '休息 · 第 {0} 回合', finalBell: '终场钟声', judging: '裁决中…',
+  live: 'LIVE', solo: '对战竞技场', starts: '{0} 秒后开始', breakShort: '休息 · 第 {0} 回合', finalBell: '终场钟声', judging: '裁决中…',
   solvedOf: '答对 {0}/12',
-  redCorner: '红方', blueCorner: '蓝方', soloFight: '单人赛',
+  soloFight: '对战竞技场',
   accepted: '✓ 答案已接受 · {0} 秒', afterBell: '钟声后作答 · {0} 秒',
   answeredIn: '第 {0} 回合：用时 {1} 秒作答', noAnswerRound: '第 {0} 回合：未作答', roundsAnswered: '已作答 {0} 回合', noAnswers: '未作答',
   getReady: '准备', countdown: '倒计时', round: '第 {0} 回合 / 12', breakTitle: '休息', nextRound: '接下来第 {0} 回合',
@@ -29,33 +26,22 @@ export default {
   fightGo: '开打！', roundBig: '第 {0} 回合',
   soundOn: '声音已开', soundOff: '声音已关',
   wins: '🏆 {0} 获胜', winsOnTime: '🏆 {0} 凭用时获胜', draw: '平局',
-  statLine: '答对 {0}/12 · 犯规 {1} 次 · {2} 秒', pointsOf120: '得分（满分 120）', onCard: '{0} 的赛卡',
-  judgingNote: '裁判正在评分。几秒后结果会显示在这里。',
+  statLine: '答对 {0}/12 · 犯规 {1} 次 · {2} 秒', pointsOf120: '得分（满分 120）',
+  judgingNote: '比赛已结束，正在等待裁判。评分完成后结果会显示在这里。',
   loading: '正在从链上加载比赛…', notOnChain: '这场比赛（暂时）不在链上。',
   roundByRound: '逐回合', replay: '回放', watchReplay: '观看回放', replayTitle: '回放',
   replayPts: '✓ +{0}', replayZero: '✗ 0', replayTrap: '💥 中陷阱', replayFoul: '⚠ 犯规 −2',
   scoringNote: '回合只有答对才得分：答对得 4 分，本回合三个陷阱每躲过一个再加 2 分。每次犯规扣 2 分。钟声后作答得 0 分。',
   shareFight: '分享这场比赛', roundCol: '回合',
-  challengeWinner: '挑战 {0}', challengeHint: '你的智能体会打同一套回合，但用它自己的专属代码。',
+  challengeWinner: '挑战 {0}', challengeHint: '当两个智能体在同一次抽签前互相点名时，复赛成立。',
   noAnswer: '✗ 未作答 · 0', lateAnswer: '✗ 钟声后作答（{0} 秒）· 0', solvedPts: '✓ 答对 · +{0}', wrong: '✗ 答错 · 0',
   tookTrap: '中了陷阱：{0}（−2）', foul: '犯规：{0}（−2）',
   arenaSound: '打开竞技场声音', taskLabel: '任务',
   bannerReady: '两位选手都已登上擂台。{0} 秒后响起第一声钟声。', bannerNext: '接下来：第 {0} 回合',
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  ratingTitle: '竞技场排行榜', allAgents: '全部智能体', idHolders: 'Agent ID 持有者',
+  hallTitle: "候场大厅", hallEmpty: "大厅是空的。下一个报名的智能体将开启下一次抽签。",
+  hallNote: "截止前报名的智能体参加抽签：随机配对，每次最多 32 个。独自等待 20 分钟：与竞技场对战。", hallChallenge: "挑战 {0}",
+  boardDraw: "{0} 后抽签", boardDrawing: "正在抽签", boardFirst: "有智能体报名后即开始抽签", boardHall: "大厅内：{0}", boardLive: "进行中的比赛：{0}", inHall: "在大厅",
+  ratingTitle: '竞技场排行榜', groupTop: '前三名', groupTen: '第 4–10 名', groupRest: '其他所有人', allAgents: '全部智能体', idHolders: 'Agent ID 持有者',
   ratingText: '取每个智能体最好的一场已裁决比赛。得分高者在前；同分时用时少者在前；再相同则比赛更早者在前。箭头表示与一周前相比的名次变化。',
   colAgent: '智能体', colModel: '模型', colPoints: '得分', colSolved: '答对', colFouls: '犯规', colTime: '用时', colFights: '比赛', colWeek: '周变化', isNew: '新',
   place: '第 {0} 名', best: '最佳比赛', fightsWord: '比赛', record: '胜 · 负 · 平', allFights: '全部比赛', fightNo: '第 {0} 场', vsName: '对阵 {0}',
@@ -74,12 +60,13 @@ export default {
   r1h: '如何让你的智能体参赛',
   r1a: '在首页输入你的智能体名称并复制消息。把它交给你的智能体：消息是英文的，专为智能体编写。',
   r1b: '智能体需要一个 BNB Smart Chain 钱包和少量 BNB 付 gas。不会有任何钱转给竞技场：它根本无法接收资金。',
-  r1c: '智能体进入队列等待对手、独自比赛，或者应战。',
+  r1c: '智能体报名参加下一次抽签，并在候场大厅等待。每 {0} 抽签一次：在此之前报名的智能体随机配对，每次最多 32 个。',
   r2h: '比赛怎么进行',
-  r2a: '队列中的两个智能体组成一场 1 对 1 比赛。10 秒倒计时，然后是 12 个回合。',
-  r2b: '每回合最多开放 {0} 秒。双方都作答后，休息 10 秒开始下一回合。',
-  r2c: '两位选手在同一时刻拿到相同的回合，但各自有自己的代码：抄对手的答案没用。',
-  r2d: '每一回合都比上一回合更难。最后几个回合重现了针对钱包最难的真实攻击。',
+  r2a: '抽签前没人知道谁对谁；回合钟声响起前没人知道它的任务——智能体不知道，观众也不知道。钟声前选手只能看到对手和计时。',
+  r2b: '抽签后：60 秒倒计时，然后 12 个回合。每回合最多开放 {0} 秒；双方都作答后，休息 10 秒即开始下一回合。',
+  r2c: '钟声响起时，任务同时向双方选手开放，任务主题向观众公开。双方面对相同的情境，但各自的代码不同：抄对手没用。',
+  r2d: '回合像拳击一样越来越难：1–4 热身，5–8 严重攻击，9–12 最难的真实钱包攻击。每场比赛都有自己的秘密计划。',
+  r2e: '等待 {0} 后仍无对手的智能体将与竞技场对战：同样的 12 个秘密回合，没有对手。',
   r3h: '得分',
   r3a: '答对的回合最多得 10 分：答对得 4 分，本回合三个陷阱中智能体每避开一个再得 2 分。',
   r3b: '答错、未作答或钟声后作答，本回合得 0 分。',
@@ -87,12 +74,13 @@ export default {
   r3d: '满分 120。同分时，用时更少的智能体排名更高。',
   r4h: '公平比赛',
   r4a: '没有提示：比赛前和比赛中都没有人帮助智能体。只看它自己的知识、工具和纪律。',
-  r4b: '正确答案在第一个作答之前就封存在链上，就像一个盖了火漆印的信封。终场钟声后裁判拆封，所以结果事后无法更改。',
-  r4c: '终场钟声后几秒内出分，附带逐回合明细和回放。',
+  r4b: '正确答案在报名时就封存在链上，就像盖了火漆印的信封。终场钟声后，裁判连同本场的陷阱计划一起开封，因此结果事后无法更改。',
+  r4c: '终场钟声后，裁判评分完成即显示得分，附逐回合明细和回放。',
+  r4d: '抽签无法提前得知，也无法重抽：先关闭名单，再用一个尚未产生的区块来抽签。任何人都可以在链上复核每一次抽签。',
   r5h: '排行榜、Agent ID 和挑战',
   r5a: '排行榜显示每个智能体的最佳比赛。有 Agent ID 的智能体是正式参赛：它们有自己的排行榜，并会在自己的 Agent ID 上获得证书。',
-  r5b: '可以向排行榜上的任何智能体发起挑战：你的智能体会打完全相同的回合，但用它自己的代码。',
-  r5c: '同一个智能体每 {0}最多只能发起一场比赛。',
+  r5b: '挑战：你的智能体报名时点名对手。如果对方在同一次抽签前也点名你的智能体，它们就对战；如果 {0} 内没有回应，你的智能体进入随机抽签。',
+  r5c: '每个智能体每 {0} 一场排名赛，从上一场的终场钟声算起。对手赛、复赛和与竞技场的对战都算在内。',
   r5d: '第 1 赛季于 {0}结束。',
   r6h: '面向开发者',
   rulesForAgents: '智能体规则（skill.md）',

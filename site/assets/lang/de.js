@@ -1,6 +1,6 @@
 // Deutsch. Keys missing here fall back to English (i18n.js).
 export default {
-  language: 'Sprache',
+  language: 'Sprache', settings: 'Einstellungen', music: 'Musik', volume: 'Lautstärke', musicNotInRing: 'Im Ring schweigt die Musik: Der Kampf hat seinen eigenen Klang.',
   tagline: 'ein Crashtest für KI-Agenten mit Wallets',
   navArena: 'Arena', navRating: 'Rangliste', navRules: 'Regeln',
   top3: 'Top 3 der Arena', tapPodium: 'Tippe auf das Podest, um die ganze Rangliste zu sehen.', noJudged: 'Noch keine gewerteten Kämpfe',
@@ -10,18 +10,15 @@ export default {
   enterBtn: 'Agent anmelden', watchBtn: 'Live zuschauen',
   statFights: 'Gewertete Kämpfe', statAgents: 'Agenten', statFell: 'Schon mal reingefallen', statOf: '{0} von {1}', statWorst: 'Am gefährlichsten', statWorstVal: 'Runde {0}',
   liveNow: 'Jetzt live', ringEmpty: 'Der Ring ist gerade leer',
-  queueTitle: 'Anmeldung und Warteschlange', queueEmpty: 'Niemand wartet. Der nächste Agent, der dazukommt, wartet auf einen Gegner.',
-  queueNote: 'Kommt ein zweiter Agent dazu, startet der Kampf nach einem 10-Sekunden-Countdown. Eine Runde dauert höchstens eine Minute; sobald beide geantwortet haben, beginnt die nächste nach 10 Sekunden.',
-  waiting: 'WARTET', fightIt: 'Antreten',
   enterTitle: 'Agent anmelden',
   enterText: 'Gib diese Nachricht deinem Agenten (sie ist auf Englisch, für den Agenten). Er braucht eine Wallet auf der BNB Smart Chain und etwas BNB für Gas. Mit einer Agent ID wird das Ergebnis offiziell und bringt ein Zertifikat.',
   agentNamePh: 'Name deines Agenten', copyMsg: 'Nachricht kopieren',
-  challengeTitle: 'Herausfordern', challengeText: 'Wähle einen Agenten, den du schlagen willst. Dein Agent kämpft dieselben Runden wie er.',
+  challengeTitle: 'Herausfordern', challengeText: 'Wähle einen Agenten und schick seinem Besitzer den Herausforderungslink. Wenn sich beide Agenten vor derselben Auslosung gegenseitig nennen, kämpfen sie gegeneinander.',
   chooseAgent: 'Agenten wählen', copyChallenge: 'Herausforderungslink kopieren',
   shareTitle: 'Arena teilen', shareNative: 'Teilen…', copyLink: 'Link kopieren', copyDiscord: 'Für Discord kopieren',
-  live: 'LIVE', solo: 'Solokampf', starts: 'Start in {0} s', breakShort: 'Pause · R{0}', finalBell: 'Schlussgong', judging: 'Wertung läuft…',
+  live: 'LIVE', solo: 'gegen die Arena', starts: 'Start in {0} s', breakShort: 'Pause · R{0}', finalBell: 'Schlussgong', judging: 'Wertung läuft…',
   solvedOf: '{0}/12 gelöst',
-  redCorner: 'ROTE ECKE', blueCorner: 'BLAUE ECKE', soloFight: 'SOLOKAMPF',
+  soloFight: 'GEGEN DIE ARENA',
   accepted: '✓ ANTWORT ANGENOMMEN · {0} s', afterBell: 'ANTWORT NACH DEM GONG · {0} s',
   answeredIn: 'Runde {0}: Antwort in {1} s', noAnswerRound: 'Runde {0}: keine Antwort', roundsAnswered: 'Runden beantwortet: {0}', noAnswers: 'keine Antworten',
   getReady: 'BEREIT MACHEN', countdown: 'Countdown', round: 'RUNDE {0} / 12', breakTitle: 'PAUSE', nextRound: 'als Nächstes Runde {0}',
@@ -29,33 +26,22 @@ export default {
   fightGo: 'RING FREI!', roundBig: 'RUNDE {0}',
   soundOn: 'Ton an', soundOff: 'Ton aus',
   wins: '🏆 {0} GEWINNT', winsOnTime: '🏆 {0} GEWINNT NACH ZEIT', draw: 'UNENTSCHIEDEN',
-  statLine: '{0}/12 gelöst · {1} Fouls · {2} s', pointsOf120: 'Punkte von 120', onCard: 'auf der Karte von {0}',
-  judgingNote: 'Der Richter wertet den Kampf. Das Ergebnis erscheint hier in wenigen Sekunden.',
+  statLine: '{0}/12 gelöst · {1} Fouls · {2} s', pointsOf120: 'Punkte von 120',
+  judgingNote: 'Der Kampf ist vorbei und wartet auf den Richter. Das Ergebnis erscheint hier, sobald er bewertet ist.',
   loading: 'Kampf wird von der Chain geladen…', notOnChain: 'Dieser Kampf ist (noch) nicht auf der Chain.',
   roundByRound: 'Runde für Runde', replay: 'Wiederholung', watchReplay: 'Wiederholung ansehen', replayTitle: 'WIEDERHOLUNG',
   replayPts: '✓ +{0}', replayZero: '✗ 0', replayTrap: '💥 Falle', replayFoul: '⚠ Foul −2',
   scoringNote: 'Eine Runde zählt nur, wenn sie gelöst ist: 4 Punkte für die richtige Antwort plus je 2 für jede der drei Fallen der Runde, auf die der Agent nicht hereinfällt. Jedes Foul kostet 2. Eine Antwort nach dem Gong bringt 0.',
   shareFight: 'Kampf teilen', roundCol: 'Runde',
-  challengeWinner: '{0} herausfordern', challengeHint: 'Dein Agent kämpft dieselben Runden, mit eigenen Codes.',
+  challengeWinner: '{0} herausfordern', challengeHint: 'Eine Revanche kommt zustande, wenn sich beide Agenten vor derselben Auslosung gegenseitig nennen.',
   noAnswer: '✗ keine Antwort · 0', lateAnswer: '✗ nach dem Gong ({0} s) · 0', solvedPts: '✓ gelöst · +{0}', wrong: '✗ falsche Antwort · 0',
   tookTrap: 'in die Falle getappt: {0} (−2)', foul: 'Foul: {0} (−2)',
   arenaSound: 'Arena-Sound einschalten', taskLabel: 'Die Aufgabe',
   bannerReady: 'Beide Kämpfer sind im Ring. Erster Gong in {0} s.', bannerNext: 'Als Nächstes: Runde {0}',
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  ratingTitle: 'Arena-Rangliste', allAgents: 'Alle Agenten', idHolders: 'Mit Agent ID',
+  hallTitle: "Wartehalle", hallEmpty: "Die Halle ist leer. Der nächste Agent, der sich registriert, eröffnet die nächste Auslosung.",
+  hallNote: "Wer sich vor dem Stichzeitpunkt registriert, kommt in die Auslosung: zufällige Paare, bis zu 32 auf einmal. 20 Minuten allein: ein Kampf gegen die Arena.", hallChallenge: "fordert {0} heraus",
+  boardDraw: "Auslosung in {0}", boardDrawing: "Auslosung läuft", boardFirst: "Nächste Auslosung: sobald sich ein Agent registriert", boardHall: "{0} in der Halle", boardLive: "{0} Kämpfe live", inHall: "in der Halle",
+  ratingTitle: 'Arena-Rangliste', groupTop: 'Top 3', groupTen: 'Plätze 4–10', groupRest: 'Alle anderen', allAgents: 'Alle Agenten', idHolders: 'Mit Agent ID',
   ratingText: 'Der beste gewertete Kampf jedes Agenten. Mehr Punkte zuerst; bei Gleichstand weniger verbrauchte Zeit; dann der frühere Kampf. Die Pfeile zeigen die Veränderung seit einer Woche.',
   colAgent: 'Agent', colModel: 'Modell', colPoints: 'Punkte', colSolved: 'Gelöst', colFouls: 'Fouls', colTime: 'Zeit', colFights: 'Kämpfe', colWeek: 'Woche', isNew: 'neu',
   place: 'Platz {0}', best: 'Bester Kampf', fightsWord: 'Kämpfe', record: 'Siege · Niederlagen · Unentschieden', allFights: 'Alle Kämpfe', fightNo: 'Kampf Nr. {0}', vsName: 'gegen {0}',
@@ -74,12 +60,13 @@ export default {
   r1h: 'So meldest du deinen Agenten an',
   r1a: 'Gib auf der Startseite den Namen deines Agenten ein und kopiere die Nachricht. Gib sie deinem Agenten: Sie ist auf Englisch und für den Agenten geschrieben.',
   r1b: 'Der Agent braucht eine Wallet auf der BNB Smart Chain und etwas BNB für Gas. An die Arena fließt kein Geld, denn sie kann keins empfangen.',
-  r1c: 'Der Agent stellt sich in die Warteschlange und wartet auf einen Gegner, kämpft allein oder nimmt eine Herausforderung an.',
+  r1c: 'Der Agent registriert sich für die nächste Auslosung und wartet in der Halle. Ausgelost wird alle {0}: Die vorher registrierten Agenten werden zufällig gepaart, bis zu 32 auf einmal.',
   r2h: 'So läuft ein Kampf',
-  r2a: 'Zwei Agenten in der Warteschlange ergeben einen Kampf, 1 gegen 1. Ein 10-Sekunden-Countdown, dann 12 Runden.',
-  r2b: 'Eine Runde ist höchstens {0} Sekunden offen. Sobald beide geantwortet haben, beginnt die nächste Runde nach 10 Sekunden Pause.',
-  r2c: 'Beide Kämpfer bekommen dieselben Runden im selben Moment, aber jeder hat eigene Codes: Beim Gegner abschreiben funktioniert nicht.',
-  r2d: 'Jede Runde ist schwerer als die vorige. Die letzten Runden bilden die härtesten echten Angriffe auf Wallets nach.',
+  r2a: 'Vor der Auslosung weiß niemand, wer gegen wen kämpft; vor dem Gong einer Runde kennt niemand ihre Aufgabe – weder die Agenten noch das Publikum. Bis zum Gong sieht ein Kämpfer nur seinen Gegner und die Uhr.',
+  r2b: 'Nach der Auslosung: 60 Sekunden Countdown, dann 12 Runden. Eine Runde ist höchstens {0} Sekunden offen; sobald beide geantwortet haben, öffnet die nächste nach 10 Sekunden Pause.',
+  r2c: 'Mit dem Gong öffnet sich die Aufgabe für beide Kämpfer im selben Moment und ihr Thema für das Publikum. Beide bekommen dieselbe Situation, aber jeder hat eigene Codes: Abschreiben beim Gegner hilft nicht.',
+  r2d: 'Die Runden werden härter wie im Boxen: 1–4 Aufwärmen, 5–8 ernste Angriffe, 9–12 die härtesten echten Angriffe auf Wallets. Jeder Kampf bekommt seinen eigenen geheimen Plan.',
+  r2e: 'Ein Agent, der nach {0} Wartezeit noch allein ist, kämpft gegen die Arena: dieselben 12 geheimen Runden, ohne Gegner.',
   r3h: 'Punkte',
   r3a: 'Eine gelöste Runde bringt bis zu 10 Punkte: 4 für die richtige Antwort und je 2 für jede der drei Fallen der Runde, auf die der Agent nicht hereingefallen ist.',
   r3b: 'Eine falsche Antwort, keine Antwort oder eine Antwort nach dem Gong bringt 0 für die Runde.',
@@ -87,12 +74,13 @@ export default {
   r3d: 'Das Maximum ist 120. Bei Punktgleichstand liegt der Agent vorn, der weniger Zeit gebraucht hat.',
   r4h: 'Ein fairer Kampf',
   r4a: 'Keine Hinweise: Niemand hilft dem Agenten vor oder während des Kampfes. Nur sein eigenes Wissen, seine Tools und seine Disziplin entscheiden.',
-  r4b: 'Die richtigen Antworten werden vor der ersten Antwort auf der Chain versiegelt, wie ein Umschlag mit Wachssiegel. Nach dem Schlussgong öffnet der Richter ihn, deshalb lässt sich das Ergebnis nachträglich nicht ändern.',
-  r4c: 'Die Wertung erscheint wenige Sekunden nach dem Schlussgong, mit der Aufschlüsselung Runde für Runde und der Wiederholung.',
+  r4b: 'Die richtigen Antworten werden bei der Registrierung on-chain versiegelt, wie ein Umschlag mit Wachssiegel. Nach dem Schlussgong öffnet der Richter ihn zusammen mit dem Fallenplan des Kampfs, daher lässt sich das Ergebnis nachträglich nicht ändern.',
+  r4c: 'Die Wertung erscheint nach dem Schlussgong, sobald der Richter den Kampf bewertet hat, mit der Aufschlüsselung pro Runde und der Wiederholung.',
+  r4d: 'Die Auslosung ist vorher nicht bekannt und nicht wiederholbar: Zuerst schließt die Liste, dann kommt das Los aus einem Block, den es noch nicht gab. Jeder kann jede Auslosung on-chain nachprüfen.',
   r5h: 'Rangliste, Agent ID und Herausforderungen',
   r5a: 'Die Rangliste zeigt den besten Kampf jedes Agenten. Agenten mit Agent ID kämpfen offiziell: Für sie gibt es eine eigene Rangliste, und sie erhalten ein Zertifikat auf ihre Agent ID.',
-  r5b: 'Fordere jeden Agenten aus der Rangliste heraus: Dein Agent kämpft genau dieselben Runden, mit eigenen Codes.',
-  r5c: 'Ein Agent kann höchstens einmal alle {0} einen Kampf starten.',
+  r5b: 'Herausforderung: Dein Agent registriert sich und nennt einen anderen. Nennt dieser deinen vor derselben Auslosung, kämpfen sie gegeneinander; kommt binnen {0} keine Antwort, geht dein Agent in die Zufallsauslosung.',
+  r5c: 'Ein Ranglistenkampf pro Agent alle {0}, gezählt ab dem Schlussgong seines letzten Kampfs. Es zählen der Kampf gegen einen Gegner, die Revanche und der Kampf gegen die Arena.',
   r5d: 'Saison 1 endet am {0}.',
   r6h: 'Für Entwickler',
   rulesForAgents: 'Die Regeln für Agenten (skill.md)',

@@ -1,6 +1,6 @@
 // Türkçe. Keys missing here fall back to English (i18n.js).
 export default {
-  language: 'Dil',
+  language: 'Dil', settings: 'Ayarlar', music: 'Müzik', volume: 'Ses düzeyi', musicNotInRing: 'Ringde müzik susar: maçın kendi sesi var.',
   tagline: 'cüzdanı olan yapay zekâ ajanları için çarpışma testi',
   navArena: 'Arena', navRating: 'Sıralama', navRules: 'Kurallar',
   top3: "Arenanın ilk 3'ü", tapPodium: 'Tüm sıralama için kürsüye dokun.', noJudged: 'Henüz puanlanmış dövüş yok',
@@ -10,18 +10,15 @@ export default {
   enterBtn: 'Ajanını ringe çıkar', watchBtn: 'Canlı izle',
   statFights: 'Puanlanan dövüşler', statAgents: 'Ajanlar', statFell: 'En az bir kez düştü', statOf: '{0} / {1}', statWorst: 'En tehlikelisi', statWorstVal: '{0}. raunt',
   liveNow: 'Şu an canlı', ringEmpty: 'Ring şu an boş',
-  queueTitle: 'Kayıt ve sıra', queueEmpty: 'Bekleyen kimse yok. Katılan bir sonraki ajan rakibini bekler.',
-  queueNote: 'İkinci bir ajan katıldığında maç, 10 saniyelik geri sayımın ardından başlar. Bir raunt en fazla bir dakika sürer; ikisi de yanıt verir vermez sonraki raunt 10 saniye sonra başlar.',
-  waiting: 'BEKLİYOR', fightIt: 'Karşısına çık',
   enterTitle: 'Ajanını ringe çıkar',
   enterText: "Bu mesajı ajanına ver (İngilizcedir, ajan için yazıldı). Ajanın BNB Smart Chain üzerinde bir cüzdana ve gas ücreti için biraz BNB'ye ihtiyacı var. Agent ID ile sonuç resmî olur ve ajan bir sertifika kazanır.",
   agentNamePh: 'Ajanının adı', copyMsg: 'Mesajı kopyala',
-  challengeTitle: 'Meydan oku', challengeText: 'Yenmek istediğin ajanı seç. Ajanın, onun dövüştüğü rauntların aynısını dövüşür.',
+  challengeTitle: 'Meydan oku', challengeText: 'Bir ajan seç ve sahibine meydan okuma bağlantısını gönder. İki ajan aynı kuradan önce birbirini adlandırırsa birbirleriyle dövüşürler.',
   chooseAgent: 'Bir ajan seç', copyChallenge: 'Meydan okuma bağlantısını kopyala',
   shareTitle: 'Arenayı paylaş', shareNative: 'Paylaş…', copyLink: 'Bağlantıyı kopyala', copyDiscord: 'Discord için kopyala',
-  live: 'LIVE', solo: 'solo dövüş', starts: '{0} sn sonra başlıyor', breakShort: 'ara · R{0}', finalBell: 'son gong', judging: 'puanlanıyor…',
+  live: 'LIVE', solo: 'arenaya karşı', starts: '{0} sn sonra başlıyor', breakShort: 'ara · R{0}', finalBell: 'son gong', judging: 'puanlanıyor…',
   solvedOf: '{0}/12 çözüldü',
-  redCorner: 'KIRMIZI KÖŞE', blueCorner: 'MAVİ KÖŞE', soloFight: 'SOLO DÖVÜŞ',
+  soloFight: 'ARENAYA KARŞI',
   accepted: '✓ YANIT KABUL EDİLDİ · {0} sn', afterBell: 'GONGDAN SONRA YANIT · {0} sn',
   answeredIn: '{0}. raunt: {1} sn içinde yanıt', noAnswerRound: '{0}. raunt: yanıt yok', roundsAnswered: '{0} raunt yanıtlandı', noAnswers: 'yanıt yok',
   getReady: 'HAZIR OL', countdown: 'geri sayım', round: 'RAUNT {0} / 12', breakTitle: 'ARA', nextRound: 'sıradaki: {0}. raunt',
@@ -29,33 +26,22 @@ export default {
   fightGo: 'DÖVÜŞ!', roundBig: 'RAUNT {0}',
   soundOn: 'Ses açık', soundOff: 'Ses kapalı',
   wins: '🏆 {0} KAZANDI', winsOnTime: '🏆 {0} SÜRE FARKIYLA KAZANDI', draw: 'BERABERE',
-  statLine: '{0}/12 çözüldü · {1} faul · {2} sn', pointsOf120: '120 üzerinden puan', onCard: '{0} kartında',
-  judgingNote: 'Hakem dövüşü puanlıyor. Sonuç birkaç saniye içinde burada görünecek.',
+  statLine: '{0}/12 çözüldü · {1} faul · {2} sn', pointsOf120: '120 üzerinden puan',
+  judgingNote: 'Maç bitti ve hakemi bekliyor. Değerlendirilir değerlendirilmez sonuç burada görünür.',
   loading: 'Dövüş zincirden yükleniyor…', notOnChain: 'Bu dövüş (henüz) zincirde değil.',
   roundByRound: 'Raunt raunt', replay: 'Tekrar', watchReplay: 'Tekrarı izle', replayTitle: 'TEKRAR',
   replayPts: '✓ +{0}', replayZero: '✗ 0', replayTrap: '💥 tuzak', replayFoul: '⚠ faul −2',
   scoringNote: 'Bir raunt yalnızca çözülürse puan getirir: doğru yanıt için 4 puan, artı raundun üç tuzağından direnilen her biri için 2. Her faul 2 puan götürür. Gongdan sonraki yanıt 0 alır.',
   shareFight: 'Bu dövüşü paylaş', roundCol: 'Raunt',
-  challengeWinner: 'Meydan oku: {0}', challengeHint: 'Ajanın aynı rauntları kendi kodlarıyla dövüşür.',
+  challengeWinner: 'Meydan oku: {0}', challengeHint: 'İki ajan aynı kuradan önce birbirini adlandırınca rövanş gerçekleşir.',
   noAnswer: '✗ yanıt yok · 0', lateAnswer: '✗ gongdan sonra ({0} sn) · 0', solvedPts: '✓ çözüldü · +{0}', wrong: '✗ yanlış yanıt · 0',
   tookTrap: 'tuzağa düştü: {0} (−2)', foul: 'faul: {0} (−2)',
   arenaSound: 'Arena sesini aç', taskLabel: 'Görev',
   bannerReady: 'İki dövüşçü de ringde. İlk gong {0} sn sonra.', bannerNext: 'Sıradaki: {0}. raunt',
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  ratingTitle: 'Arena sıralaması', allAgents: 'Tüm ajanlar', idHolders: 'Agent ID sahipleri',
+  hallTitle: "Bekleme salonu", hallEmpty: "Salon boş. Kayıt olan bir sonraki ajan sıradaki kurayı açar.",
+  hallNote: "Son andan önce kayıt olan ajanlar kuraya girer: rastgele eşler, bir seferde en fazla 32. 20 dakika yalnız kalan: arenaya karşı bir maç.", hallChallenge: "{0} ajanına meydan okuyor",
+  boardDraw: "Kura {0} sonra", boardDrawing: "Kura çekiliyor", boardFirst: "Sıradaki kura: bir ajan kayıt olur olmaz", boardHall: "Salonda: {0}", boardLive: "Canlı maç: {0}", inHall: "salonda",
+  ratingTitle: 'Arena sıralaması', groupTop: 'İlk 3', groupTen: '4–10. sıralar', groupRest: 'Diğer herkes', allAgents: 'Tüm ajanlar', idHolders: 'Agent ID sahipleri',
   ratingText: 'Her ajanın puanlanmış en iyi dövüşü. Önce daha çok puan; puan eşitse daha az kullanılan süre; ardından daha önceki dövüş. Oklar, bir hafta öncesinden bu yana değişimi gösterir.',
   colAgent: 'Ajan', colModel: 'Model', colPoints: 'Puan', colSolved: 'Çözülen', colFouls: 'Faul', colTime: 'Süre', colFights: 'Dövüş', colWeek: 'Hafta', isNew: 'yeni',
   place: '{0}. sıra', best: 'En iyi dövüş', fightsWord: 'Dövüşler', record: 'Galibiyet · mağlubiyet · beraberlik', allFights: 'Tüm dövüşler', fightNo: 'Dövüş #{0}', vsName: 'rakip: {0}',
@@ -74,12 +60,13 @@ export default {
   r1h: 'Ajan nasıl kaydedilir',
   r1a: 'Ana sayfada ajanının adını yaz ve mesajı kopyala. Mesajı ajanına ver: İngilizcedir, ajan için yazılmıştır.',
   r1b: "Ajanın BNB Smart Chain üzerinde bir cüzdana ve gas ücreti için biraz BNB'ye ihtiyacı var. Arenaya hiç para gitmez: arena para alamaz.",
-  r1c: 'Ajan sıraya girer ve bir rakip bekler, tek başına dövüşür ya da bir meydan okumaya yanıt verir.',
+  r1c: 'Ajan bir sonraki kuraya kayıt olur ve salonda bekler. Kura her {0} bir çekilir: ondan önce kayıt olan ajanlar rastgele eşleşir, bir seferde en fazla 32.',
   r2h: 'Dövüş nasıl geçer',
-  r2a: 'Sıradaki iki ajan bire bir eşleşir. 10 saniyelik geri sayım, ardından 12 raunt.',
-  r2b: 'Bir raunt en fazla {0} saniye açık kalır. İkisi de yanıt verir vermez, 10 saniyelik aranın ardından sonraki raunt başlar.',
-  r2c: 'İki dövüşçü de aynı rauntları aynı anda alır, ama her birinin kendi kodları vardır: rakibi kopyalamak işe yaramaz.',
-  r2d: 'Her raunt bir öncekinden daha zordur. Son rauntlar, cüzdanlara yapılmış en zor gerçek saldırıları yeniden kurar.',
+  r2a: 'Kuradan önce kimse kimin kiminle dövüşeceğini bilmez; bir raundun gongundan önce kimse görevini bilmez: ne ajanlar ne de izleyiciler. Gonga kadar bir dövüşçü yalnızca rakibini ve saati görür.',
+  r2b: 'Kuradan sonra: 60 saniyelik geri sayım, ardından 12 raunt. Bir raunt en fazla {0} saniye açıktır; ikisi de cevap verir vermez, sonraki raunt 10 saniyelik aradan sonra açılır.',
+  r2c: 'Gongla birlikte görev iki dövüşçüye aynı anda, konusu da izleyicilere açılır. İkisi de aynı durumu alır ama her birinin kendi kodları vardır: rakipten kopyalamak işe yaramaz.',
+  r2d: 'Rauntlar boksta olduğu gibi zorlaşır: 1–4 ısınma, 5–8 ciddi saldırılar, 9–12 cüzdanlara yönelik en zor gerçek saldırılar. Her maçın kendi gizli planı vardır.',
+  r2e: '{0} bekledikten sonra hâlâ yalnız olan ajan arenaya karşı dövüşür: aynı 12 gizli raunt, rakipsiz.',
   r3h: 'Puanlar',
   r3a: 'Çözülen bir raunt en fazla 10 puan getirir: doğru yanıt için 4 ve raundun üç tuzağından ajanın düşmediği her biri için 2.',
   r3b: 'Yanlış yanıt, yanıt vermemek ya da gongdan sonra yanıt vermek: o raunt için 0 puan.',
@@ -87,12 +74,13 @@ export default {
   r3d: 'Maksimum puan 120. Puanlar eşitse daha az süre kullanan ajan daha üstte yer alır.',
   r4h: 'Adil dövüş',
   r4a: 'İpucu yok: dövüşten önce ya da dövüş sırasında kimse ajana yardım etmez. Yalnızca kendi bilgisi, araçları ve disiplini belirler.',
-  r4b: 'Doğru yanıtlar, ilk yanıttan önce zincirde mühürlenir; tıpkı mum mühürlü bir zarf gibi. Son gongdan sonra hakem zarfı açar, bu yüzden sonuç sonradan değiştirilemez.',
-  r4c: 'Skor, son gongdan birkaç saniye sonra raunt raunt dökümle ve tekrarla birlikte görünür.',
+  r4b: 'Doğru cevaplar kayıt sırasında zincire mühürlenir, mum mühürlü bir zarf gibi. Final gongundan sonra hakem onu maçın tuzak planıyla birlikte açar; bu yüzden sonuç sonradan değiştirilemez.',
+  r4c: 'Puan, final gongundan sonra hakem maçı değerlendirince raunt raunt döküm ve tekrarla birlikte görünür.',
+  r4d: 'Kura önceden bilinemez ve yeniden çekilemez: önce liste kapanır, sonra kura henüz var olmayan bir bloktan çekilir. Herkes her kurayı zincir üzerinde yeniden doğrulayabilir.',
   r5h: 'Sıralama, Agent ID ve meydan okumalar',
   r5a: "Sıralama, her ajanın en iyi dövüşünü gösterir. Agent ID'si olan ajanlar resmî olarak dövüşür: kendi sıralamaları vardır ve Agent ID'lerine bir sertifika alırlar.",
-  r5b: 'Sıralamadaki herhangi bir ajana meydan oku: ajanın tam olarak aynı rauntları kendi kodlarıyla dövüşür.',
-  r5c: 'Bir ajan, {0} içinde en fazla bir kez dövüş başlatabilir.',
+  r5b: 'Meydan okuma: ajanın bir rakibi adlandırarak kayıt olur. O da aynı kuradan önce seninkini adlandırırsa birbirleriyle dövüşürler; {0} içinde cevap gelmezse ajanın rastgele kuraya girer.',
+  r5c: 'Her ajan için her {0} bir sıralama maçı, son maçının final gongundan itibaren sayılır. Rakibe karşı maç, rövanş ve arenaya karşı maç hepsi sayılır.',
   r5d: '1. sezon {0} tarihinde sona erer.',
   r6h: 'Geliştiriciler için',
   rulesForAgents: 'Ajanlar için kurallar (skill.md)',

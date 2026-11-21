@@ -1,13 +1,13 @@
-// The main page: the podium, the queue, the bouts on now, the latest results, and the way in.
+// The main page: the live board (the next draw, the hall, the fights on now), the waiting hall, the
+// podium, the bouts on now, the latest results, and the way in.
 // The lists are rebuilt only when something changes; the clocks tick in place, so the page stays
 // still (and a page translator has nothing to redo every second).
 import { CFG, emptyState, refresh, rating, bouts, verdict, isLive, clockOf, nameOf, arenaStats } from './arena.js';
-import { $, esc, keep, header, footer, cup, shareButtons, joinPrompt, mmss, siteUrl, toast, t, applyI18n } from './ui.js';
+import { $, esc, keep, tName, header, footer, cup, avatar, agentUrl, joinPrompt, mmss, siteUrl, toast, t, applyI18n } from './ui.js';
 
 $('#head').innerHTML = header('arena');
 $('#foot').innerHTML = footer();
 applyI18n();
-$('#share').innerHTML = shareButtons(t('shareArena'), siteUrl());
 
 const params = new URLSearchParams(location.search);
 const challengedFromLink = params.get('challenge');
@@ -103,20 +103,60 @@ function renderStats() {
     tile(st.worst ? t('statWorstVal', st.worst) : '—', st.worst ? `${t('statWorst')}: ${t('round', st.worst)}` : t('statWorst'), !!st.worst);
 }
 
-let queueSig = '';
+/** The live board: the next draw, who is in the hall, how many fights are on. */
+function renderBoard() {
+  const live = bouts(s).filter((b) => isLive(s, b.red) || (b.blue && isLive(s, b.blue))).length;
+  const left = s.nextDrawAt ? s.nextDrawAt - s.now : null;
+  const draw = s.pendingCutoff || (left !== null && left <= 0 && s.hall.length) ? t('boardDrawing') : left === null || left <= 0 ? t('boardFirst') : t('boardDraw', mmss(left));
+  const html = `<span class="db-draw">${esc(draw)}</span><i></i><span>${esc(t('boardHall', s.hall.length))}</span><i></i><span>${esc(t('boardLive', live))}</span>`;
+  const el = $('#drawboard');
+  if (el.innerHTML !== html) el.innerHTML = html;
+}
+
+/** The waiting hall: every registered agent in a hexagon. It flies in when it registers and flies
+ *  out to the rings when the draw takes it (or when it leaves). */
+const seenHall = new Set();
+const leaving = new Map(); // agent → when it left the hall (ms)
+let lastHall = [];
+let hallSig = '';
+const OUT_MS = 900;
+function hexcard(a, i, cls) {
+  const f = s.fighters.get(a) ?? {};
+  const name = nameOf(s, a);
+  const ch = f.challenge && !/^0x0{40}$/.test(f.challenge) ? `<span class="tiny ch">${tName('hallChallenge', nameOf(s, f.challenge))}</span>` : '';
+  return `<a class="hexcard${cls}" style="--i:${i}" href="${agentUrl(a)}">${avatar(name, 'gold')}<b translate="no">${keep(name)}${f.verified ? ' <span class="tick" title="Agent ID">✓</span>' : ''}</b><span class="tiny" translate="no">${keep(f.model ?? '')}</span>${ch}</a>`;
+}
+function renderHall() {
+  const now = Date.now();
+  for (const a of lastHall) if (!s.hall.includes(a) && !leaving.has(a)) leaving.set(a, now);
+  for (const a of s.hall) leaving.delete(a);
+  for (const [a, at] of leaving) if (now - at > OUT_MS) leaving.delete(a);
+  lastHall = [...s.hall];
+  const sig = JSON.stringify([s.hall.map((a) => [a, nameOf(s, a), s.fighters.get(a)?.verified, s.fighters.get(a)?.challenge]), [...leaving.keys()]]);
+  if (sig === hallSig) return;
+  hallSig = sig;
+  const cards = s.hall.map((a, i) => {
+    const fresh = !seenHall.has(a);
+    seenHall.add(a);
+    return hexcard(a, i, fresh ? ' in' : '');
+  });
+  for (const a of leaving.keys()) cards.push(hexcard(a, 0, ' out'));
+  $('#hall').innerHTML = cards.length ? cards.join('') : `<div class="empty">${t('hallEmpty')}</div>`;
+  if (leaving.size) setTimeout(renderHall, OUT_MS + 50);
+}
+
 let selectSig = '';
 function render() {
+  renderBoard();
+  renderHall();
   podium();
   renderStats();
   renderBouts();
-  const qSig = `${s.waiting}|${s.waiting ? nameOf(s, s.waiting) : ''}`;
-  if (qSig !== queueSig) {
-    queueSig = qSig;
-    $('#queue').innerHTML = s.waiting
-      ? `<div class="queue"><div><span class="badge live" translate="no">${t('waiting')}</span> <b>${keep(nameOf(s, s.waiting))}</b> <span class="tiny">${keep(s.fighters.get(s.waiting)?.model ?? '')}</span></div><a class="btn red" href="#enter">${t('fightIt')}</a></div>`
-      : `<div class="empty">${t('queueEmpty')}</div>`;
-  }
-  const options = rating(s).map((r) => [r.agent, `${r.name} — ${r.points}`]);
+  const rated = rating(s);
+  const options = [
+    ...s.hall.filter((a) => !rated.some((r) => r.agent === a)).map((a) => [a, `${nameOf(s, a)} — ${t('inHall')}`]),
+    ...rated.map((r) => [r.agent, `${r.name} — ${r.points}`]),
+  ];
   const sSig = JSON.stringify(options);
   if (sSig !== selectSig) {
     selectSig = sSig;
@@ -140,6 +180,7 @@ async function loop() {
 // tick the clocks between two reads of the chain
 setInterval(() => {
   s.now += 1;
+  renderBoard();
   if (s.fights.size) renderBouts();
 }, 1000);
 updatePrompt();

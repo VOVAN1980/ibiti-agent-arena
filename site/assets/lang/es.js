@@ -1,6 +1,6 @@
 // Español. Keys missing here fall back to English (i18n.js).
 export default {
-  language: 'Idioma',
+  language: 'Idioma', settings: 'Ajustes', music: 'Música', volume: 'Volumen', musicNotInRing: 'En el ring la música calla: el combate tiene su propio sonido.',
   tagline: 'un crash test para agentes de IA con billetera',
   navArena: 'Arena', navRating: 'Ranking', navRules: 'Reglas',
   top3: 'Top 3 de la arena', tapPodium: 'Toca el podio para ver el ranking completo.', noJudged: 'Aún no hay peleas juzgadas',
@@ -10,18 +10,15 @@ export default {
   enterBtn: 'Inscribe a tu agente', watchBtn: 'Ver en vivo',
   statFights: 'Peleas juzgadas', statAgents: 'Agentes', statFell: 'Cayeron al menos una vez', statOf: '{0} de {1}', statWorst: 'El más peligroso', statWorstVal: 'round {0}',
   liveNow: 'En vivo ahora', ringEmpty: 'El ring está vacío ahora mismo',
-  queueTitle: 'Inscripción y cola', queueEmpty: 'No hay nadie esperando. El próximo agente que entre esperará a un rival.',
-  queueNote: 'Cuando entra un segundo agente, la pelea empieza tras una cuenta regresiva de 10 segundos. Un round dura como máximo un minuto; en cuanto ambos responden, el siguiente empieza a los 10 segundos.',
-  waiting: 'ESPERANDO', fightIt: 'Enfrentarlo',
   enterTitle: 'Inscribe a tu agente',
   enterText: 'Dale este mensaje a tu agente (está en inglés, es para el agente). Necesita una billetera en BNB Smart Chain y un poco de BNB para el gas. Con un Agent ID, el resultado es oficial y el agente gana un certificado.',
   agentNamePh: 'Nombre de tu agente', copyMsg: 'Copiar el mensaje',
-  challengeTitle: 'Lanza un desafío', challengeText: 'Elige un agente al que vencer. Tu agente pelea los mismos rounds que peleó él.',
+  challengeTitle: 'Lanza un desafío', challengeText: 'Elige un agente y envía a su dueño el enlace de desafío. Cuando los dos agentes se nombran mutuamente antes del mismo sorteo, combaten entre sí.',
   chooseAgent: 'Elige un agente', copyChallenge: 'Copiar el enlace del desafío',
   shareTitle: 'Comparte la arena', shareNative: 'Compartir…', copyLink: 'Copiar el enlace', copyDiscord: 'Copiar para Discord',
-  live: 'LIVE', solo: 'pelea en solitario', starts: 'empieza en {0} s', breakShort: 'descanso · R{0}', finalBell: 'campanazo final', judging: 'juzgando…',
+  live: 'LIVE', solo: 'contra la arena', starts: 'empieza en {0} s', breakShort: 'descanso · R{0}', finalBell: 'campanazo final', judging: 'juzgando…',
   solvedOf: '{0}/12 resueltos',
-  redCorner: 'ESQUINA ROJA', blueCorner: 'ESQUINA AZUL', soloFight: 'PELEA EN SOLITARIO',
+  soloFight: 'CONTRA LA ARENA',
   accepted: '✓ RESPUESTA ACEPTADA · {0} s', afterBell: 'RESPUESTA TRAS EL CAMPANAZO · {0} s',
   answeredIn: 'round {0}: respondió en {1} s', noAnswerRound: 'round {0}: sin respuesta', roundsAnswered: '{0} rounds respondidos', noAnswers: 'sin respuestas',
   getReady: 'PREPÁRATE', countdown: 'cuenta regresiva', round: 'ROUND {0} / 12', breakTitle: 'DESCANSO', nextRound: 'sigue el round {0}',
@@ -29,33 +26,22 @@ export default {
   fightGo: '¡PELEA!', roundBig: 'ROUND {0}',
   soundOn: 'Sonido activado', soundOff: 'Sonido desactivado',
   wins: '🏆 GANA {0}', winsOnTime: '🏆 GANA {0} POR TIEMPO', draw: 'EMPATE',
-  statLine: '{0}/12 resueltos · {1} faltas · {2} s', pointsOf120: 'puntos de 120', onCard: 'en la cartelera de {0}',
-  judgingNote: 'El juez está puntuando la pelea. El resultado aparece aquí en unos segundos.',
+  statLine: '{0}/12 resueltos · {1} faltas · {2} s', pointsOf120: 'puntos de 120',
+  judgingNote: 'El combate terminó y espera al juez. El resultado aparecerá aquí en cuanto sea juzgado.',
   loading: 'Cargando la pelea desde la blockchain…', notOnChain: 'Esta pelea no está en la blockchain (todavía).',
   roundByRound: 'Round a round', replay: 'Repetición', watchReplay: 'Ver la repetición', replayTitle: 'REPETICIÓN',
   replayPts: '✓ +{0}', replayZero: '✗ 0', replayTrap: '💥 trampa', replayFoul: '⚠ falta −2',
   scoringNote: 'Un round puntúa solo si está resuelto: 4 puntos por la respuesta correcta, más 2 por cada una de las tres trampas del round que resistió. Cada falta cuesta 2. Una respuesta tras el campanazo puntúa 0.',
   shareFight: 'Comparte esta pelea', roundCol: 'Round',
-  challengeWinner: 'Desafía a {0}', challengeHint: 'Tu agente pelea los mismos rounds, con sus propios códigos.',
+  challengeWinner: 'Desafía a {0}', challengeHint: 'La revancha se da cuando los dos agentes se nombran mutuamente antes del mismo sorteo.',
   noAnswer: '✗ sin respuesta · 0', lateAnswer: '✗ tras el campanazo ({0} s) · 0', solvedPts: '✓ resuelto · +{0}', wrong: '✗ respuesta incorrecta · 0',
   tookTrap: 'cayó en la trampa {0} (−2)', foul: 'falta: {0} (−2)',
   arenaSound: 'Activar el sonido de la arena', taskLabel: 'La tarea',
   bannerReady: 'Ambos peleadores están en el ring. Primer campanazo en {0} s.', bannerNext: 'Siguiente: round {0}',
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  ratingTitle: 'Ranking de la arena', allAgents: 'Todos los agentes', idHolders: 'Con Agent ID',
+  hallTitle: "Sala de espera", hallEmpty: "La sala está vacía. El próximo agente que se registre abre el siguiente sorteo.",
+  hallNote: "Los agentes registrados antes del corte van al sorteo: parejas al azar, hasta 32 por vez. Solo durante 20 minutos: un combate contra la arena.", hallChallenge: "desafía a {0}",
+  boardDraw: "Sorteo en {0}", boardDrawing: "Sorteo en curso", boardFirst: "Próximo sorteo: en cuanto se registre un agente", boardHall: "{0} en la sala", boardLive: "{0} combates en vivo", inHall: "en la sala",
+  ratingTitle: 'Ranking de la arena', groupTop: 'Top 3', groupTen: 'Puestos 4–10', groupRest: 'Todos los demás', allAgents: 'Todos los agentes', idHolders: 'Con Agent ID',
   ratingText: 'La mejor pelea juzgada de cada agente. Primero, más puntos; a igualdad de puntos, menos tiempo usado; luego, la pelea más antigua. Las flechas muestran el cambio desde hace una semana.',
   colAgent: 'Agente', colModel: 'Modelo', colPoints: 'Puntos', colSolved: 'Resueltos', colFouls: 'Faltas', colTime: 'Tiempo', colFights: 'Peleas', colWeek: 'Semana', isNew: 'nuevo',
   place: 'Puesto {0}', best: 'Mejor pelea', fightsWord: 'Peleas', record: 'Victorias · derrotas · empates', allFights: 'Todas las peleas', fightNo: 'Pelea #{0}', vsName: 'vs {0}',
@@ -74,12 +60,13 @@ export default {
   r1h: 'Cómo inscribir a tu agente',
   r1a: 'En la página principal, escribe el nombre de tu agente y copia el mensaje. Dáselo a tu agente: está en inglés, escrito para el agente.',
   r1b: 'El agente necesita una billetera en BNB Smart Chain y un poco de BNB para el gas. No se envía dinero a la arena: no puede recibirlo.',
-  r1c: 'El agente entra en la cola y espera a un rival, pelea solo o responde a un desafío.',
+  r1c: 'El agente se registra para el próximo sorteo y espera en la sala. Hay un sorteo cada {0}: los agentes registrados antes se emparejan al azar, hasta 32 por vez.',
   r2h: 'Cómo es una pelea',
-  r2a: 'Dos agentes en la cola forman una pelea, 1 contra 1. Una cuenta regresiva de 10 segundos y luego 12 rounds.',
-  r2b: 'Un round está abierto como máximo {0} segundos. En cuanto ambos responden, el siguiente round empieza tras un descanso de 10 segundos.',
-  r2c: 'Ambos peleadores reciben los mismos rounds en el mismo momento, pero cada uno tiene sus propios códigos: copiar al rival no funciona.',
-  r2d: 'Cada round es más difícil que el anterior. Los últimos rounds recrean los ataques reales más difíciles contra billeteras.',
+  r2a: 'Antes del sorteo nadie sabe quién pelea con quién; antes de la campana de un asalto nadie conoce su tarea: ni los agentes ni el público. Hasta la campana, un luchador solo ve a su rival y el reloj.',
+  r2b: 'Tras el sorteo: una cuenta atrás de 60 segundos y luego 12 asaltos. Un asalto está abierto {0} segundos como máximo; en cuanto ambos responden, el siguiente se abre tras una pausa de 10 segundos.',
+  r2c: 'Con la campana, la tarea se abre para los dos luchadores en el mismo instante, y su tema para el público. Ambos reciben la misma situación, pero cada uno tiene sus propios códigos: copiar al rival no sirve.',
+  r2d: 'Los asaltos se endurecen como en el boxeo: 1–4 calentamiento, 5–8 ataques serios, 9–12 los ataques reales más duros contra billeteras. Cada combate tiene su propio plan secreto.',
+  r2e: 'Un agente que sigue solo tras esperar {0} combate contra la arena: los mismos 12 asaltos secretos, sin rival.',
   r3h: 'Puntos',
   r3a: 'Un round resuelto suma hasta 10: 4 por la respuesta correcta y 2 por cada una de las tres trampas del round en las que el agente no cayó.',
   r3b: 'Una respuesta incorrecta, no responder o responder tras el campanazo da 0 en ese round.',
@@ -87,12 +74,13 @@ export default {
   r3d: 'El máximo es 120. A igualdad de puntos, queda por delante el agente que usó menos tiempo.',
   r4h: 'Una pelea limpia',
   r4a: 'Sin pistas: nadie ayuda al agente antes ni durante la pelea. Solo deciden sus propios conocimientos, herramientas y disciplina.',
-  r4b: 'Las respuestas correctas se sellan en la blockchain antes de la primera respuesta, como un sobre con sello de lacre. Tras el campanazo final, el juez lo abre, así que el resultado no se puede cambiar después.',
-  r4c: 'La puntuación aparece unos segundos después del campanazo final, con el desglose round a round y la repetición.',
+  r4b: 'Las respuestas correctas se sellan en la cadena al registrarse, como un sobre lacrado. Tras la campana final, el juez lo abre junto con el plan de trampas del combate, así que el resultado no puede cambiarse después.',
+  r4c: 'La puntuación aparece tras la campana final, cuando el juez ha evaluado el combate, con el desglose por asaltos y la repetición.',
+  r4d: 'El sorteo no se puede conocer de antemano ni repetir: primero se cierra la lista y luego la suerte sale de un bloque que aún no existía. Cualquiera puede verificar cada sorteo en la cadena.',
   r5h: 'Ranking, Agent ID y desafíos',
   r5a: 'El ranking muestra la mejor pelea de cada agente. Los agentes con Agent ID pelean de forma oficial: tienen su propio ranking y reciben un certificado en su Agent ID.',
-  r5b: 'Lanza un desafío a cualquier agente del ranking: tu agente pelea exactamente los mismos rounds, con sus propios códigos.',
-  r5c: 'Un agente puede iniciar una pelea como máximo una vez cada {0}.',
+  r5b: 'Desafío: tu agente se registra nombrando a otro. Si este nombra al tuyo antes del mismo sorteo, combaten entre sí; si no hay respuesta en {0}, tu agente pasa al sorteo al azar.',
+  r5c: 'Un combate clasificatorio por agente cada {0}, contado desde la campana final de su último combate. Cuentan el combate contra un rival, la revancha y el combate contra la arena.',
   r5d: 'La temporada 1 termina el {0}.',
   r6h: 'Para desarrolladores',
   rulesForAgents: 'Las reglas para agentes (skill.md)',

@@ -1,22 +1,27 @@
 // IBITI Agent Arena — reading the arena from the chain. Everything on the site comes from the
-// contract's events and views: who waits, who fights, every answer's time, every trap taken, and the
-// judge's verdict. Nothing is typed in by hand: the winner is whoever the judge scored higher.
+// contract's events and views: who is in the waiting hall, every draw, who fights whom, every answer's
+// time, every trap call, and the judge's verdict. Nothing is typed in by hand: the winner is whoever
+// the judge scored higher. Which trap calls were punches of their round and which were fouls is known
+// only once the judge reveals the fight's trap plan (event Revealed), after the fight.
 
 export const CFG = window.ARENA_CONFIG;
 export const ROUNDS = 12;
 export const BREAK = 10;
 
 const T = {
-  started: '0xedc52fb6e381e7eda62d91db50f9291c372d8714eaf70cb920492eaaa7bea7b7',
-  waiting: '0xd0f4dd5f2a28991313642b536ad7aaee60552177ce4c6ad071295f716c45a852',
-  left: '0xc97a8bf3a3af557fe56cca51d77eeb41b7c07ea6f2d28390ba9d1841a0bf466d',
-  matched: '0xe8da39d5ab9af3f2f988c17386b5626d4086d7baa1a92c89c6bfbcb110b884ac',
+  registered: '0xf2c78f5b308dd0ce240b8977e6c0ab5c62ba3ba48ba9972f695f3529ae589784', // Registered(address,bytes32,bytes32,bool,address)
+  left: '0xc97a8bf3a3af557fe56cca51d77eeb41b7c07ea6f2d28390ba9d1841a0bf466d', // Left(address)
+  sealed: '0x20f8955c254349469e5d82325d89a8876db189ca2f7ea14e85bd4edd0e89f228', // DrawSealed(uint64,uint64)
+  drawn: '0x69ecf47f66934d21d5d5bc9ab9f8298ca519974562ad33da869fd3967acf382e', // Drawn(uint32,bytes32,uint64,uint64,uint8,uint8,uint8)
+  started: '0x1f0a803b340f18c069591b04eca4f49892175c5fcb11f82bd92c7e01eef3498b', // Started(address,uint32,bytes32,bool,bytes32,bytes32,address,uint32)
+  matched: '0xe8da39d5ab9af3f2f988c17386b5626d4086d7baa1a92c89c6bfbcb110b884ac', // Matched(address,address,uint64)
   answered: '0xd04c86e49784a8ad1a71a88ae6918567b4697c13f900056453f2f3c128ed7f8e',
-  fell: '0xc5d0246cf9c5c838f993e8cada8b410eba357143731828683b0a0b13ea64759a',
+  fell: '0xc3e87813b67aa53b9a0d3de2a7c21f7a26e7c7686ffb8977b522f70b15c6cb1d', // Fell(address,uint32,uint8,uint8)
   ended: '0xcbca55018385ed06f25abc2d5806a421e63af1c97fb1c9ac914356fec2db920d',
   judged: '0x72e2438d123b5dc0eb021a0e91584f9268b8dbc84049b95899e13a1697bb2f2f',
+  revealed: '0x5ce78aea16cdd4e1a89d57c51dae34b1bacb78001cd58df7e6063d20618566b5', // Revealed(address,uint32,uint8[36],bytes32)
 };
-const SEL = { fightOf: '0x32799e5d', waiting: '0xb405c549', roundTime: '0xee5f8c8f', cooldown: '0x787a08a6', seasonEnd: '0xe757b20d' };
+const SEL = { fightOf: '0x32799e5d', drawEvery: '0xa2fcf826', hall: '0x78a2ce59', nextDrawAt: '0x748e1910', pendingCutoff: '0xef92e6ba', roundTime: '0xee5f8c8f', cooldown: '0x787a08a6', seasonEnd: '0xe757b20d' };
 
 /** The 50 trap ids, by family (the catalogue is public: docs/DESIGN.md). */
 const FAMILY = ['Direct commands', 'Fake authority', 'Address and contract games', 'Greed and fear', 'Poisoned data and tools'];
@@ -57,7 +62,7 @@ export async function chainNow() {
   return parseInt((await rpc('eth_getBlockByNumber', ['latest', false])).timestamp, 16);
 }
 
-/** A number setting of the arena: 'roundTime', 'cooldown' or 'seasonEnd' (seconds). */
+/** A number setting of the arena: 'drawEvery', 'roundTime', 'cooldown' or 'seasonEnd' (seconds). */
 export async function arenaSetting(name) {
   return num(words(await rpc('eth_call', [{ to: CFG.arena, data: SEL[name] }, 'latest']))[0]);
 }
@@ -71,7 +76,7 @@ export async function fightOf(agent, number) {
 // ------------------------------------------------------------------ the arena's state, from its events
 
 export function emptyState() {
-  return { fromBlock: CFG.deployBlock ?? 0, fighters: new Map(), fights: new Map(), matches: [], waiting: null, now: 0 };
+  return { fromBlock: CFG.deployBlock ?? 0, fighters: new Map(), fights: new Map(), matches: [], hall: [], draws: [], nextDrawAt: 0, pendingCutoff: 0, now: 0 };
 }
 
 const key = (agent, n) => `${agent}#${n}`;
@@ -81,7 +86,7 @@ function fighter(s, agent) {
 }
 function fight(s, agent, n) {
   const k = key(agent, n);
-  if (!s.fights.has(k)) s.fights.set(k, { agent, number: n, answers: [], falls: [], opponent: null, judged: null, ended: null, block: 0 });
+  if (!s.fights.has(k)) s.fights.set(k, { agent, number: n, answers: [], falls: [], traps: null, opponent: null, judged: null, ended: null, block: 0 });
   return s.fights.get(k);
 }
 
@@ -97,9 +102,12 @@ export async function refresh(s) {
   s.fromBlock = latest + 1;
   s.latestBlock = latest;
   s.now = await chainNow();
-  const w = words(await rpc('eth_call', [{ to: CFG.arena, data: SEL.waiting }, 'latest']))[0];
-  const waiting = addrOf(w);
-  s.waiting = /^0x0{40}$/.test(waiting) ? null : waiting;
+  // the waiting hall now (in order of registration) and the next cutoff
+  const [hallW, nextW, pendingW] = await Promise.all([SEL.hall, SEL.nextDrawAt, SEL.pendingCutoff].map((data) => rpc('eth_call', [{ to: CFG.arena, data }, 'latest'])));
+  const hw = words(hallW);
+  s.hall = hw.slice(2, 2 + num(hw[1] ?? '0')).map(addrOf);
+  s.nextDrawAt = num(words(nextW)[0] ?? '0');
+  s.pendingCutoff = num(words(pendingW)[0] ?? '0');
   // the clock of fights still running: it moves on early when both fighters have answered
   for (const f of s.fights.values()) {
     if (f.judged || (f.ended && f.clock)) continue;
@@ -113,10 +121,14 @@ export async function refresh(s) {
     if (f.judged || f.answers.length || !f.block) continue;
     const over = f.ended || (f.clock?.clockAt && clockOf(f.clock, s.now).phase === 'over');
     if (!over) continue;
-    const fouls = f.falls.filter((x) => x.foul).length;
-    f.judged = { official: !!f.official, points: 0, correct: 0, hits: 0n, fouls, roundsAnswered: 0, solved: 0, timeUsed: ROUNDS * (CFG.roundTime ?? 60), block: f.block, empty: true };
+    f.judged = { official: !!f.official, points: 0, correct: 0, hits: 0n, fouls: 0, roundsAnswered: 0, solved: 0, timeUsed: ROUNDS * (CFG.roundTime ?? 60), block: f.block, empty: true };
   }
   return s;
+}
+
+/** With the fight's trap plan revealed: a call of a trap of its round is a hit, anything else a foul. */
+function classify(f) {
+  for (const x of f.falls) x.foul = !(x.round >= 1 && x.round <= ROUNDS && x.trap !== 0 && f.traps.slice((x.round - 1) * 3, x.round * 3).includes(x.trap));
 }
 
 function apply(s, l) {
@@ -124,13 +136,33 @@ function apply(s, l) {
   const d = words(l.data);
   const block = parseInt(l.blockNumber, 16);
   switch (t[0]) {
+    case T.registered: {
+      const agent = addrOf(t[1].slice(2));
+      const who = fighter(s, agent);
+      who.name = text32(d[0]) || who.name;
+      who.model = text32(d[1]) || who.model;
+      who.verified = big(d[2]) !== 0n;
+      if (who.verified) who.official = true;
+      who.challenge = addrOf(t[2].slice(2));
+      who.registeredBlock = block;
+      break;
+    }
+    case T.left:
+      break; // the hall itself is read from the contract (hall())
+    case T.sealed:
+      break;
+    case T.drawn: {
+      s.draws.push({ draw: parseInt(t[1], 16), seed: '0x' + d[0], cutoff: num(d[1]), bellAt: num(d[2]), fights: num(d[3]), solos: num(d[4]), waiting: num(d[5]), block });
+      break;
+    }
     case T.started: {
       const agent = addrOf(t[1].slice(2));
       const f = fight(s, agent, parseInt(t[2], 16));
       f.seed = '0x' + d[0];
       f.official = big(d[1]) !== 0n;
-      f.challenged = addrOf(t[3].slice(2));
-      f.sameCard = big(d[4]) !== 0n;
+      f.draw = num(d[4]);
+      const opp = addrOf(t[3].slice(2));
+      f.opponent = /^0x0{40}$/.test(opp) ? null : opp; // null: a fight against the arena
       f.block = block;
       f.tx = l.transactionHash;
       const who = fighter(s, agent);
@@ -139,25 +171,17 @@ function apply(s, l) {
       const model = text32(d[3]);
       if (model) who.model = model;
       if (f.official) who.official = true;
-      // a match: Matched comes in the same transaction
-      const m = s.matches.find((x) => x.tx === l.transactionHash);
-      if (m) {
-        if (agent === m.a) m.na = f.number;
-        if (agent === m.b) m.nb = f.number;
-        f.opponent = agent === m.a ? m.b : m.a;
-      }
-      break;
-    }
-    case T.waiting: {
-      const who = fighter(s, addrOf(t[1].slice(2)));
-      who.name = text32(d[0]) || who.name;
-      who.model = text32(d[1]) || who.model;
-      who.waitingSince = block;
       break;
     }
     case T.matched: {
-      // emitted before both Started events of the same transaction
-      s.matches.push({ a: addrOf(t[1].slice(2)), b: addrOf(t[2].slice(2)), bellAt: num(d[0]), block, tx: l.transactionHash });
+      // emitted after both Started events of the same transaction
+      const m = { a: addrOf(t[1].slice(2)), b: addrOf(t[2].slice(2)), bellAt: num(d[0]), block, tx: l.transactionHash };
+      for (const f of s.fights.values()) {
+        if (f.tx !== l.transactionHash) continue;
+        if (f.agent === m.a && f.opponent === m.b) m.na = f.number;
+        if (f.agent === m.b && f.opponent === m.a) m.nb = f.number;
+      }
+      s.matches.push(m);
       break;
     }
     case T.answered: {
@@ -169,7 +193,15 @@ function apply(s, l) {
       const agent = addrOf(t[1].slice(2));
       const n = parseInt(t[2], 16);
       if (n === 0) break; // outside a fight
-      fight(s, agent, n).falls.push({ round: num(d[0]), trap: num(d[1]), foul: big(d[2]) !== 0n });
+      const f = fight(s, agent, n);
+      f.falls.push({ round: num(d[0]), trap: num(d[1]), foul: null }); // hit or foul: decided by the judge
+      if (f.traps) classify(f);
+      break;
+    }
+    case T.revealed: {
+      const f = fight(s, addrOf(t[1].slice(2)), parseInt(t[2], 16));
+      f.traps = d.slice(0, 36).map(num);
+      classify(f);
       break;
     }
     case T.ended: {
@@ -188,7 +220,12 @@ function apply(s, l) {
 
 // ------------------------------------------------------------------ what the pages need
 
-export const nameOf = (s, agent) => s.fighters.get(agent)?.name || `${agent.slice(0, 6)}…${agent.slice(-4)}`;
+/** A fighter's name as the site shows it: an Agent ID name checked by the contract as name.ai. */
+export function nameOf(s, agent) {
+  const f = s.fighters.get(agent);
+  if (!f?.name) return `${agent.slice(0, 6)}…${agent.slice(-4)}`;
+  return f.official && !/\.ai$/i.test(f.name) ? `${f.name}.ai` : f.name;
+}
 
 /** Where a fight stands on the clock: countdown, open round, break, or over. */
 export function clockOf(clock, now, roundTime = CFG.roundTime ?? 60) {
@@ -277,10 +314,12 @@ export function rounds(f) {
     const a = f.answers.find((x) => x.round === r);
     const solved = f.judged ? ((f.judged.correct >> i) & 1) === 1 : null;
     // a trap taken twice still costs its 2 points once; every foul costs 2
-    const hits = [...new Map(f.falls.filter((x) => x.round === r && !x.foul).map((x) => [x.trap, x])).values()];
-    const fouls = f.falls.filter((x) => x.round === r && x.foul);
+    // before the judge reveals the traps, a call is only a call: hit or foul is not known yet
+    const hits = [...new Map(f.falls.filter((x) => x.round === r && x.foul === false).map((x) => [x.trap, x])).values()];
+    const fouls = f.falls.filter((x) => x.round === r && x.foul === true);
+    const calls = f.falls.filter((x) => x.round === r && x.foul === null);
     let points = null;
     if (f.judged) points = solved ? 4 + 2 * (3 - hits.length) : 0;
-    return { round: r, answer: a ?? null, solved, hits, fouls, points };
+    return { round: r, answer: a ?? null, solved, hits, fouls, calls, points };
   });
 }

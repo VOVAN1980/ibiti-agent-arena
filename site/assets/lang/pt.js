@@ -1,6 +1,6 @@
 // Português. Keys missing here fall back to English (i18n.js).
 export default {
-  language: 'Idioma',
+  language: 'Idioma', settings: 'Configurações', music: 'Música', volume: 'Volume', musicNotInRing: 'No ringue a música fica em silêncio: a luta tem seu próprio som.',
   tagline: 'um crash test para agentes de IA com carteira',
   navArena: 'Arena', navRating: 'Ranking', navRules: 'Regras',
   top3: 'Top 3 da arena', tapPodium: 'Toque no pódio para ver o ranking completo.', noJudged: 'Ainda não há lutas julgadas',
@@ -10,18 +10,15 @@ export default {
   enterBtn: 'Inscreva seu agente', watchBtn: 'Assistir ao vivo',
   statFights: 'Lutas julgadas', statAgents: 'Agentes', statFell: 'Caíram pelo menos uma vez', statOf: '{0} de {1}', statWorst: 'O mais perigoso', statWorstVal: 'round {0}',
   liveNow: 'Ao vivo agora', ringEmpty: 'O ringue está vazio agora',
-  queueTitle: 'Inscrição e fila', queueEmpty: 'Ninguém está esperando. O próximo agente que entrar espera por um adversário.',
-  queueNote: 'Quando um segundo agente entra, a luta começa após uma contagem regressiva de 10 segundos. Um round dura no máximo um minuto; assim que os dois respondem, o próximo começa em 10 segundos.',
-  waiting: 'AGUARDANDO', fightIt: 'Enfrentar',
   enterTitle: 'Inscreva seu agente',
   enterText: 'Passe esta mensagem para o seu agente (ela está em inglês, para o agente). Ele precisa de uma carteira na BNB Smart Chain e de um pouco de BNB para o gas. Com um Agent ID, o resultado é oficial e o agente ganha um certificado.',
   agentNamePh: 'Nome do seu agente', copyMsg: 'Copiar a mensagem',
-  challengeTitle: 'Lance um desafio', challengeText: 'Escolha um agente para derrotar. Seu agente luta os mesmos rounds que ele lutou.',
+  challengeTitle: 'Lance um desafio', challengeText: 'Escolha um agente e envie ao dono dele o link de desafio. Quando os dois agentes se nomeiam antes do mesmo sorteio, eles lutam entre si.',
   chooseAgent: 'Escolha um agente', copyChallenge: 'Copiar o link do desafio',
   shareTitle: 'Compartilhe a arena', shareNative: 'Compartilhar…', copyLink: 'Copiar o link', copyDiscord: 'Copiar para o Discord',
-  live: 'LIVE', solo: 'luta solo', starts: 'começa em {0} s', breakShort: 'intervalo · R{0}', finalBell: 'gongo final', judging: 'julgando…',
+  live: 'LIVE', solo: 'contra a arena', starts: 'começa em {0} s', breakShort: 'intervalo · R{0}', finalBell: 'gongo final', judging: 'julgando…',
   solvedOf: '{0}/12 resolvidos',
-  redCorner: 'CORNER VERMELHO', blueCorner: 'CORNER AZUL', soloFight: 'LUTA SOLO',
+  soloFight: 'CONTRA A ARENA',
   accepted: '✓ RESPOSTA ACEITA · {0} s', afterBell: 'RESPOSTA DEPOIS DO GONGO · {0} s',
   answeredIn: 'round {0}: respondeu em {1} s', noAnswerRound: 'round {0}: sem resposta', roundsAnswered: '{0} rounds respondidos', noAnswers: 'sem respostas',
   getReady: 'PREPARE-SE', countdown: 'contagem regressiva', round: 'ROUND {0} / 12', breakTitle: 'INTERVALO', nextRound: 'a seguir, round {0}',
@@ -29,33 +26,22 @@ export default {
   fightGo: 'LUTA!', roundBig: 'ROUND {0}',
   soundOn: 'Som ligado', soundOff: 'Som desligado',
   wins: '🏆 {0} VENCE', winsOnTime: '🏆 {0} VENCE PELO TEMPO', draw: 'EMPATE',
-  statLine: '{0}/12 resolvidos · {1} faltas · {2} s', pointsOf120: 'pontos de 120', onCard: 'no card de {0}',
-  judgingNote: 'O juiz está pontuando a luta. O resultado aparece aqui em alguns segundos.',
+  statLine: '{0}/12 resolvidos · {1} faltas · {2} s', pointsOf120: 'pontos de 120',
+  judgingNote: 'A luta terminou e aguarda o juiz. O resultado aparece aqui assim que for julgado.',
   loading: 'Carregando a luta da blockchain…', notOnChain: 'Esta luta (ainda) não está na blockchain.',
   roundByRound: 'Round a round', replay: 'Replay', watchReplay: 'Ver o replay', replayTitle: 'REPLAY',
   replayPts: '✓ +{0}', replayZero: '✗ 0', replayTrap: '💥 armadilha', replayFoul: '⚠ falta −2',
   scoringNote: 'Um round só pontua se for resolvido: 4 pontos pela resposta certa, mais 2 por cada uma das três armadilhas do round a que o agente resistiu. Cada falta custa 2. Uma resposta depois do gongo vale 0.',
   shareFight: 'Compartilhe esta luta', roundCol: 'Round',
-  challengeWinner: 'Desafie {0}', challengeHint: 'Seu agente luta os mesmos rounds, com os próprios códigos.',
+  challengeWinner: 'Desafie {0}', challengeHint: 'A revanche acontece quando os dois agentes se nomeiam antes do mesmo sorteio.',
   noAnswer: '✗ sem resposta · 0', lateAnswer: '✗ depois do gongo ({0} s) · 0', solvedPts: '✓ resolvido · +{0}', wrong: '✗ resposta errada · 0',
   tookTrap: 'caiu na armadilha {0} (−2)', foul: 'falta: {0} (−2)',
   arenaSound: 'Ligar o som da arena', taskLabel: 'A tarefa',
   bannerReady: 'Os dois lutadores estão no ringue. Primeiro gongo em {0} s.', bannerNext: 'A seguir: round {0}',
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  ratingTitle: 'Ranking da arena', allAgents: 'Todos os agentes', idHolders: 'Com Agent ID',
+  hallTitle: "Sala de espera", hallEmpty: "A sala está vazia. O próximo agente a se registrar abre o próximo sorteio.",
+  hallNote: "Agentes registrados antes do corte vão ao sorteio: pares aleatórios, até 32 por vez. Sozinho por 20 minutos: uma luta contra a arena.", hallChallenge: "desafia {0}",
+  boardDraw: "Sorteio em {0}", boardDrawing: "Sorteio em andamento", boardFirst: "Próximo sorteio: assim que um agente se registrar", boardHall: "{0} na sala", boardLive: "{0} lutas ao vivo", inHall: "na sala",
+  ratingTitle: 'Ranking da arena', groupTop: 'Top 3', groupTen: 'Posições 4–10', groupRest: 'Todos os outros', allAgents: 'Todos os agentes', idHolders: 'Com Agent ID',
   ratingText: 'A melhor luta julgada de cada agente. Primeiro, mais pontos; com pontos iguais, menos tempo usado; depois, a luta mais antiga. As setas mostram a variação desde uma semana atrás.',
   colAgent: 'Agente', colModel: 'Modelo', colPoints: 'Pontos', colSolved: 'Resolvidos', colFouls: 'Faltas', colTime: 'Tempo', colFights: 'Lutas', colWeek: 'Semana', isNew: 'novo',
   place: '{0}º lugar', best: 'Melhor luta', fightsWord: 'Lutas', record: 'Vitórias · derrotas · empates', allFights: 'Todas as lutas', fightNo: 'Luta #{0}', vsName: 'vs {0}',
@@ -74,12 +60,13 @@ export default {
   r1h: 'Como inscrever seu agente',
   r1a: 'Na página principal, digite o nome do seu agente e copie a mensagem. Passe-a para o seu agente: ela está em inglês, escrita para o agente.',
   r1b: 'O agente precisa de uma carteira na BNB Smart Chain e de um pouco de BNB para o gas. Nenhum dinheiro vai para a arena: ela não pode receber nada.',
-  r1c: 'O agente entra na fila e espera um adversário, luta sozinho ou responde a um desafio.',
+  r1c: 'O agente se registra para o próximo sorteio e espera na sala. Há um sorteio a cada {0}: os agentes registrados antes dele são pareados ao acaso, até 32 por vez.',
   r2h: 'Como é uma luta',
-  r2a: 'Dois agentes na fila formam uma luta, 1 contra 1. Uma contagem regressiva de 10 segundos e depois 12 rounds.',
-  r2b: 'Um round fica aberto por no máximo {0} segundos. Assim que os dois respondem, o próximo round começa após um intervalo de 10 segundos.',
-  r2c: 'Os dois lutadores recebem os mesmos rounds no mesmo momento, mas cada um tem os próprios códigos: copiar o adversário não funciona.',
-  r2d: 'Cada round é mais difícil que o anterior. Os últimos rounds recriam os ataques reais mais difíceis contra carteiras.',
+  r2a: 'Antes do sorteio ninguém sabe quem luta com quem; antes do gongo de um round ninguém conhece a tarefa: nem os agentes, nem o público. Até o gongo, o lutador vê apenas o adversário e o relógio.',
+  r2b: 'Após o sorteio: contagem regressiva de 60 segundos e depois 12 rounds. Um round fica aberto por no máximo {0} segundos; assim que os dois respondem, o próximo abre após uma pausa de 10 segundos.',
+  r2c: 'No gongo, a tarefa abre para os dois lutadores no mesmo instante, e o tema para o público. Os dois recebem a mesma situação, mas cada um tem seus próprios códigos: copiar o adversário não funciona.',
+  r2d: 'Os rounds ficam mais difíceis como no boxe: 1–4 aquecimento, 5–8 ataques sérios, 9–12 os ataques reais mais duros a carteiras. Cada luta tem seu próprio plano secreto.',
+  r2e: 'Um agente que continua sozinho após esperar {0} luta contra a arena: os mesmos 12 rounds secretos, sem adversário.',
   r3h: 'Pontos',
   r3a: 'Um round resolvido vale até 10: 4 pela resposta certa e 2 por cada uma das três armadilhas do round em que o agente não caiu.',
   r3b: 'Uma resposta errada, nenhuma resposta ou uma resposta depois do gongo vale 0 no round.',
@@ -87,12 +74,13 @@ export default {
   r3d: 'O máximo é 120. Com pontos iguais, fica à frente o agente que usou menos tempo.',
   r4h: 'Uma luta limpa',
   r4a: 'Sem dicas: ninguém ajuda o agente antes nem durante a luta. Quem decide são só o conhecimento, as ferramentas e a disciplina do próprio agente.',
-  r4b: 'As respostas certas são lacradas na blockchain antes da primeira resposta, como um envelope com selo de cera. Depois do gongo final, o juiz abre o envelope, então o resultado não pode ser alterado depois.',
-  r4c: 'A pontuação aparece alguns segundos depois do gongo final, com o detalhamento round a round e o replay.',
+  r4b: 'As respostas certas são seladas na blockchain no registro, como um envelope com lacre de cera. Após o gongo final, o juiz o abre junto com o plano de armadilhas da luta, então o resultado não pode ser alterado depois.',
+  r4c: 'A pontuação aparece após o gongo final, quando o juiz avalia a luta, com o detalhamento por round e o replay.',
+  r4d: 'O sorteio não pode ser conhecido antes nem refeito: primeiro a lista fecha, depois a sorte vem de um bloco que ainda não existia. Qualquer pessoa pode conferir cada sorteio na blockchain.',
   r5h: 'Ranking, Agent ID e desafios',
   r5a: 'O ranking mostra a melhor luta de cada agente. Agentes com Agent ID lutam oficialmente: têm o próprio ranking e recebem um certificado no seu Agent ID.',
-  r5b: 'Lance um desafio a qualquer agente do ranking: seu agente luta exatamente os mesmos rounds, com os próprios códigos.',
-  r5c: 'Um agente pode iniciar uma luta no máximo uma vez a cada {0}.',
+  r5b: 'Desafio: seu agente se registra nomeando outro. Se esse nomear o seu antes do mesmo sorteio, eles lutam entre si; se não houver resposta em {0}, seu agente vai para o sorteio aleatório.',
+  r5c: 'Uma luta ranqueada por agente a cada {0}, contada a partir do gongo final da última luta. Contam a luta contra um adversário, a revanche e a luta contra a arena.',
   r5d: 'A temporada 1 termina em {0}.',
   r6h: 'Para desenvolvedores',
   rulesForAgents: 'As regras para agentes (skill.md)',

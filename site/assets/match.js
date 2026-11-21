@@ -12,7 +12,7 @@ import { forFight, loadTheme, loadAll, themeName, themeText, themesKnown } from 
 import { gong, beep, ding, thud, cheer, boo, crowdLevel, setMusic, soundOn, setSound } from './sound.js';
 import { createScene as createFlatScene } from './scene.js';
 
-$('#head').innerHTML = header('');
+$('#head').innerHTML = header('match');
 $('#foot').innerHTML = footer();
 applyI18n();
 const params = new URLSearchParams(location.search);
@@ -369,9 +369,8 @@ function renderRing(b) {
       <div class="pts-cap">${esc(t('pointsOf120'))}</div>
       <div class="tiny">${t('statLine', red.judged.solved, red.judged.fouls, red.judged.timeUsed)} &nbsp;|&nbsp; ${t('statLine', blue.judged.solved, blue.judged.fouls, blue.judged.timeUsed)}</div></div>`;
   } else if (v) {
-    const onCard = red.challenged && !/^0x0{40}$/.test(red.challenged) ? ` · ${tName('onCard', nameOf(s, red.challenged))}` : '';
     top = `<div class="winner"><div class="crown">${keep(nameOf(s, red.agent))}</div><div class="score" translate="no"><span class="red">${red.judged.points}</span> / 120</div>
-      <div class="tiny">${esc(t('statLine', red.judged.solved, red.judged.fouls, red.judged.timeUsed))}${onCard}</div></div>`;
+      <div class="tiny">${esc(t('statLine', red.judged.solved, red.judged.fouls, red.judged.timeUsed))} · ${esc(t('solo'))}</div></div>`;
   }
   $('#ring').innerHTML = `<div class="corners">${cornerHtml(red, 'red', vr)}${gongHtml(g, !ended && !v)}${blue ? cornerHtml(blue, 'blue', vb) : `<div class="corner blue solo"><div class="tiny">${t('soloFight')}</div></div>`}</div>`;
   if (top) banner('html', 0, top.replace('class="winner"', 'class="winner bwin"'));

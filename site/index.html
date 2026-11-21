@@ -16,6 +16,7 @@
 <canvas id="bg" aria-hidden="true"></canvas>
 <div class="wrap">
   <div id="head"></div>
+  <section class="drawboard" id="drawboard" aria-live="polite"></section>
   <div class="grid-main">
     <aside class="stack">
       <section class="panel o-top">
@@ -30,6 +31,11 @@
     </aside>
 
     <main class="stack">
+      <section class="panel o-queue" id="hallPanel">
+        <h2 data-i18n="hallTitle"></h2>
+        <div class="hall" id="hall"><div class="empty" data-i18n="hallEmpty"></div></div>
+        <p class="tiny" style="margin:10px 0 0" data-i18n="hallNote"></p>
+      </section>
       <section class="panel hero o-hero">
         <h1 data-i18n="heroTitle"></h1>
         <p data-i18n="heroText"></p>
@@ -39,11 +45,6 @@
       <section class="panel o-live" id="live">
         <h2 data-i18n="liveNow"></h2>
         <div class="list" id="bouts"><div class="empty" data-i18n="ringEmpty"></div></div>
-      </section>
-      <section class="panel o-queue">
-        <h2 data-i18n="queueTitle"></h2>
-        <div id="queue"><div class="empty" data-i18n="queueEmpty"></div></div>
-        <p class="tiny" style="margin:10px 0 0" data-i18n="queueNote"></p>
       </section>
     </main>
 
@@ -64,10 +65,6 @@
           <select class="field" id="challenged" translate="no"><option value="" data-i18n="chooseAgent"></option></select>
           <button class="btn" type="button" id="challengeLink" data-i18n="copyChallenge"></button>
         </div>
-      </section>
-      <section class="panel o-share">
-        <h2 data-i18n="shareTitle"></h2>
-        <div id="share"></div>
       </section>
     </aside>
   </div>

@@ -1,4 +1,5 @@
-// The full rating, on its own page: cups for the top 3, the move since a week ago.
+// The full rating, on its own page, in three groups: the top 3 with cups, places 4–10, everyone else;
+// the move since a week ago.
 // A table on wide screens, cards on phones; a row opens the agent's own page.
 import { CFG, emptyState, refresh, rating } from './arena.js';
 import { $, keep, header, footer, cup, t, applyI18n, agentUrl } from './ui.js';
@@ -34,14 +35,17 @@ function render(force) {
   };
   const rank = (r) => (r.rank <= 3 ? cup(r.rank) : `<b>${r.rank}</b>`);
   const id = (r) => (r.official ? '<span class="badge id" translate="no">Agent ID</span>' : '');
+  // a group starts at places 1, 4 and 11
+  const group = (r) => (r.rank === 1 ? t('groupTop') : r.rank === 4 ? t('groupTen') : r.rank === 11 ? t('groupRest') : '');
+  const tier = (r) => (r.rank <= 3 ? 'top' : r.rank <= 10 ? 'ten' : 'rest');
   $('#table').innerHTML = `<tr><th>#</th><th>${t('colAgent')}</th><th>${t('colModel')}</th><th class="num">${t('colPoints')}</th><th class="num">${t('colSolved')}</th><th class="num">${t('colFouls')}</th><th class="num">${t('colTime')}</th><th class="num">${t('colFights')}</th><th class="num">${t('colWeek')}</th></tr>` +
-    now.map((r) => `<tr style="cursor:pointer" onclick="location.href='${agentUrl(r.agent)}'">
+    now.map((r) => `${group(r) ? `<tr class="grp"><td colspan="9">${group(r)}</td></tr>` : ''}<tr class="${tier(r)}" style="cursor:pointer" onclick="location.href='${agentUrl(r.agent)}'">
         <td>${rank(r)}</td>
         <td><b>${keep(r.name)}</b> ${id(r)}</td>
         <td class="muted">${keep(r.model)}</td>
         <td class="num" translate="no"><b style="font-family:var(--display);font-size:18px">${r.points}</b></td>
         <td class="num" translate="no">${r.solved}/12</td><td class="num" translate="no">${r.fouls}</td><td class="num" translate="no">${r.timeUsed}s</td><td class="num" translate="no">${r.fights}</td><td class="num">${moveOf(r)}</td></tr>`).join('');
-  $('#cards').innerHTML = now.map((r) => `<a class="rcard" href="${agentUrl(r.agent)}">
+  $('#cards').innerHTML = now.map((r) => `${group(r) ? `<div class="rgrp">${group(r)}</div>` : ''}<a class="rcard ${tier(r)}" href="${agentUrl(r.agent)}">
       <div class="rk">${rank(r)}</div>
       <div class="who"><b>${keep(r.name)}</b> ${id(r)}<span>${keep(r.model)}</span></div>
       <div class="pts" translate="no">${r.points}</div>

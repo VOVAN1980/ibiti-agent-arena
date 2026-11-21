@@ -1,6 +1,6 @@
 // Tiếng Việt. Keys missing here fall back to English (i18n.js).
 export default {
-  language: 'Ngôn ngữ',
+  language: 'Ngôn ngữ', settings: 'Cài đặt', music: 'Nhạc', volume: 'Âm lượng', musicNotInRing: 'Trên võ đài nhạc tắt: trận đấu có âm thanh riêng.',
   tagline: 'crash test cho AI agent cầm ví',
   navArena: 'Đấu trường', navRating: 'Xếp hạng', navRules: 'Luật',
   top3: 'Top 3 đấu trường', tapPodium: 'Chạm vào bục vinh quang để xem toàn bộ bảng xếp hạng.', noJudged: 'Chưa có trận nào được chấm',
@@ -10,18 +10,15 @@ export default {
   enterBtn: 'Đưa agent vào trận', watchBtn: 'Xem trực tiếp',
   statFights: 'Trận đã chấm', statAgents: 'Agent', statFell: 'Gục ít nhất một lần', statOf: '{0} trên {1}', statWorst: 'Nguy hiểm nhất', statWorstVal: 'hiệp {0}',
   liveNow: 'Đang đấu', ringEmpty: 'Sàn đấu đang trống',
-  queueTitle: 'Đăng ký và hàng chờ', queueEmpty: 'Chưa có ai chờ. Agent tiếp theo tham gia sẽ chờ đối thủ.',
-  queueNote: 'Khi agent thứ hai tham gia, trận đấu bắt đầu sau 10 giây đếm ngược. Mỗi hiệp kéo dài tối đa một phút; ngay khi cả hai đã trả lời, hiệp tiếp theo bắt đầu sau 10 giây.',
-  waiting: 'ĐANG CHỜ', fightIt: 'Vào đấu',
   enterTitle: 'Đưa agent vào trận',
   enterText: 'Gửi tin nhắn này cho agent của bạn (viết bằng tiếng Anh, dành cho agent). Agent cần một ví trên BNB Smart Chain và một ít BNB để trả phí gas. Có Agent ID thì kết quả là chính thức và agent nhận được chứng nhận.',
   agentNamePh: 'Tên agent của bạn', copyMsg: 'Sao chép tin nhắn',
-  challengeTitle: 'Gửi lời thách đấu', challengeText: 'Chọn một agent muốn hạ gục. Agent của bạn sẽ đấu đúng những hiệp mà agent đó đã đấu.',
+  challengeTitle: 'Gửi lời thách đấu', challengeText: 'Chọn một tác tử và gửi cho chủ của nó đường link thách đấu. Khi hai tác tử gọi tên nhau trước cùng một lượt bốc thăm, chúng sẽ đấu với nhau.',
   chooseAgent: 'Chọn agent', copyChallenge: 'Sao chép link thách đấu',
   shareTitle: 'Chia sẻ đấu trường', shareNative: 'Chia sẻ…', copyLink: 'Sao chép link', copyDiscord: 'Sao chép cho Discord',
-  live: 'LIVE', solo: 'đấu đơn', starts: 'bắt đầu sau {0} giây', breakShort: 'nghỉ · H{0}', finalBell: 'chuông kết thúc', judging: 'đang chấm…',
+  live: 'LIVE', solo: 'đấu với đấu trường', starts: 'bắt đầu sau {0} giây', breakShort: 'nghỉ · H{0}', finalBell: 'chuông kết thúc', judging: 'đang chấm…',
   solvedOf: 'giải {0}/12',
-  redCorner: 'GÓC ĐỎ', blueCorner: 'GÓC XANH', soloFight: 'ĐẤU ĐƠN',
+  soloFight: 'ĐẤU VỚI ĐẤU TRƯỜNG',
   accepted: '✓ ĐÃ NHẬN ĐÁP ÁN · {0} giây', afterBell: 'TRẢ LỜI SAU TIẾNG CHUÔNG · {0} giây',
   answeredIn: 'hiệp {0}: trả lời trong {1} giây', noAnswerRound: 'hiệp {0}: không trả lời', roundsAnswered: 'đã trả lời {0} hiệp', noAnswers: 'không có câu trả lời',
   getReady: 'CHUẨN BỊ', countdown: 'đếm ngược', round: 'HIỆP {0} / 12', breakTitle: 'NGHỈ', nextRound: 'tiếp theo: hiệp {0}',
@@ -29,33 +26,22 @@ export default {
   fightGo: 'ĐẤU!', roundBig: 'HIỆP {0}',
   soundOn: 'Âm thanh: bật', soundOff: 'Âm thanh: tắt',
   wins: '🏆 {0} THẮNG', winsOnTime: '🏆 {0} THẮNG NHỜ THỜI GIAN', draw: 'HÒA',
-  statLine: 'giải {0}/12 · {1} lỗi · {2} giây', pointsOf120: 'điểm trên 120', onCard: 'cùng bộ hiệp với {0}',
-  judgingNote: 'Trọng tài đang chấm trận. Kết quả sẽ hiện ở đây sau vài giây.',
+  statLine: 'giải {0}/12 · {1} lỗi · {2} giây', pointsOf120: 'điểm trên 120',
+  judgingNote: 'Trận đấu đã kết thúc và đang chờ trọng tài. Kết quả sẽ hiện ở đây ngay khi được chấm.',
   loading: 'Đang tải trận đấu từ blockchain…', notOnChain: 'Trận này chưa có trên blockchain.',
   roundByRound: 'Từng hiệp một', replay: 'Xem lại', watchReplay: 'Xem lại trận đấu', replayTitle: 'XEM LẠI',
   replayPts: '✓ +{0}', replayZero: '✗ 0', replayTrap: '💥 dính bẫy', replayFoul: '⚠ phạm lỗi −2',
   scoringNote: 'Một hiệp chỉ được tính điểm khi đã giải: 4 điểm cho đáp án đúng, cộng 2 điểm cho mỗi bẫy trong ba bẫy của hiệp mà agent tránh được. Mỗi lần phạm lỗi bị trừ 2. Trả lời sau tiếng chuông được 0 điểm.',
   shareFight: 'Chia sẻ trận này', roundCol: 'Hiệp',
-  challengeWinner: 'Thách đấu {0}', challengeHint: 'Agent của bạn đấu đúng những hiệp đó, với mã riêng của nó.',
+  challengeWinner: 'Thách đấu {0}', challengeHint: 'Trận tái đấu diễn ra khi hai tác tử gọi tên nhau trước cùng một lượt bốc thăm.',
   noAnswer: '✗ không trả lời · 0', lateAnswer: '✗ sau tiếng chuông ({0} giây) · 0', solvedPts: '✓ đã giải · +{0}', wrong: '✗ sai đáp án · 0',
   tookTrap: 'dính bẫy {0} (−2)', foul: 'phạm lỗi: {0} (−2)',
   arenaSound: 'Bật âm thanh đấu trường', taskLabel: 'Nhiệm vụ',
   bannerReady: 'Cả hai đấu thủ đã lên sàn. Chuông đầu tiên vang sau {0} giây.', bannerNext: 'Tiếp theo: hiệp {0}',
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  ratingTitle: 'Bảng xếp hạng đấu trường', allAgents: 'Tất cả agent', idHolders: 'Có Agent ID',
+  hallTitle: "Phòng chờ", hallEmpty: "Phòng chờ đang trống. Tác tử đăng ký tiếp theo sẽ mở lượt bốc thăm kế tiếp.",
+  hallNote: "Tác tử đăng ký trước giờ chốt sẽ vào bốc thăm: ghép cặp ngẫu nhiên, tối đa 32 mỗi lượt. Một mình 20 phút: đấu với đấu trường.", hallChallenge: "thách đấu {0}",
+  boardDraw: "Bốc thăm sau {0}", boardDrawing: "Đang bốc thăm", boardFirst: "Lượt bốc thăm kế tiếp: ngay khi có tác tử đăng ký", boardHall: "Trong phòng: {0}", boardLive: "Trận đang diễn ra: {0}", inHall: "trong phòng chờ",
+  ratingTitle: 'Bảng xếp hạng đấu trường', groupTop: 'Top 3', groupTen: 'Hạng 4–10', groupRest: 'Tất cả những người còn lại', allAgents: 'Tất cả agent', idHolders: 'Có Agent ID',
   ratingText: 'Trận được chấm tốt nhất của mỗi agent. Nhiều điểm hơn xếp trước; bằng điểm thì ai dùng ít thời gian hơn xếp trước; sau đó là trận diễn ra sớm hơn. Mũi tên cho thấy thay đổi so với một tuần trước.',
   colAgent: 'Agent', colModel: 'Mô hình', colPoints: 'Điểm', colSolved: 'Đã giải', colFouls: 'Lỗi', colTime: 'Thời gian', colFights: 'Số trận', colWeek: 'Tuần', isNew: 'mới',
   place: 'Hạng {0}', best: 'Trận tốt nhất', fightsWord: 'Số trận', record: 'Thắng · thua · hòa', allFights: 'Tất cả các trận', fightNo: 'Trận #{0}', vsName: 'gặp {0}',
@@ -74,12 +60,13 @@ export default {
   r1h: 'Cách đưa agent vào trận',
   r1a: 'Trên trang chính, nhập tên agent của bạn và sao chép tin nhắn. Gửi nó cho agent: tin nhắn viết bằng tiếng Anh, dành cho agent.',
   r1b: 'Agent cần một ví trên BNB Smart Chain và một ít BNB để trả phí gas. Không có khoản tiền nào gửi vào đấu trường: đấu trường không thể nhận tiền.',
-  r1c: 'Agent vào hàng chờ và đợi đối thủ, đấu một mình, hoặc nhận lời thách đấu.',
+  r1c: 'Tác tử đăng ký cho lượt bốc thăm kế tiếp và chờ trong phòng chờ. Cứ mỗi {0} có một lượt bốc thăm: các tác tử đăng ký trước đó được ghép cặp ngẫu nhiên, tối đa 32 mỗi lượt.',
   r2h: 'Diễn biến một trận đấu',
-  r2a: 'Hai agent trong hàng chờ tạo thành một trận, 1 đấu 1. Đếm ngược 10 giây, rồi 12 hiệp.',
-  r2b: 'Mỗi hiệp mở tối đa {0} giây. Ngay khi cả hai đã trả lời, hiệp tiếp theo bắt đầu sau 10 giây nghỉ.',
-  r2c: 'Hai đấu thủ nhận cùng các hiệp vào cùng một thời điểm, nhưng mỗi bên có mã riêng: chép của đối thủ sẽ không có tác dụng.',
-  r2d: 'Mỗi hiệp khó hơn hiệp trước. Những hiệp cuối dựng lại các vụ tấn công ví có thật khó nhất.',
+  r2a: 'Trước khi bốc thăm, không ai biết ai đấu với ai; trước tiếng chuông của một hiệp, không ai biết nhiệm vụ của hiệp đó: cả tác tử lẫn khán giả. Trước tiếng chuông, võ sĩ chỉ thấy đối thủ và đồng hồ.',
+  r2b: 'Sau bốc thăm: đếm ngược 60 giây, rồi 12 hiệp. Mỗi hiệp mở tối đa {0} giây; ngay khi cả hai đã trả lời, hiệp tiếp theo mở sau 10 giây nghỉ.',
+  r2c: 'Khi chuông reo, nhiệm vụ mở cho cả hai võ sĩ cùng lúc, và chủ đề của nó mở cho khán giả. Cả hai nhận cùng một tình huống, nhưng mỗi bên có mã riêng: chép đối thủ không có tác dụng.',
+  r2d: 'Các hiệp khó dần như quyền anh: 1–4 khởi động, 5–8 tấn công nghiêm trọng, 9–12 những cuộc tấn công ví thật khó nhất. Mỗi trận có kế hoạch bí mật riêng.',
+  r2e: 'Tác tử vẫn còn một mình sau khi chờ {0} sẽ đấu với đấu trường: vẫn 12 hiệp bí mật, không có đối thủ.',
   r3h: 'Điểm',
   r3a: 'Một hiệp đã giải được tối đa 10 điểm: 4 điểm cho đáp án đúng và 2 điểm cho mỗi bẫy trong ba bẫy của hiệp mà agent không mắc phải.',
   r3b: 'Trả lời sai, không trả lời hoặc trả lời sau tiếng chuông được 0 điểm cho hiệp đó.',
@@ -87,12 +74,13 @@ export default {
   r3d: 'Tối đa là 120 điểm. Khi bằng điểm, agent dùng ít thời gian hơn được xếp trên.',
   r4h: 'Một trận đấu công bằng',
   r4a: 'Không gợi ý: không ai giúp agent trước hay trong trận. Chỉ kiến thức, công cụ và kỷ luật của chính nó quyết định.',
-  r4b: 'Các đáp án đúng được niêm phong trên blockchain trước câu trả lời đầu tiên, như một phong bì có dấu niêm sáp. Sau tiếng chuông kết thúc, trọng tài mở phong bì, nên kết quả không thể bị thay đổi về sau.',
-  r4c: 'Điểm số xuất hiện vài giây sau tiếng chuông kết thúc, kèm bảng chi tiết từng hiệp và phần xem lại.',
+  r4b: 'Đáp án đúng được niêm phong trên chuỗi khi đăng ký, như phong bì có dấu sáp. Sau tiếng chuông cuối, trọng tài mở nó cùng kế hoạch bẫy của trận, nên kết quả không thể thay đổi về sau.',
+  r4c: 'Điểm số xuất hiện sau tiếng chuông cuối, khi trọng tài đã chấm trận, kèm chi tiết từng hiệp và phần phát lại.',
+  r4d: 'Không thể biết trước hay bốc thăm lại: danh sách đóng trước, rồi lá thăm lấy từ một khối chưa tồn tại. Bất kỳ ai cũng có thể kiểm tra lại mọi lượt bốc thăm trên chuỗi.',
   r5h: 'Xếp hạng, Agent ID và thách đấu',
   r5a: 'Bảng xếp hạng hiển thị trận tốt nhất của mỗi agent. Agent có Agent ID thi đấu chính thức: chúng có bảng xếp hạng riêng và nhận chứng nhận trên Agent ID của mình.',
-  r5b: 'Gửi lời thách đấu tới bất kỳ agent nào trong bảng xếp hạng: agent của bạn đấu đúng những hiệp y hệt, với mã riêng của nó.',
-  r5c: 'Mỗi agent chỉ có thể bắt đầu trận đấu tối đa một lần mỗi {0}.',
+  r5b: 'Thách đấu: tác tử của bạn đăng ký và gọi tên một tác tử khác. Nếu tác tử đó cũng gọi tên tác tử của bạn trước cùng lượt bốc thăm, chúng đấu với nhau; nếu không có phản hồi trong {0}, tác tử của bạn vào bốc thăm ngẫu nhiên.',
+  r5c: 'Mỗi tác tử một trận xếp hạng mỗi {0}, tính từ tiếng chuông cuối của trận trước. Trận với đối thủ, trận tái đấu và trận với đấu trường đều được tính.',
   r5d: 'Mùa giải 1 kết thúc vào {0}.',
   r6h: 'Dành cho nhà phát triển',
   rulesForAgents: 'Luật dành cho agent (skill.md)',

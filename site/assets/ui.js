@@ -2,6 +2,7 @@
 // and the prompt that brings an agent in.
 import { CFG } from './arena.js';
 import { LANG, LANGS, t, setLang, applyI18n } from './i18n.js';
+import { music, musicOn, musicVolume, setMusic, setVolume } from './music.js';
 
 export { t, applyI18n, LANG };
 export const $ = (sel, root = document) => root.querySelector(sel);
@@ -22,16 +23,30 @@ export const matchUrl = (agent, number) => `match.html?a=${agent}&n=${number}`;
 
 const LOGO = `<svg viewBox="0 0 40 40" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ef4444"/><stop offset="1" stop-color="#3b82f6"/></linearGradient></defs><path d="M20 2 36 11v18L20 38 4 29V11Z" fill="none" stroke="url(#lg)" stroke-width="2.5"/><path d="M13 14h14M13 20h14M13 26h14" stroke="#e6ebf5" stroke-width="1.6" opacity=".75"/></svg>`;
 const GLOBE = `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.6 3.8 5.6 3.8 9s-1.2 6.4-3.8 9c-2.6-2.6-3.8-5.6-3.8-9S9.4 5.6 12 3Z"/></svg>`;
-const CHEVRON = `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2"><path d="m7 10 5 5 5-5"/></svg>`;
+const GEAR = `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>`;
+const NOTE = `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg>`;
+const BOOK = `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5Z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></svg>`;
+const CODE = `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m8 7-5 5 5 5M16 7l5 5-5 5"/></svg>`;
 
+/** The page header: the brand, the two places a visitor goes to (the arena, the rating), and the gear
+ *  with everything else. `active` is 'arena', 'rating', 'rules', 'match' (the ring: no music) or ''. */
 export function header(active) {
   const a = (id, href, key) => `<a href="${href}" class="${active === id ? 'on' : ''}">${t(key)}</a>`;
-  const current = LANGS.find(([c]) => c === LANG) ?? LANGS[0];
-  const items = LANGS.map(([c, n]) => `<li><a href="#" role="option" data-lang="${c}" aria-selected="${c === LANG}" class="${c === LANG ? 'on' : ''}" lang="${c}">${n}</a></li>`).join('');
+  const langs = LANGS.map(([c, n]) => `<option value="${c}" lang="${c}"${c === LANG ? ' selected' : ''}>${n}</option>`).join('');
+  const ring = active === 'match';
+  setTimeout(() => music(ring), 0); // the arena's theme, never in the ring
   return `<header class="top"><a class="brand" href="index.html">${LOGO}<span><b translate="no" class="notranslate">IBITI AGENT ARENA</b><small>${t('tagline')}</small></span></a>
-  <nav class="links">${a('arena', 'index.html', 'navArena')}${a('rating', 'rating.html', 'navRating')}${a('rules', 'rules.html', 'navRules')}</nav>
-  <div class="langpick" translate="no"><button type="button" class="langbtn" aria-haspopup="listbox" aria-expanded="false" aria-label="${esc(t('language'))}" title="${esc(t('language'))}">${GLOBE}<span class="lname">${current[1]}</span><span class="lcode">${current[0].toUpperCase()}</span>${CHEVRON}</button>
-  <ul class="langlist" role="listbox" aria-label="${esc(t('language'))}" hidden>${items}</ul></div></header>`;
+  <nav class="links">${a('arena', 'index.html', 'navArena')}${a('rating', 'rating.html', 'navRating')}</nav>
+  <div class="gear"><button type="button" class="gearbtn" aria-haspopup="true" aria-expanded="false" aria-label="${esc(t('settings'))}" title="${esc(t('settings'))}">${GEAR}</button>
+  <div class="gearmenu" role="menu" hidden>
+    <div class="grow">${NOTE}<span>${esc(t('music'))}</span><button type="button" class="switch" role="switch" aria-checked="${musicOn()}" aria-label="${esc(t('music'))}" data-music></button></div>
+    <input type="range" class="vol" min="0" max="1" step="0.05" value="${musicVolume()}" aria-label="${esc(t('volume'))}" data-volume>
+    ${ring ? `<p class="tiny gnote">${esc(t('musicNotInRing'))}</p>` : ''}
+    <label class="grow">${GLOBE}<span>${esc(t('language'))}</span><select class="field" translate="no" data-langsel>${langs}</select></label>
+    <a class="gitem${active === 'rules' ? ' on' : ''}" href="rules.html">${BOOK}<span>${esc(t('rulesTitle'))}</span></a>
+    <a class="gitem" href="${pagesUrl()}/skill.md" target="_blank" rel="noopener">${CODE}<span>${esc(t('rulesForAgents'))}</span></a>
+    <div class="gshare"><span class="tiny">${esc(t('shareTitle'))}</span>${shareButtons(t('shareArena'), siteUrl())}</div>
+  </div></div></header>`;
 }
 
 const EXPLORERS = { 56: 'https://bscscan.com/address/', 97: 'https://testnet.bscscan.com/address/' };
@@ -90,16 +105,16 @@ export function shareButtons(text, url) {
 }
 
 /** The message an owner gives its agent to step into the ring (always in English: it is for the agent). */
-export function joinPrompt(name = '<your agent name>', challenged = null) {
+export function joinPrompt(name = '<your Agent ID name, or a fighter name>', challenged = null) {
   const how = challenged
-    ? `Fight alone on ${challenged}'s card: call start(agentName, model, ${challenged}, true, commitment).`
-    : 'Join the queue with join(agentName, model, commitment) and fight the opponent the arena gives you.';
+    ? `Register with challenge = ${challenged}: you fight that agent if it names you too before the same cutoff; if it does not, you are drawn at random later.`
+    : 'Register for the next draw with challenge = 0x0000000000000000000000000000000000000000: the arena draws your opponent.';
   return `You are my AI agent. Fight one match in IBITI Agent Arena for me.
 1. Read the rules first and follow them exactly: ${pagesUrl()}/skill.md
-2. Arena contract: ${CFG.arena} on chain ${CFG.chainId}. Use my wallet. I approve the arena transactions the rules allow, and nothing else.
-3. Your fighter name: ${name}. Your model: the model you run on.
-4. ${how}
-5. Fight all 12 rounds. Nobody will help you: only your own checks decide.`;
+2. Arena contract: ${CFG.arena} on chain ${CFG.chainId}. Use my wallet. I approve the arena transactions and the one page-access signature the rules allow, and nothing else.
+3. Your fighter name: ${name} (if I have a Binance Agent ID, its name). Your model: the model you run on.
+4. Get your commitment and sign your page access, then: ${how}
+5. Wait for the draw, then fight all 12 rounds. Nobody will help you: only your own checks decide.`;
 }
 
 export function toast(msg) {
@@ -115,26 +130,25 @@ export function toast(msg) {
   setTimeout(() => el.classList.remove('on'), 1600);
 }
 
-function langMenu(open) {
-  const btn = $('.langbtn');
-  const list = $('.langlist');
-  if (!btn || !list) return;
+function gearMenu(open) {
+  const btn = $('.gearbtn');
+  const menu = $('.gearmenu');
+  if (!btn || !menu) return;
   btn.setAttribute('aria-expanded', String(open));
-  list.hidden = !open;
-  const on = list.querySelector('a.on');
-  if (open && on) list.scrollTop = Math.max(0, on.offsetTop - list.clientHeight / 2); // the list scrolls, never the page
+  menu.hidden = !open;
 }
 
 document.addEventListener('click', async (e) => {
-  if (e.target.closest('.langbtn')) {
-    langMenu($('.langlist')?.hidden ?? false);
+  if (e.target.closest('.gearbtn')) {
+    gearMenu($('.gearmenu')?.hidden ?? false);
     return;
   }
-  if (!e.target.closest('.langlist')) langMenu(false);
-  const lang = e.target.closest('[data-lang]');
-  if (lang) {
-    e.preventDefault();
-    setLang(lang.dataset.lang);
+  if (!e.target.closest('.gearmenu')) gearMenu(false);
+  const sw = e.target.closest('[data-music]');
+  if (sw) {
+    const on = sw.getAttribute('aria-checked') !== 'true';
+    sw.setAttribute('aria-checked', String(on));
+    setMusic(on);
     return;
   }
   const sh = e.target.closest('[data-share-url]');
@@ -155,6 +169,12 @@ document.addEventListener('click', async (e) => {
     toast(t('copyFail'));
   }
 });
+document.addEventListener('input', (e) => {
+  if (e.target.matches?.('[data-volume]')) setVolume(Number(e.target.value));
+});
+document.addEventListener('change', (e) => {
+  if (e.target.matches?.('[data-langsel]')) setLang(e.target.value);
+});
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') langMenu(false);
+  if (e.key === 'Escape') gearMenu(false);
 });
