@@ -423,3 +423,10 @@ body.fightpage > .wrap:first-of-type { padding-bottom: 6px; }
 @keyframes bannerIn { from { transform: translateY(14px); opacity: 0; } }
 @media (max-width: 760px) { .stagewrap { height: calc(100vh - 210px); min-height: 380px; } .banner { min-height: 70px; margin-top: 6px; } }
 .banner.on { transform: none; }
+
+/* the gong column readable over the crowd: a dark backing, a gold round name, no overlapping labels */
+.hud .gong { background: rgba(5,7,13,.62); border: 1px solid rgba(245,179,1,.28); border-radius: 14px; padding: 4px 10px 6px; }
+.hud .gong .rd { color: #e6ebf5; font-weight: 700; white-space: nowrap; }
+.hud .gong .ph { color: #fcd34d; font-weight: 700; font-size: 11px; letter-spacing: .1em; text-shadow: 0 1px 2px rgba(0,0,0,.8); max-width: 180px; margin: 0 auto; }
+.hud.replaying::before { content: none; }
+@media (max-width: 760px) { .hud .gong { padding: 2px 4px 4px; } .hud .gong .ph { font-size: 8px; max-width: 90px; } }

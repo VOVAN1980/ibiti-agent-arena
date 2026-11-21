@@ -207,8 +207,8 @@ const R = 64;
 const LEN = 2 * Math.PI * R;
 const offset = (part) => (LEN * (1 - Math.max(0, Math.min(1, part)))).toFixed(1);
 
-function gongHtml(g, live = false) {
-  return `<div class="gong${g.hurry ? ' hurry' : ''}"><div class="rd">${live ? `<span class="livebadge" translate="no">● ${esc(t('live'))}</span>` : ''}<span class="rdt">${esc(g.title)}</span></div><div class="face"><svg viewBox="0 0 150 150"><defs><linearGradient id="gongGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ef4444"/><stop offset="1" stop-color="#3b82f6"/></linearGradient></defs>
+function gongHtml(g, live = false, replay = false) {
+  return `<div class="gong${g.hurry ? ' hurry' : ''}"><div class="rd">${live ? `<span class="livebadge" translate="no">● ${esc(t('live'))}</span>` : ''}${replay ? `<span class="livebadge replay">⟲ ${esc(t('replayTitle'))}</span>` : ''}<span class="rdt">${esc(g.title)}</span></div><div class="face"><svg viewBox="0 0 150 150"><defs><linearGradient id="gongGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ef4444"/><stop offset="1" stop-color="#3b82f6"/></linearGradient></defs>
     <radialGradient id="goldDisk" cx=".38" cy=".32" r=".78"><stop offset="0" stop-color="#fff6c8"/><stop offset=".3" stop-color="#f7c948"/><stop offset=".72" stop-color="#b7791f"/><stop offset="1" stop-color="#5c3b00"/></radialGradient>
     <g class="disk"><circle cx="75" cy="75" r="57" fill="url(#goldDisk)" stroke="#3d2700" stroke-width="2"/>
       <circle cx="75" cy="75" r="47" fill="none" stroke="rgba(70,42,0,.35)" stroke-width="2"/><circle cx="75" cy="75" r="37" fill="none" stroke="rgba(70,42,0,.3)" stroke-width="1.5"/>
@@ -434,7 +434,7 @@ async function playReplay(b) {
   const plan = { red: rounds(b.red), blue: b.blue ? rounds(b.blue) : null };
   const total = { red: 0, blue: 0 };
   const blank = { pct: 100, note: '', bad: false, pips: Array(ROUNDS).fill('') };
-  hud.innerHTML = `<div class="corners">${cornerHtml(b.red, 'red', blank)}${gongHtml({ title: t('round', 1), value: mmss(RT), label: roundName(1), part: 1 })}${b.blue ? cornerHtml(b.blue, 'blue', blank) : ''}</div>`;
+  hud.innerHTML = `<div class="corners">${cornerHtml(b.red, 'red', blank)}${gongHtml({ title: t('round', 1), value: mmss(RT), label: roundName(1), part: 1 }, false, true)}${b.blue ? cornerHtml(b.blue, 'blue', blank) : ''}</div>`;
   hud.classList.add('replaying');
   hud.dataset.replay = t('replayTitle');
   hud.querySelectorAll('.bar').forEach((x) => x.classList.add('quick'));

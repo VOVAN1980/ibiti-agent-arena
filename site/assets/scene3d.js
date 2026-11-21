@@ -483,7 +483,7 @@ export function createScene(root) {
   }
   const board = boardTex();
   const cube = new THREE.Group();
-  cube.position.set(0, 5.25, 0.1);
+  cube.position.set(0, 6.95, 0.1);
   scene.add(cube);
   mesh(new THREE.BoxGeometry(3.0, 1.3, 3.0), M.black, [0, 0, 0], cube);
   for (let i = 0; i < 4; i++) {
@@ -493,7 +493,7 @@ export function createScene(root) {
     cube.add(p);
   }
   mesh(new THREE.BoxGeometry(3.1, 0.08, 3.1), M.glow(COLOR.gold, 2), [0, -0.7, 0], cube);
-  scene.add(bar(new THREE.Vector3(0, 5.9, 0.1), new THREE.Vector3(0, 16, 0.1), 0.05, M.dark));
+  scene.add(bar(new THREE.Vector3(0, 7.6, 0.1), new THREE.Vector3(0, 16, 0.1), 0.05, M.dark));
 
   // the stands: a raked bowl of fans, red on the left, blue on the right
   const bowl = [];
@@ -669,7 +669,8 @@ export function createScene(root) {
 
   // the camera
   const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 140);
-  const cam = { mode: 'sweep', winner: null, shake: 0, aim: new THREE.Vector3(0, 1.3, 0.3), dist: 13, shot: 'wide', step: 0, at: 0, cut: false };
+  // cut: true at the start, so the camera is in place from the first frame instead of drifting in
+  const cam = { mode: 'sweep', winner: null, shake: 0, aim: new THREE.Vector3(0, 1.3, 0.3), dist: 13, shot: 'wide', step: 0, at: 0, cut: true };
   const SHOTS = ['wide', 'red', 'wide', 'blue'];
   const camAt = new THREE.Vector3();
   const camLook = new THREE.Vector3();
