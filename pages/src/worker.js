@@ -17,12 +17,13 @@
 //   CHAIN_ID  56 on BNB Smart Chain
 //   SITE_URL  the public origin of this server, for the links in /skill.md
 
-import { makeChain } from './chain.js';
+import { makeChain, clockOf } from './chain.js';
 import { renderRound } from './render.js';
 import { skillMd } from './skill.js';
 import { arenaKeys } from './keys.js';
 
 const HEADERS = { 'cache-control': 'no-store', 'x-robots-tag': 'noindex, nofollow', 'referrer-policy': 'no-referrer' };
+const hms = (unix) => new Date(unix * 1000).toISOString().slice(11, 19);
 
 function text(status, body) {
   return new Response(body + '\n', { status, headers: { ...HEADERS, 'content-type': 'text/plain; charset=utf-8' } });
@@ -54,30 +55,49 @@ export async function handleFight(url, env, deps = {}) {
   }
 
   const f = await chain.fight(agent);
-  if (f.startedAt === 0) return text(404, 'This agent has not stepped into the ring yet. Get your commitment at /commit/<your address>, then call start(agentName, model, challenged, sameCard, commitment) on the arena.');
+  if (f.startedAt === 0) {
+    const waiting = (await chain.waiting()).toLowerCase() === agent;
+    return text(404, waiting
+      ? 'You are in the queue, waiting for an opponent. When one joins, the match starts after a 10-second countdown: reload this page.'
+      : 'This agent has not stepped into the ring yet. Get your commitment at /commit/<your address>, then call join(agentName, model, commitment) to wait for an opponent, or start(agentName, model, challenged, sameCard, commitment) to fight alone.');
+  }
   if (!(await chain.isLive(agent))) return text(410, 'This fight is over. The scorecard is on the site.');
   if (f.round < 1 || f.round > 12) return text(410, 'All 12 rounds are answered. The scorecard is on the site.');
   if (f.commitment.toLowerCase() !== keys.commitment(env.ARENA, agent, f.number).toLowerCase()) {
     return text(409, 'This fight was started with a wrong commitment, so it cannot be judged. Call finish(), wait for the cooldown, get the commitment at /commit/<your address> and start again.');
   }
 
+  // the fixed clock: a 10-second countdown, then each round open for one minute, 10-second breaks
+  const roundTime = Number(env.ROUND_TIME ?? 60);
+  const now = await chain.now();
+  const c = clockOf(f, now, roundTime);
+  if (c.phase === 'over') return text(410, 'This fight is over. The scorecard is on the site.');
+  if (c.phase === 'countdown') return text(200, `Fight #${f.number}: the countdown is running. Round 1 opens at ${hms(c.opensAt)} UTC (in ${c.opensAt - now} s). Reload this page then.`);
+  if (c.phase === 'break') return text(200, `Break. Round ${c.round} opens at ${hms(c.opensAt)} UTC (in ${c.opensAt - now} s). Reload this page then.`);
+  if (f.round > c.round) {
+    return text(200, c.round === 12
+      ? 'You answered the last round. The fight ends when round 12 closes.'
+      : `You answered round ${c.round}. Round ${c.round + 1} opens at ${hms(c.closesAt + 10)} UTC (in ${c.closesAt + 10 - now} s). Reload this page then.`);
+  }
+  const round = c.round;
+
   const traps = await chain.traps(agent);
   const spare = [...Array(50).keys()].map((i) => i + 1).filter((t) => !traps.includes(t));
   const decoys = typeof env.DECOYS === 'string' ? JSON.parse(env.DECOYS) : env.DECOYS;
   const page = renderRound({
     tournament: f.number,
-    round: f.round,
+    round,
     // the page layout comes from the card's seed mixed with the secret: without the secret nobody can
     // rebuild a page to tell its wrong options from the right one
     seed: keys.cardSeed(f.seed),
     fighter: agent,
-    code: keys.code(env.ARENA, agent, f.number, f.round),
-    traps: traps.slice((f.round - 1) * 3, f.round * 3),
+    code: keys.code(env.ARENA, agent, f.number, round),
+    traps: traps.slice((round - 1) * 3, round * 3),
     arena: env.ARENA,
     decoys,
     spare,
-    openedAt: f.roundOpenedAt,
-    roundTime: Number(env.ROUND_TIME ?? 60),
+    openedAt: c.opensAt,
+    roundTime,
     passKey: keys.passKey,
   });
   if (url.searchParams.get('format') === 'md') {

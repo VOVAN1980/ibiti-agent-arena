@@ -1,6 +1,7 @@
-// End-to-end check against a local node (anvil): the page server reads the real contract, the agent
-// answers on-chain, the next round opens, and the scorecard comes out right.
-//   node pages/tools/e2e-local.mjs <rpc> <deployment.json> <agentKey> <secret.hex> <judgeKey>
+// End-to-end check of a live match on a local node (anvil): two agents join the queue, the page
+// server follows the arena's clock, both answer on the same rounds, the judge scores both.
+//   node pages/tools/e2e-local.mjs <rpc> <deployment.json> <keyA> <keyB> <secret.hex> <judgeKey>
+// It moves the local chain's clock forward to each round's opening (evm_setNextBlockTimestamp).
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { handleFight } from '../src/worker.js';
@@ -8,42 +9,56 @@ import { makeChain } from '../src/chain.js';
 import { isPassRound } from '../src/keccak.js';
 import { arenaKeys, answerHash } from '../src/keys.js';
 
-const [rpc, depPath, key, secretPath, judgeKey] = process.argv.slice(2);
+const [rpc, depPath, keyA, keyB, secretPath, judgeKey] = process.argv.slice(2);
 const dep = JSON.parse(readFileSync(depPath, 'utf8'));
 const secret = readFileSync(secretPath, 'utf8').trim();
 const keys = arenaKeys(secret);
 const env = { RPC_URL: rpc, ARENA: dep.arena, DECOYS: dep.decoys, SECRET: secret };
 const cast = (...a) => execFileSync('cast', a, { encoding: 'utf8' }).trim();
-const send = (to, sig, ...args) => cast('send', '--rpc-url', rpc, '--private-key', key, to, sig, ...args);
-const agent = cast('wallet', 'address', '--private-key', key).toLowerCase();
 const chain = makeChain({ rpc, arena: dep.arena });
+const fighters = [keyA, keyB].map((key) => ({ key, agent: cast('wallet', 'address', '--private-key', key).toLowerCase() }));
+const send = (f, to, sig, ...args) => cast('send', '--rpc-url', rpc, '--private-key', f.key, to, sig, ...args);
+const page = async (f) => {
+  const res = await handleFight(new URL(`https://arena.test/fight/${f.agent}?format=md`), env);
+  return { status: res.status, body: await res.text() };
+};
+const jumpTo = (ts) => {
+  cast('rpc', '--rpc-url', rpc, 'evm_setNextBlockTimestamp', String(ts));
+  cast('rpc', '--rpc-url', rpc, 'evm_mine');
+};
 
-const commitment = (await (await handleFight(new URL('https://arena.test/commit/' + agent), env)).text()).trim();
-send(dep.arena, 'start(string,string,address,bool,bytes32)', 'E2E Bot', 'test-model-1', '0x0000000000000000000000000000000000000000', 'false', commitment);
-let plan = await chain.fight(agent);
-console.log('fight', plan.number, 'round', plan.round, 'official', plan.official);
-const traps = await chain.traps(agent);
-console.log('traps of round 1..2:', traps.slice(0, 6).join(','));
+// both join the queue
+for (const [i, f] of fighters.entries()) {
+  const commitment = (await (await handleFight(new URL('https://arena.test/commit/' + f.agent), env)).text()).trim();
+  send(f, dep.arena, 'join(string,string,bytes32)', i === 0 ? 'E2E Red' : 'E2E Blue', 'test-model', commitment);
+  if (i === 0) console.log('first in the queue:', (await page(f)).body.trim());
+}
+const plans = await Promise.all(fighters.map((f) => chain.fight(f.agent)));
+if (plans[0].seed !== plans[1].seed || plans[0].bellAt !== plans[1].bellAt) throw new Error('not one match');
+console.log('matched: same rounds, round 1 at', new Date(plans[0].bellAt * 1000).toISOString(), '· countdown page:', (await page(fighters[0])).body.trim().slice(0, 60));
 
 for (let r = 1; r <= 12; r++) {
-  const res = await handleFight(new URL(`https://arena.test/fight/${agent}?format=md`), env);
-  const md = await res.text();
-  if (res.status !== 200) throw new Error(`round ${r}: HTTP ${res.status} ${md}`);
-  if (!md.includes(`Round ${r} of 12`)) throw new Error(`round ${r}: page shows another round`);
-  const code = keys.code(dep.arena, agent, plan.number, r);
-  const clean = md.replace(/[​­⁠]/g, '');
-  if (!clean.includes(code)) throw new Error(`round ${r}: the real code (an option or the PASS code) is not on the page`);
-  if (r >= 9) console.log(`round ${r}: ${isPassRound(plan.seed, r, keys.passKey) ? 'PASS round' : 'act round'}`);
-  if (r === 2) send(dep.arena, 'claimBonus()'); // take one punch (a hit or a foul)
-  if (r === 3) send(dep.decoys['22'], 'answer(uint8,string)', '3', code); // a decoy: "v2 migration"
-  send(dep.arena, 'answer(uint8,string)', String(r), r === 5 ? 'WRONG-CODE' : code);
+  jumpTo(plans[0].bellAt + (r - 1) * 70 + 1);
+  for (const [i, f] of fighters.entries()) {
+    const p = await page(f);
+    if (p.status !== 200 || !p.body.includes(`Round ${r} of 12`)) throw new Error(`round ${r}: ${p.status} ${p.body.slice(0, 120)}`);
+    const code = keys.code(dep.arena, f.agent, plans[i].number, r);
+    if (!p.body.replace(/[​­⁠]/g, '').includes(code)) throw new Error(`round ${r}: the code is not on the page`);
+    let answer = code;
+    if (i === 0 && r === 5) answer = 'WRONG-CODE-0000-0000';
+    if (i === 1 && r === 7) answer = keys.code(dep.arena, fighters[0].agent, plans[0].number, 7); // copies the opponent
+    if (i === 0 && r === 2) send(f, dep.arena, 'claimBonus()'); // a punch taken
+    send(f, dep.arena, 'answer(uint8,string)', String(r), answer);
+  }
+  if (r === 1) console.log('after answering round 1 the page says:', (await page(fighters[0])).body.trim());
+  if (r >= 9) console.log(`round ${r}: ${isPassRound(keys.cardSeed(plans[0].seed), r, keys.passKey) ? 'PASS round' : 'act round'} for both`);
 }
-const after = await handleFight(new URL(`https://arena.test/fight/${agent}`), env);
-console.log('after the 12th answer the page says:', after.status, (await after.text()).trim());
-plan = await chain.fight(agent);
-console.log('before the judge: correct', plan.correct, 'judged', plan.judged);
-const hashes = Array.from({ length: 12 }, (_, i) => answerHash(keys.code(dep.arena, agent, plan.number, i + 1)));
-cast('send', '--rpc-url', rpc, '--private-key', judgeKey, dep.arena, 'judgeFight(address,uint32,bytes32[12])', agent, String(plan.number), `[${hashes.join(',')}]`);
-plan = await chain.fight(agent);
-const points = Number(cast('call', '--rpc-url', rpc, dep.arena, 'pointsOf(address)(uint8)', agent));
-console.log('finished:', plan.finishedAt > 0, 'correct mask', plan.correct.toString(2), 'fouls', plan.fouls, 'hits', plan.hits.toString(2), 'points', points);
+
+for (const [i, f] of fighters.entries()) {
+  const before = await chain.fight(f.agent);
+  const hashes = Array.from({ length: 12 }, (_, k) => answerHash(keys.code(dep.arena, f.agent, plans[i].number, k + 1)));
+  cast('send', '--rpc-url', rpc, '--private-key', judgeKey, dep.arena, 'judgeFight(address,uint32,bytes32[12])', f.agent, String(plans[i].number), `[${hashes.join(',')}]`);
+  const after = await chain.fight(f.agent);
+  const points = Number(cast('call', '--rpc-url', rpc, dep.arena, 'pointsOf(address)(uint8)', f.agent));
+  console.log(`${i === 0 ? 'Red ' : 'Blue'}: before the judge correct=${before.correct}; after: solved ${after.correct.toString(2).split('1').length - 1}/12, fouls ${after.fouls}, points ${points}, time ${after.timeUsed}s`);
+}

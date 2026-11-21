@@ -1,4 +1,4 @@
-// Minimal read-only access to AgentArena through JSON-RPC `eth_call`. No keys, no transactions.
+// Minimal read-only access to AgentArena through JSON-RPC. No keys, no transactions.
 // Selectors are fixed (computed with `cast sig`).
 
 const SEL = {
@@ -7,20 +7,24 @@ const SEL = {
   trapsAt: '0x1b5585e5', // trapsAt(address)
   isLive: '0x50c116b8', // isLive(address)
   secretCommit: '0x24627013', // secretCommit()
+  waiting: '0xb405c549', // waiting()
 };
+
+/** The countdown before round 1 and the break between rounds (AgentArena.BREAK). */
+export const BREAK = 10;
 
 const word = (hex) => hex.replace(/^0x/, '').toLowerCase().padStart(64, '0');
 const num = (n) => BigInt(n).toString(16).padStart(64, '0');
 
-async function ethCall(rpc, to, data, fetchFn = fetch) {
+async function rpcCall(rpc, method, params, fetchFn = fetch) {
   const res = await fetchFn(rpc, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to, data }, 'latest'] }),
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
   });
   const j = await res.json();
-  if (j.error) throw new Error(`eth_call failed: ${j.error.message}`);
-  return j.result.replace(/^0x/, '');
+  if (j.error) throw new Error(`${method} failed: ${j.error.message}`);
+  return j.result;
 }
 
 function words(hex) {
@@ -32,14 +36,18 @@ function words(hex) {
 const big = (w) => BigInt('0x' + w);
 
 export function makeChain({ rpc, arena, fetchFn }) {
-  const call = (data) => ethCall(rpc, arena, data, fetchFn);
+  const call = async (data) => (await rpcCall(rpc, 'eth_call', [{ to: arena, data }, 'latest'], fetchFn)).replace(/^0x/, '');
   return {
+    /** The chain's clock: the timestamp of the latest block (what the contract compares with). */
+    async now() {
+      return parseInt((await rpcCall(rpc, 'eth_getBlockByNumber', ['latest', false], fetchFn)).timestamp, 16);
+    },
     async lastFight(agent) {
       return Number(big(words(await call(SEL.lastFight + word(agent)))[0]));
     },
     /** A fight: fightOf(address,uint32) returns (seed, startedAt, finishedAt, hits, number, correct,
-     *  round, fouls, official, roundOpenedAt, timeUsed, late, judged, commitment). `correct` is set
-     *  only by the judge, after the fight. */
+     *  round, fouls, official, bellAt, timeUsed, late, judged, commitment, opponent). `correct` is set
+     *  only by the judge, after the fight. Round r opens at bellAt + (r - 1) * (roundTime + BREAK). */
     async fightOf(agent, number) {
       const w = words(await call(SEL.fightOf + word(agent) + num(number)));
       return {
@@ -52,11 +60,12 @@ export function makeChain({ rpc, arena, fetchFn }) {
         round: Number(big(w[6])),
         fouls: Number(big(w[7])),
         official: big(w[8]) !== 0n,
-        roundOpenedAt: Number(big(w[9])),
+        bellAt: Number(big(w[9])),
         timeUsed: Number(big(w[10])),
         late: Number(big(w[11])),
         judged: big(w[12]) !== 0n,
         commitment: '0x' + w[13],
+        opponent: '0x' + w[14].slice(24),
       };
     },
     /** The agent's latest fight (all zero if it never fought). */
@@ -72,5 +81,19 @@ export function makeChain({ rpc, arena, fetchFn }) {
     async secretCommit() {
       return '0x' + words(await call(SEL.secretCommit))[0];
     },
+    async waiting() {
+      return '0x' + words(await call(SEL.waiting))[0].slice(24);
+    },
   };
+}
+
+/** Where a fight stands at `now`: the countdown, an open round, a break, or over. */
+export function clockOf(f, now, roundTime = 60) {
+  const step = roundTime + BREAK;
+  if (now < f.bellAt) return { phase: 'countdown', round: 1, opensAt: f.bellAt };
+  const r = Math.floor((now - f.bellAt) / step) + 1;
+  if (r > 12) return { phase: 'over' };
+  const opensAt = f.bellAt + (r - 1) * step;
+  if (now <= opensAt + roundTime) return { phase: 'open', round: r, opensAt, closesAt: opensAt + roundTime };
+  return r === 12 ? { phase: 'over' } : { phase: 'break', round: r + 1, opensAt: opensAt + step };
 }

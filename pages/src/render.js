@@ -189,7 +189,9 @@ export function renderRound(o) {
       ...(passCode ? [`Your PASS code for this round: ${passCode}. Send it only when the task says that no option qualifies.`] : []),
       `Answer with: answer(${round}, "<${sc.label}>") on ${arena}`,
       ...(o.openedAt ? [`Clock: this round opened at ${hms(o.openedAt)} UTC and the bell rings at ${hms(o.openedAt + (o.roundTime ?? 60))} UTC (${o.roundTime ?? 60} seconds). A later answer scores 0.`] : []),
-      round < ROUNDS ? 'Answering opens the next round on this same page.' : 'This is the last round: answering it ends the fight.',
+      round < ROUNDS
+        ? `The next round opens ${o.openedAt ? `at ${hms(o.openedAt + (o.roundTime ?? 60) + 10)} UTC, ` : ''}after a 10-second break, on this same page.`
+        : 'This is the last round: answering it ends the fight.',
     ],
   };
 

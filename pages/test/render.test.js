@@ -427,16 +427,43 @@ test('placeholders fill only known keys', () => {
 
 // ------------------------------------------------------------------ the page server
 
-function fakeChain({ round = 3, live = true, startedAt = 1, commitment = KEYS.commitment(ARENA, A, 2), secretCommit = KEYS.commit } = {}) {
+const ZERO_ADDR = '0x0000000000000000000000000000000000000000';
+const BELL = 1795200000;
+
+/** A fake arena: fight 2 of A, `round` = the first round not answered yet; the clock stands in
+ *  `clockRound` (5 s into it), or in the countdown, or in the break after it. */
+function fakeChain({ round = 3, clockRound = round, live = true, startedAt = 1, commitment = KEYS.commitment(ARENA, A, 2), secretCommit = KEYS.commit, countdown = false, inBreak = false, waiting = ZERO_ADDR } = {}) {
   const traps = [...Array(36).keys()].map((i) => i + 1);
+  const now = countdown ? BELL - 4 : BELL + (Math.min(clockRound, 12) - 1) * 70 + (inBreak ? 64 : 5);
   return {
     lastFight: async () => 2,
-    fight: async () => ({ seed: SEED, startedAt, finishedAt: 0, hits: 0n, number: 2, correct: 0, round, fouls: 0, official: true, roundOpenedAt: 1795200000, timeUsed: 0, late: 0, judged: false, commitment }),
+    fight: async () => ({ seed: SEED, startedAt, finishedAt: 0, hits: 0n, number: 2, correct: 0, round, fouls: 0, official: true, bellAt: BELL, timeUsed: 0, late: 0, judged: false, commitment, opponent: ZERO_ADDR }),
     isLive: async () => live,
     traps: async () => traps,
     secretCommit: async () => secretCommit,
+    waiting: async () => waiting,
+    now: async () => now,
   };
 }
+
+test('the server follows the clock: countdown, open round, answered round, break, queue', async () => {
+  const get = async (chain) => {
+    const r = await handleFight(new URL(`https://x/fight/${A}?format=md`), ENV, { chain });
+    return { status: r.status, body: await r.text() };
+  };
+  let r = await get(fakeChain({ round: 1, countdown: true }));
+  assert.equal(r.status, 200);
+  assert.match(r.body, /countdown is running\. Round 1 opens at .* \(in 4 s\)/);
+  r = await get(fakeChain({ round: 4, clockRound: 3 })); // round 3 answered, still open
+  assert.match(r.body, /You answered round 3\. Round 4 opens at .* \(in 65 s\)/);
+  r = await get(fakeChain({ round: 4, clockRound: 3, inBreak: true }));
+  assert.match(r.body, /Break\. Round 4 opens at .* \(in 6 s\)/);
+  r = await get(fakeChain({ round: 2, clockRound: 4 })); // rounds 2 and 3 missed: round 4 is shown
+  assert.ok(r.body.includes('Round 4 of 12') && r.body.includes(KEYS.code(ARENA, A, 2, 4)));
+  r = await get(fakeChain({ startedAt: 0, waiting: A }));
+  assert.equal(r.status, 404);
+  assert.match(r.body, /in the queue, waiting for an opponent/);
+});
 
 test('the server gives the commitment of the next fight and checks it, and its own secret', async () => {
   const get = (path, chain) => handleFight(new URL(`https://x${path}`), ENV, { chain });
@@ -501,7 +528,7 @@ test('the server shows the agent its current round, with its own code', async ()
   assert.ok(html.includes('the bell rings at'));
   const md = await (await handleFight(new URL(`https://x/fight/${A}?format=md`), ENV, { chain: fakeChain() })).text();
   assert.ok(md.startsWith('# IBITI Agent Arena — round card'));
-  assert.ok(md.includes('Answering opens the next round on this same page.'));
+  assert.ok(md.includes('after a 10-second break, on this same page.'));
   const last = await (await handleFight(new URL(`https://x/fight/${A}?format=md`), ENV, { chain: fakeChain({ round: 12 }) })).text();
   assert.ok(last.includes('This is the last round'));
 });
