@@ -423,13 +423,13 @@ export function createScene(root) {
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x04060b);
-  scene.fog = new THREE.FogExp2(0x05070d, 0.03);
+  scene.fog = new THREE.FogExp2(0x05070d, 0.034);
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(new RoomEnvironment(renderer), 0.04).texture;
   const M = materials();
 
   // lights
-  scene.add(new THREE.HemisphereLight(0x8fa6ff, 0x120c18, 0.32));
+  scene.add(new THREE.HemisphereLight(0x8fa6ff, 0x120c18, 0.2));
   const key = new THREE.DirectionalLight(0xffffff, 1.1);
   key.position.set(3, 12, 7);
   key.castShadow = !small;
@@ -492,7 +492,7 @@ export function createScene(root) {
     p.rotation.y = (i * Math.PI) / 2;
     cube.add(p);
   }
-  mesh(new THREE.BoxGeometry(3.1, 0.08, 3.1), M.glow(COLOR.gold, 2), [0, -0.7, 0], cube);
+  mesh(new THREE.BoxGeometry(3.1, 0.08, 3.1), M.glow(COLOR.gold, 1.1), [0, -0.7, 0], cube);
   scene.add(bar(new THREE.Vector3(0, 7.6, 0.1), new THREE.Vector3(0, 16, 0.1), 0.05, M.dark));
 
   // the stands: a raked bowl of fans, red on the left, blue on the right
@@ -540,7 +540,8 @@ export function createScene(root) {
     tint(new THREE.SphereGeometry(0.13, 12, 6, 0, Math.PI * 2, 0, Math.PI * 0.42).translate(0, 0.975, 0)),
     tint(new THREE.CylinderGeometry(0.1, 0.1, 0.016, 12).scale(1, 1, 1.25).translate(0, 0.965, 0.12)),
   ]);
-  const fanMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0 });
+  // the stands sit in half-darkness, as in a real arena: the light belongs to the ring
+  const fanMat = new THREE.MeshStandardMaterial({ vertexColors: true, color: 0x7c7c7c, roughness: 0.95, metalness: 0 });
   const crowd = new THREE.InstancedMesh(bodyGeo, fanMat, bowl.length);
   const heads = new THREE.InstancedMesh(headGeo, fanMat, bowl.length);
   const caps = new THREE.InstancedMesh(capGeo, fanMat, bowl.length);
