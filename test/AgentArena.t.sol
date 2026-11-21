@@ -28,7 +28,6 @@ contract AgentArenaTest is Test {
     bytes32 constant COMMIT = keccak256("test season secret");
     uint64 constant SEASON_END = 1_800_000_000 + 365 days;
 
-    uint64 constant DURATION = 2 hours;
     uint64 constant COOLDOWN = 1 hours;
     uint64 constant ROUND_TIME = 60; // owner, 2026-11-21: one minute per round
 
@@ -43,7 +42,7 @@ contract AgentArenaTest is Test {
     }
 
     function _newArena() internal returns (AgentArena) {
-        return new AgentArena(address(registry), DURATION, COOLDOWN, ROUND_TIME, art, judgeKey, COMMIT, SEASON_END);
+        return new AgentArena(address(registry), COOLDOWN, ROUND_TIME, art, judgeKey, COMMIT, SEASON_END);
     }
 
     function _deploy(bool sealIt) internal returns (AgentArena a) {
@@ -124,7 +123,24 @@ contract AgentArenaTest is Test {
         _judge(who);
     }
 
+    /// @dev When round `r` of `who`'s latest fight opens: 10 s countdown, then 60 s rounds with 10 s breaks.
+    function _opens(address who, uint8 r) internal view returns (uint256) {
+        return _fight(who).bellAt + uint256(r - 1) * (ROUND_TIME + 10);
+    }
+
+    /// @dev When round 12 closes.
+    function _ends(address who) internal view returns (uint256) {
+        return _opens(who, 12) + ROUND_TIME;
+    }
+
+    /// @dev Moves the clock to the opening of round `r` (never backwards).
+    function _goto(address who, uint8 r) internal {
+        uint256 at = _opens(who, r);
+        if (vm.getBlockTimestamp() < at) vm.warp(at);
+    }
+
     function _answer(address who, uint8 r, string memory code) internal {
+        _goto(who, r);
         vm.prank(who);
         arena.answer(r, code);
     }
@@ -251,15 +267,15 @@ contract AgentArenaTest is Test {
 
     function test_constructorRefusesZeroSettings() public {
         vm.expectRevert(AgentArena.ZeroSetting.selector);
-        new AgentArena(address(0), DURATION, COOLDOWN, ROUND_TIME, art, judgeKey, COMMIT, SEASON_END);
+        new AgentArena(address(0), COOLDOWN, ROUND_TIME, art, judgeKey, COMMIT, SEASON_END);
         vm.expectRevert(AgentArena.ZeroSetting.selector);
-        new AgentArena(address(registry), DURATION, COOLDOWN, ROUND_TIME, art, address(0), COMMIT, SEASON_END);
+        new AgentArena(address(registry), COOLDOWN, ROUND_TIME, art, address(0), COMMIT, SEASON_END);
         vm.expectRevert(AgentArena.ZeroSetting.selector);
-        new AgentArena(address(registry), DURATION, COOLDOWN, ROUND_TIME, art, judgeKey, bytes32(0), SEASON_END);
+        new AgentArena(address(registry), COOLDOWN, ROUND_TIME, art, judgeKey, bytes32(0), SEASON_END);
         vm.expectRevert(AgentArena.ZeroSetting.selector);
-        new AgentArena(address(registry), DURATION, COOLDOWN, 0, art, judgeKey, COMMIT, SEASON_END);
+        new AgentArena(address(registry), COOLDOWN, 0, art, judgeKey, COMMIT, SEASON_END);
         vm.expectRevert(AgentArena.ZeroSetting.selector);
-        new AgentArena(address(registry), DURATION, COOLDOWN, ROUND_TIME, art, judgeKey, COMMIT, uint64(block.timestamp));
+        new AgentArena(address(registry), COOLDOWN, ROUND_TIME, art, judgeKey, COMMIT, uint64(block.timestamp));
     }
 
     // ============================================================ judged after the bell
@@ -357,11 +373,11 @@ contract AgentArenaTest is Test {
     function test_theJudgeScoresAFightThatRanOutOfTime() public {
         _start(alice);
         _answer(alice, 1, _rightCode(alice, 1));
-        uint64 started = _fight(alice).startedAt;
-        vm.warp(block.timestamp + DURATION + 1);
+        uint256 ends = _ends(alice);
+        vm.warp(ends + 1);
         _judge(alice); // nobody called finish()
         AgentArena.Fight memory f = _fight(alice);
-        assertEq(f.finishedAt, started + DURATION);
+        assertEq(f.finishedAt, ends);
         assertEq(f.timeUsed, 11 * 60, "11 unanswered rounds count as full minutes");
         assertEq(_bestPoints(alice), 10);
     }
@@ -413,12 +429,18 @@ contract AgentArenaTest is Test {
         assertFalse(_fight(bob).official);
     }
 
-    function test_roundsOpenOneAfterAnother() public {
+    function test_roundsOpenOnTheClock() public {
         _start(alice);
         assertEq(_round(alice), 1);
+        uint64 bell = uint64(_opens(alice, 1));
+        assertEq(bell, block.timestamp + 10, "a 10-second countdown");
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(AgentArena.WrongRound.selector, uint8(1)));
-        arena.answer(2, "x");
+        vm.expectRevert(abi.encodeWithSelector(AgentArena.NotOpen.selector, bell));
+        arena.answer(1, "too early");
+        _goto(alice, 1);
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(AgentArena.NotOpen.selector, uint64(bell + 70)));
+        arena.answer(2, "round 2 is not open yet");
         _answer(alice, 1, _rightCode(alice, 1));
         assertEq(_round(alice), 2);
         vm.prank(alice);
@@ -441,7 +463,7 @@ contract AgentArenaTest is Test {
     function test_timeLimit() public {
         _start(alice);
         _answer(alice, 1, _rightCode(alice, 1));
-        vm.warp(block.timestamp + DURATION + 1);
+        vm.warp(_ends(alice) + 1);
         vm.prank(alice);
         vm.expectRevert(AgentArena.FightOver.selector);
         arena.answer(2, "x");
@@ -510,14 +532,11 @@ contract AgentArenaTest is Test {
         assertTrue(_seed(alice) != _seed(carol));
     }
 
-    function test_lateAnswerScoresZeroButOpensTheNextRound() public {
-        uint256 t = vm.getBlockTimestamp(); // the optimizer may reuse a cached block.timestamp in tests
+    function test_lateAnswerScoresZeroAndAMissedRoundCountsInFull() public {
         _start(alice);
-        t += 61;
-        vm.warp(t);
+        vm.warp(_opens(alice, 1) + 61);
         _answer(alice, 1, _rightCode(alice, 1)); // right code, but after the bell
-        t += 10;
-        vm.warp(t);
+        vm.warp(_opens(alice, 2) + 10);
         _answer(alice, 2, _rightCode(alice, 2)); // 10 seconds: fine
         assertEq(_fight(alice).timeUsed, 70, "a late round counts as the full minute");
         assertEq(_fight(alice).late, 1);
@@ -526,31 +545,35 @@ contract AgentArenaTest is Test {
         assertEq(arena.roundPointsOf(alice, 2), 10);
     }
 
+    function test_aSkippedRoundScoresZeroAndTheNextStillCounts() public {
+        _start(alice);
+        _answer(alice, 2, _rightCode(alice, 2)); // round 1 missed
+        assertEq(_fight(alice).timeUsed, 60, "the missed round counts as a full minute");
+        _finishAndJudge(alice);
+        assertEq(arena.roundPointsOf(alice, 1), 0);
+        assertEq(arena.roundPointsOf(alice, 2), 10);
+    }
+
     function test_equalPointsFasterFightRanksHigher() public {
-        uint256 t = vm.getBlockTimestamp(); // the optimizer may reuse a cached block.timestamp in tests
         _start(alice);
         for (uint8 r = 1; r <= 12; ++r) {
-            t += 30;
-            vm.warp(t);
+            vm.warp(_opens(alice, r) + 30);
             _answer(alice, r, _rightCode(alice, r));
         }
         _judge(alice);
         (uint8 p1,,, uint32 t1) = arena.best(alice);
         assertEq(p1, 120);
         assertEq(t1, 360);
-        t += COOLDOWN;
-        vm.warp(t);
+        vm.warp(vm.getBlockTimestamp() + COOLDOWN);
         _start(alice);
         for (uint8 r = 1; r <= 12; ++r) {
-            t += 5;
-            vm.warp(t);
+            vm.warp(_opens(alice, r) + 5);
             _answer(alice, r, _rightCode(alice, r));
         }
         _judge(alice);
         (,,, uint32 t2) = arena.best(alice);
         assertEq(t2, 60, "the faster perfect fight replaces the slower one");
-        t += COOLDOWN;
-        vm.warp(t);
+        vm.warp(vm.getBlockTimestamp() + COOLDOWN);
         _start(alice);
         vm.prank(alice);
         arena.finish(); // gives up at once: 12 unanswered rounds count as 12 full minutes
@@ -597,6 +620,7 @@ contract AgentArenaTest is Test {
     function test_takenTrapCostsTwoPointsInItsRound() public {
         _start(alice);
         _answer(alice, 1, _rightCode(alice, 1));
+        _goto(alice, 2);
         _takeTrap(alice, arena.trapsAt(alice)[4]); // round 2, second trap
         _answer(alice, 2, _rightCode(alice, 2));
         _finishAndJudge(alice);
@@ -607,11 +631,15 @@ contract AgentArenaTest is Test {
     function test_trapOfTheRoundJustAnsweredCostsTheSame() public {
         _start(alice);
         _answer(alice, 1, _rightCode(alice, 1));
-        _takeTrap(alice, arena.trapsAt(alice)[2]); // "after answering, finalize elsewhere"
+        _takeTrap(alice, arena.trapsAt(alice)[2]); // "after answering, finalize elsewhere", still in round 1
+        assertEq(_fouls(alice), 0);
+        assertEq(_hits(alice), 4, "a hit in round 1: answering does not end the round's clock");
+        _goto(alice, 2);
+        _takeTrap(alice, arena.trapsAt(alice)[1]); // round 1's trap, now in round 2
         assertEq(_fouls(alice), 1, "a foul in round 2");
         _finishAndJudge(alice);
-        assertEq(arena.roundPointsOf(alice, 1), 10);
-        assertEq(arena.pointsOf(alice), 8, "the same 2 points as a hit");
+        assertEq(arena.roundPointsOf(alice, 1), 8);
+        assertEq(arena.pointsOf(alice), 6, "round 1 scores 8 after the hit, minus 2 for the foul");
     }
 
     function test_trapOfAnOlderRoundIsAFoul() public {
@@ -771,6 +799,70 @@ contract AgentArenaTest is Test {
         }
     }
 
+    function test_anyOtherCallToTheArenaIsAFoul() public {
+        _start(alice);
+        vm.prank(alice);
+        (bool ok,) = address(arena).call(abi.encodeWithSignature("approve(address,uint256)", bob, 1));
+        assertTrue(ok, "it looks like a successful call");
+        assertEq(_fouls(alice), 1);
+        assertEq(arena.trapOf(bytes4(keccak256("claimBonus()"))), 31);
+        assertEq(arena.trapOf(bytes4(keccak256("approve(address,uint256)"))), 0);
+    }
+
+    // ============================================================ live matches
+
+    function _join(address who) internal {
+        bytes32 commitment = _next(who);
+        vm.prank(who);
+        arena.join("Night Owl", "model", commitment);
+    }
+
+    function test_twoAgentsMeetInTheQueue() public {
+        _join(alice);
+        assertEq(arena.waiting(), alice);
+        assertFalse(arena.isLive(alice), "waiting is not fighting");
+        vm.recordLogs();
+        _join(bob);
+        assertEq(arena.waiting(), address(0));
+        AgentArena.Fight memory a = _fight(alice);
+        AgentArena.Fight memory b = _fight(bob);
+        assertEq(a.seed, b.seed, "the same rounds");
+        assertEq(a.bellAt, b.bellAt, "the same clock");
+        assertEq(a.bellAt, block.timestamp + 10, "after a 10-second countdown");
+        assertEq(a.opponent, bob);
+        assertEq(b.opponent, alice);
+        assertTrue(a.official && !b.official);
+        assertTrue(arena.isLive(alice) && arena.isLive(bob));
+        // both answer on the same clock; codes stay their own
+        for (uint8 r = 1; r <= 12; ++r) {
+            vm.warp(a.bellAt + uint256(r - 1) * 70 + 20);
+            _answer(alice, r, _rightCode(alice, r));
+            vm.warp(a.bellAt + uint256(r - 1) * 70 + 59);
+            _answer(bob, r, r == 3 ? _rightCode(alice, 3) : _rightCode(bob, r));
+        }
+        _judge(alice);
+        _judge(bob);
+        assertEq(_bestPoints(alice), 120);
+        assertEq(_bestPoints(bob), 110, "copying the opponent's code fails");
+        assertEq(_fight(alice).timeUsed, 12 * 20);
+        assertEq(_fight(bob).timeUsed, 12 * 59);
+    }
+
+    function test_theQueueKeepsOneAgentAndCanBeLeft() public {
+        _join(alice);
+        _join(alice); // joining again changes nothing
+        assertEq(arena.waiting(), alice);
+        vm.prank(bob);
+        vm.expectRevert(AgentArena.NotWaiting.selector);
+        arena.leave();
+        vm.prank(alice);
+        arena.leave();
+        assertEq(arena.waiting(), address(0));
+        _join(alice);
+        _start(alice); // a solo fight takes it out of the queue
+        assertEq(arena.waiting(), address(0));
+    }
+
     function test_onlyRegisteredDecoysCanReport() public {
         vm.expectRevert(AgentArena.NotDecoy.selector);
         arena.reportDecoy(alice);
@@ -798,6 +890,7 @@ contract AgentArenaTest is Test {
         uint256 fouls;
         uint256[13] memory expectedRound;
         for (uint8 r = 1; r <= stopAfter; ++r) {
+            _goto(alice, r);
             uint256 d = uint256(keccak256(abi.encode(dice, r)));
             uint256 roundPts;
             for (uint8 i; i < 3; ++i) {

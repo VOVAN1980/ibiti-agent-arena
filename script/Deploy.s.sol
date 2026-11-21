@@ -12,10 +12,9 @@ import {MockAgentId} from "./MockAgentId.sol";
 ///   JUDGE              the judge's address (the key that scores finished fights)
 ///   SECRET_COMMIT      keccak256 of the season secret (pages/tools/make-secret.mjs prints it)
 ///   SEASON_END         unix time after which no fight starts; publish the secret only after it
-///                      (plus FIGHT_DURATION, so every fight has ended)
+///                      (plus about 15 minutes, so every fight has ended)
 ///   AGENT_ID_REGISTRY  the Agent ID registry; leave unset on test networks to deploy MockAgentId.
 ///                      On BNB Smart Chain (56) it must be the SPACE ID Agent ID contract.
-///   FIGHT_DURATION     seconds (default 7200)
 ///   COOLDOWN           seconds (default 3600)
 ///   ROUND_TIME         seconds per round (default 60)
 ///   OUT                where to write the addresses (default ./deployments/<chainid>.json)
@@ -30,7 +29,6 @@ contract Deploy is Script {
         uint64 seasonEnd = uint64(vm.envUint("SEASON_END"));
         require(seasonEnd > block.timestamp, "SEASON_END must be in the future");
         address registry = vm.envOr("AGENT_ID_REGISTRY", address(0));
-        uint64 duration = uint64(vm.envOr("FIGHT_DURATION", uint256(7200)));
         uint64 cooldown = uint64(vm.envOr("COOLDOWN", uint256(3600)));
         uint64 roundTime = uint64(vm.envOr("ROUND_TIME", uint256(60)));
         require(judge != address(0) && secretCommit != bytes32(0), "JUDGE and SECRET_COMMIT are required");
@@ -45,7 +43,7 @@ contract Deploy is Script {
             registry = address(new MockAgentId());
         }
         ArenaArt art = new ArenaArt();
-        AgentArena arena = new AgentArena(registry, duration, cooldown, roundTime, art, judge, secretCommit, seasonEnd);
+        AgentArena arena = new AgentArena(registry, cooldown, roundTime, art, judge, secretCommit, seasonEnd);
         address[9] memory decoys;
         for (uint256 i; i < 9; ++i) {
             decoys[i] = address(new ArenaDecoy(arena));
