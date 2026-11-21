@@ -164,7 +164,8 @@ export function renderRound(o) {
   const CODE_RE = /[A-HJ-KM-NP-Z2-9]{4}(?:-[A-HJ-KM-NP-Z2-9]{4}){3}/g;
   const onPage = [...new Set(`${JSON.stringify(sc.blocks)} ${passCode ?? ''}`.match(CODE_RE) ?? [])];
   for (const kind of chosen) {
-    const baseCode = onPage.length > 1 ? own.pick(onPage) : code;
+    // with fewer than two codes on the page, an independent one: a decoy never echoes the right code
+    const baseCode = onPage.length > 1 ? own.pick(onPage) : fakeCode();
     let fake;
     if (baseCode !== PASS && kind === 'homoglyph') fake = homoglyphOf(baseCode, own) ?? nearMiss(baseCode, own);
     else if (baseCode !== PASS && (kind === 'corrected' || kind === 'regional')) fake = nearMiss(baseCode, own);

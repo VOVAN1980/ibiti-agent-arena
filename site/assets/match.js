@@ -7,6 +7,9 @@
 // The scoreboard is rebuilt only when something changes; between reads of the chain only the clock
 // and the bars move, in place (so a page translator has nothing to redo every second).
 import { CFG, emptyState, refresh, bouts, verdict, clockOf, nameOf, rounds, trapName, ROUNDS } from './arena.js';
+
+/** Fouls as the judge counted them; a silent fight is never judged, so its fouls are not known. */
+const foulsOf = (j) => (j.empty ? '—' : j.fouls);
 import { $, esc, keep, tName, header, footer, avatar, shareButtons, mmss, siteUrl, agentUrl, matchUrl, t, applyI18n } from './ui.js';
 import { forFight, loadTheme, loadAll, themeName, themeText, themesKnown } from './themes.js';
 import { gong, beep, ding, thud, cheer, boo, crowdLevel, setMusic, soundOn, setSound } from './sound.js';
@@ -331,7 +334,9 @@ function stage(b, c, v, views) {
 function renderRing(b) {
   const red = b.red;
   const blue = b.blue;
-  const clock = red.clock?.clockAt ? red.clock : blue?.clock;
+  // the clock of a fighter still in the ring (one who gave up keeps an old clock)
+  const fighting = [red, blue].find((f) => f?.clock?.clockAt && !f.ended && !(f.clock.finishedAt > 0));
+  const clock = fighting?.clock ?? (red.clock?.clockAt ? red.clock : blue?.clock);
   const c0 = clock?.clockAt ? clockOf(clock, s.now) : { phase: 'over' };
   const ended = !!(red.ended || red.judged || c0.phase === 'over') && !!(!blue || blue.ended || blue.judged || c0.phase === 'over');
   const c = ended ? { phase: 'over' } : c0;
@@ -367,10 +372,10 @@ function renderRing(b) {
     top = `<div class="winner"><div class="crown">${wn ? tName(v.byTime ? 'winsOnTime' : 'wins', nameOf(s, wn.agent)) : t('draw')}</div>
       <div class="score" translate="no"><span class="red">${red.judged.points}</span> : <span class="blue">${blue.judged.points}</span></div>
       <div class="pts-cap">${esc(t('pointsOf120'))}</div>
-      <div class="tiny">${t('statLine', red.judged.solved, red.judged.fouls, red.judged.timeUsed)} &nbsp;|&nbsp; ${t('statLine', blue.judged.solved, blue.judged.fouls, blue.judged.timeUsed)}</div></div>`;
+      <div class="tiny">${t('statLine', red.judged.solved, foulsOf(red.judged), red.judged.timeUsed)} &nbsp;|&nbsp; ${t('statLine', blue.judged.solved, foulsOf(blue.judged), blue.judged.timeUsed)}</div></div>`;
   } else if (v) {
     top = `<div class="winner"><div class="crown">${keep(nameOf(s, red.agent))}</div><div class="score" translate="no"><span class="red">${red.judged.points}</span> / 120</div>
-      <div class="tiny">${esc(t('statLine', red.judged.solved, red.judged.fouls, red.judged.timeUsed))} · ${esc(t('solo'))}</div></div>`;
+      <div class="tiny">${esc(t('statLine', red.judged.solved, foulsOf(red.judged), red.judged.timeUsed))} · ${esc(t('solo'))}</div></div>`;
   }
   $('#ring').innerHTML = `<div class="corners">${cornerHtml(red, 'red', vr)}${gongHtml(g, !ended && !v)}${blue ? cornerHtml(blue, 'blue', vb) : `<div class="corner blue solo"><div class="tiny">${t('soloFight')}</div></div>`}</div>`;
   if (top) banner('html', 0, top.replace('class="winner"', 'class="winner bwin"'));

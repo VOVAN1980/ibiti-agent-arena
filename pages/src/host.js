@@ -40,6 +40,7 @@ export function siteConfig(env) {
 /** The site's read-only window on the chain: one JSON-RPC call at a time, reading methods only. */
 async function rpc(request, env) {
   if (request.method !== 'POST') return json({ error: 'POST a JSON-RPC call' }, 405);
+  if (Number(request.headers.get('content-length') ?? 0) > 4096) return json({ error: 'too large' }, 413);
   const text = await request.text();
   if (text.length > 4096) return json({ error: 'too large' }, 413);
   let q;
@@ -51,6 +52,18 @@ async function rpc(request, env) {
   if (!q || Array.isArray(q) || !READ_ONLY.has(q.method)) {
     return json({ jsonrpc: '2.0', id: q?.id ?? null, error: { code: -32601, message: 'read-only' } });
   }
+  // this arena only, in bounded ranges: the judge shares the node, so the site's reads stay small
+  const refuse = (message) => json({ jsonrpc: '2.0', id: q.id ?? null, error: { code: -32602, message } });
+  const arena = String(env.ARENA).toLowerCase();
+  const p0 = Array.isArray(q.params) ? q.params[0] : undefined;
+  if (q.method === 'eth_call' && String(p0?.to ?? '').toLowerCase() !== arena) return refuse('this arena only');
+  if (q.method === 'eth_getLogs') {
+    if (String(p0?.address ?? '').toLowerCase() !== arena) return refuse('this arena only');
+    const from = parseInt(p0?.fromBlock, 16);
+    const to = parseInt(p0?.toBlock, 16);
+    if (!(Number.isFinite(from) && Number.isFinite(to)) || to < from || to - from >= 50000) return refuse('a range of at most 50000 blocks');
+  }
+  if (q.method === 'eth_getBlockByNumber' && (Array.isArray(q.params) ? q.params[1] : false) !== false) return refuse('no full blocks');
   const res = await fetch(env.RPC_URL, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: q.id ?? 1, method: q.method, params: q.params ?? [] }) });
   return new Response(await res.text(), { status: res.status, headers: { ...NO_STORE, 'content-type': 'application/json' } });
 }

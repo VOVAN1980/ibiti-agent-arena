@@ -699,6 +699,69 @@ contract AgentArenaTest is Test {
         assertEq(_fight(bob).pageKeyHash, PAGE_KEY_HASH);
     }
 
+    function test_namesAndModelsAreCleanText() public {
+        bytes32 c = _next(bob);
+        bytes memory sg = _sig(bob, c);
+        string[4] memory bad = ["", " bob", "bob ", "b\x00b"];
+        for (uint256 i; i < bad.length; ++i) {
+            vm.prank(bob);
+            vm.expectRevert(AgentArena.BadText.selector);
+            arena.register(bad[i], "m", c, sg, PAGE_KEY_HASH, address(0));
+        }
+        vm.prank(bob);
+        vm.expectRevert(AgentArena.BadText.selector);
+        arena.register("bob", "gpt\n6", c, sg, PAGE_KEY_HASH, address(0));
+        vm.prank(bob);
+        arena.register(unicode"Лис", "gpt-6", c, sg, PAGE_KEY_HASH, address(0)); // any language, clean
+    }
+
+    function test_theHallCountFollowsTheHall() public {
+        _register(alice);
+        _register(bob);
+        _register(carol);
+        assertEq(arena.hallCount(), 3);
+        vm.prank(carol);
+        arena.leave();
+        assertEq(arena.hallCount(), 2);
+        _draw();
+        assertEq(arena.hallCount(), 0, "drawn: out of the hall");
+    }
+
+    function test_pastTheCutoffNobodyOnTheListLeavesEvenBeforeTheSeal() public {
+        _register(alice);
+        _register(bob);
+        vm.warp(arena.nextDrawAt() + 1); // the cutoff has passed, nobody has sealed yet
+        vm.prank(alice);
+        vm.expectRevert(AgentArena.DrawPending.selector);
+        arena.leave(); // leaving seals the list first, by the cutoff's clock
+        _draw();
+        assertEq(_fight(alice).opponent, bob);
+    }
+
+    function test_aChallengeExpiresByTheCutoffsClockNotByWhenTheDrawIsHeld() public {
+        _register(alice, carol); // carol never answers
+        for (uint256 i; i < 5; ++i) _draw();
+        _register(bob);
+        // the sixth cutoff is exactly CHALLENGE_WAIT draws after alice's registration time slot or later
+        _draw();
+        assertEq(_fight(alice).opponent, bob, "expired at that cutoff: drawn at random");
+    }
+
+    function test_aMalformedTrapPlanIsRefused() public {
+        _spar(alice);
+        _answerAll(alice);
+        AgentArena.Fight memory f = _fight(alice);
+        uint8[36] memory traps = _plan(f.seed);
+        bytes32 ts = _trapSalt(f.seed);
+        bytes32[12] memory right = _rightHashes(alice, 1);
+        // the locked hash is of the real plan; any other array fails anyway, and so would a plan with a
+        // repeated trap in a round even if it had been locked
+        traps[1] = traps[0];
+        vm.prank(judgeKey);
+        vm.expectRevert(AgentArena.BadTraps.selector);
+        arena.judgeFight(alice, 1, right, _salt(alice, 1), traps, ts);
+    }
+
     function test_registrationNeedsACommitmentAndShortNames() public {
         vm.startPrank(alice);
         vm.expectRevert(AgentArena.BadCommitment.selector);
@@ -883,36 +946,74 @@ contract AgentArenaTest is Test {
         assertEq(_bestPoints(alice), 120);
     }
 
-    function test_onlyTheJudgeLocksAndOnlyBeforeTheBell() public {
+    function test_onlyTheJudgeLocksAndALateLockGivesANewCountdown() public {
         lockOnDraw = false;
         _match(alice, bob);
         address[] memory a = new address[](1);
         uint32[] memory n = new uint32[](1);
         bytes32[] memory c = new bytes32[](1);
-        (a[0], n[0], c[0]) = (alice, 1, keccak256("a plan"));
+        (a[0], n[0], c[0]) = (alice, 1, keccak256(abi.encode(_plan(_fight(alice).seed), _trapSalt(_fight(alice).seed))));
         vm.expectRevert(AgentArena.NotJudge.selector);
         arena.lockTraps(a, n, c);
-        vm.warp(_fight(alice).clockAt); // the bell
+        // the bell time passes with no plan: round 1 does not open
+        string memory code1 = _rightCode(alice, 1); // read before the prank
+        vm.warp(_fight(alice).clockAt + 30);
+        vm.prank(alice);
+        vm.expectRevert(AgentArena.NotLocked.selector);
+        arena.answer(1, code1);
+        // locked late: both get a whole new countdown
         vm.prank(judgeKey);
         arena.lockTraps(a, n, c);
-        assertEq(_fight(alice).trapsCommit, bytes32(0), "too late: the first bell has rung");
+        uint64 bell = uint64(vm.getBlockTimestamp()) + arena.COUNTDOWN();
+        assertEq(_fight(alice).clockAt, bell);
+        assertEq(_fight(bob).clockAt, bell, "the same new bell for the opponent");
+        assertEq(_fight(bob).trapsCommit, c[0]);
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(AgentArena.NotOpen.selector, bell));
+        arena.answer(1, code1);
+        _answerBoth(alice, bob);
+        _judge(alice);
+        _judge(bob);
+        assertEq(_bestPoints(alice), 120);
     }
 
-    function test_aFightWhosePlanWasNotLockedCountsEveryCallAsAFoul() public {
+    function test_aFightWhosePlanIsNeverLockedNeverRunsAndCostsNoAttempt() public {
         lockOnDraw = false;
-        _spar(alice);
-        uint8[36] memory traps = _traps(alice);
+        _match(alice, bob);
         _goto(alice, 1);
-        _takeTrap(alice, traps[0]); // would be round 1's punch
-        _answerAll(alice);
+        _takeTrap(alice, 41); // before the lock: no round on the clock
+        assertEq(arena.callsOf(alice, 1)[0], uint16(41), "recorded as round 0: never a punch of a round");
+        vm.warp(_ends(alice) + 1); // the fight's time runs out with no plan
+        assertFalse(arena.isLive(alice));
+        address[] memory a = new address[](1);
+        uint32[] memory n = new uint32[](1);
+        bytes32[] memory c = new bytes32[](1);
+        (a[0], n[0], c[0]) = (alice, 1, keccak256("too late"));
+        vm.prank(judgeKey);
+        arena.lockTraps(a, n, c);
+        assertEq(_fight(alice).trapsCommit, bytes32(0), "a fight that is over is not locked");
         bytes32[12] memory right = _rightHashes(alice, 1);
+        uint8[36] memory none;
         vm.prank(judgeKey);
         vm.expectRevert(AgentArena.BadTraps.selector);
-        arena.judgeFight(alice, 1, right, _salt(alice, 1), traps, bytes32(0)); // no plan can be shown now
-        _judge(alice);
-        assertEq(_fight(alice).hits, 0);
-        assertEq(_fight(alice).fouls, 1);
-        assertEq(arena.pointsOf(alice), 118);
+        arena.judgeFight(alice, 1, right, _salt(alice, 1), none, bytes32(0)); // never judged, never ranked
+        assertEq(_bestPoints(alice), 0);
+        _register(alice); // no attempt used: back in the hall at once, no day to wait
+        assertEq(arena.hall()[0], alice);
+    }
+
+    function test_twoAgentsThatChallengedEachOtherAreDrawnTogetherOrWaitTogether() public {
+        // 31 agents first, then alice naming carol, 5 more, then carol naming alice: the pair does not
+        // fit in the 32 places of this draw, so neither takes one
+        for (uint256 i; i < 31; ++i) _register(makeAddr(string.concat("early", vm.toString(i))));
+        _register(alice, carol);
+        for (uint256 i; i < 5; ++i) _register(makeAddr(string.concat("late", vm.toString(i))));
+        _register(carol, alice);
+        _draw();
+        assertFalse(arena.isLive(alice) || arena.isLive(carol), "not split: both wait");
+        _draw(); // first in line now: drawn together
+        assertEq(_fight(alice).opponent, carol);
+        assertEq(_fight(carol).opponent, alice);
     }
 
     function test_trapCallsAreRecordedAndJudgedOnlyAfterTheFight() public {

@@ -213,30 +213,71 @@ owner, as Binance's wallet rules require.
 reader. It opens only that fighter's pages of that one fight (copying its decisions on the same card
 would need it during the fight), and it is worthless once the fight is over.
 
-## Slither 0.11.6 on the current code: 20 results, all reviewed
+## Eighth review (2026-11-21): before inviting people
 
-The same detectors as before; the time checks now also cover the shared clock (`_clockRound`,
-`_record`). Slither's line numbers in its output are a few lines off because of non-ASCII characters
-in the comments.
+Reviewed at c06ceb7 with the full Russian report of review 6. What was done:
+
+- **A challenge link could put any text into the owner's message to the agent.** The site takes a
+  challenge only as a full wallet address (when reading the link and again inside the message), and
+  says so when a link is broken.
+- **A match whose plan was not locked still got an official result.** The first bell now waits for
+  the lock: `answer` reverts `NotLocked` before it; `lockTraps` also works late (both fighters get
+  a new 60-second countdown, event `BellMoved`) while nobody has answered and the fight is live; a
+  fight whose plan is never locked is never judged, never ranked and costs no attempt (the day's
+  pause counts only fights with a locked plan). Calls before the lock are recorded as round 0 (never a
+  punch of a round). `judgeFight` checks the plan's shape: three different traps 1..50 a round.
+- **Giving up in the countdown opened every theme to the audience.** `/task` opens a theme only up
+  to the round every fighter still in the ring has reached; once both are out, only up to the last
+  round that really opened for either (computed from `finishedAt` and the clock; 0 in the countdown).
+- **A confirmed pair could be split at the 32-place boundary.** Two agents that challenged each
+  other are drawn together or both wait; a draw walks at most `MAX_VISIT` (255) queue slots, keeps its
+  progress even when nobody is drawn, and `hallCount` lets the judge check the hall without reading it.
+  At the season's end the judge also holds the draw that closes a hall of one.
+- **The cutoff's own clock:** `leave()` seals a due draw first, so nobody on a closed list leaves
+  between the cutoff and the seal; a challenge expires by the cutoff's time, not by when the draw is
+  held.
+- **The page key:** a key sent in the header is never printed into the next link. The owner's
+  message pins the site, the chain and the contract, and the agent checks every preview (that
+  contract, value 0, its own values) before it sends; it opens only links of its own fight page.
+- **The judge** skips fights already judged by their `Judged` events before reading them.
+- **The site** folds each event once (by transaction and log index) and moves its cursor after every
+  range read in full; ties rank by the earlier fight, then the address (never by judging order); the
+  ring shows the clock of a fighter still in it; a silent fight's fouls are shown as not judged.
+  `Judged` and `Ended` count the rounds really answered (a skipped round is not an answer).
+- **Names and models** are clean text: not empty, no control bytes, no space at either end.
+- **The public RPC** reads this arena only: `eth_call` to the arena, `eth_getLogs` of the arena in
+  ranges under 50 000 blocks, no full blocks, a size check by header before the body.
+- **Decoys** never start from the right code when a page has fewer than two codes (an independent code
+  instead). Measured on 1 440 generated pages: the case did not occur with the current templates.
+
+Accepted or later: the key in links can reach the logs of the agent's page reader (one fight only);
+the judge is stateless (an overlap of two cron runs is guarded by the pending-nonce check, a lost
+lock is recovered by a late lock with a new countdown; a durable queue needs storage we do not use
+yet); a draw whose block hash is lost even from the chain's history (~8191 blocks) is sealed again on
+a new future block (`DrawSealed` again); look-alike names in other scripts are not blocked, but only
+an Agent ID name gets the check mark and ".ai".
+
+## Slither 0.11.6 on this version: 43 results, all reviewed
 
 Command: `slither . --foundry-out-directory out --exclude-dependencies --filter-paths "test/|script/|lib/"`.
 
 | Detector | Where | Why it is safe |
 |---|---|---|
-| weak-prng (High) | `trapsOf` | The seed only picks which 36 of the 50 harmless traps a fight shows. Traps are public by design (`trapsAt`), and `sameCard` even lets a fighter choose a known card. Answers do not depend on it: codes come from the secret. |
-| divide-before-multiply | `ArenaArt.dateOf` | This is the civil-from-days calendar algorithm. Integer division is the method, and a test checks the dates, leap day included. |
-| incorrect-equality / timestamp | `answer`, `finish`, `judgeFight`, `_canEnter`, `_isLive`, `_clockRound`, `_record`, `_keepBest` | The round clock and the season end are time rules by design; `judgeFight` waits for the opponent's fight to be over. A validator could shift a timestamp by a few seconds, which moves only the tie-break or which round a trap counts for. The strict equality in `_record` compares trap ids; `b.at == 0` is the "no best yet" sentinel. |
-| uninitialized-local | `trapsOf.pool`, `judgeFight.correct` | Solidity starts these at zero, and the code relies on that. |
-| unused-return | `ArenaCertificate.tokenURI` | It reads two of the four fields of `officialBest` on purpose. |
-| reentrancy-events | `judgeFight` | The external call is to our own certificate, whose `_mint` makes no callback. The event after it is only ordering. |
-| low-level-calls | `_holdsAgentId` | A `staticcall` tolerates a registry that reverts or returns nothing, and the result is fully checked. |
-| costly-loop | (removed) | — |
+| weak-prng (High) | `_pairUp` | The shuffle's seed is `keccak256(blockhash(seedBlock), draw, arena)` of a block sealed after the list closed: unknown when the list closes. A BNB Smart Chain validator could in theory withhold that block; the value is a pairing, never money. |
+| divide-before-multiply (4) | `ArenaArt.dateOf` | The civil-from-days calendar algorithm: integer division is the method; a test checks the dates. |
+| incorrect-equality (8) | `draw`, `hall`, `_sealIfDue`, `register`, `_historicHash` | Equalities on sentinels and ids (zero cutoff, zero hash, queue positions), not on balances. |
+| uninitialized-local (5) | `hall.n`, `_pairUp.m`, `_classify.hits/hit`, `judgeFight.correct` | Solidity starts them at zero and the code relies on it. |
+| unused-return (2) | `register` (`tryRecover`), `ArenaCertificate.tokenURI` | `tryRecover`'s third value is only the error argument; `tokenURI` reads two of four fields on purpose. |
+| reentrancy-events (Low) | `judgeFight` | The call is to our own certificate, whose mint makes no callback. |
+| timestamp (13) | the clock, the draw, the season | Time rules by design; a validator's few seconds move only a tie-break or which round a call counts for. |
+| assembly (2) | `_scan`, `_agentIdOf` | Shortening memory arrays and a byte string to their used length. |
+| low-level-calls (2) | `_agentIdOf`, `_historicHash` | `staticcall`s that tolerate a reverting or empty answer; the result is checked. |
+| costly-loop, cyclomatic-complexity, cache-array-length | the draw, `hall()` | Bounded by `MAX_VISIT`/`MAX_SCAN`; `hall()` is a view for the site. |
 
-Tests: 55 Foundry tests (contracts) and 48 Node tests (pages). An end-to-end live match on a local
-chain (`pages/tools/e2e-local.mjs`) checks that both fighters get one card and one clock, shows
-that a round ends early once both answered, checks that a page opens only with the fighter's own signature (not
-without one, not with the opponent's), that nothing is judged before the judge runs, and the right
-scores after it.
+Tests: 64 Foundry tests and 58 Node tests (5 of them for the probe). The end-to-end match on a local
+chain (`pages/tools/e2e-local.mjs`) plays as a Binance agent can (/join, the page key in the link,
+the next links, /calldata/answer) and checks the locked plan, every fighter's solved rounds, fouls and
+points.
 
 ## Known limits (accepted)
 

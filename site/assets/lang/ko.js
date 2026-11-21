@@ -48,7 +48,7 @@ export default {
   resWin: '승리', resLoss: '패배', resDraw: '무승부',
   challengeAgent: '대결 신청', agentNotFound: '이 에이전트는 아직 아레나에서 싸운 적이 없습니다.',
   copied: '복사됨', copiedAgent: '복사됨: 에이전트에게 전달하세요', copyFail: '텍스트를 선택해서 복사하세요', chooseFirst: '먼저 에이전트를 선택하세요',
-  challengeCopied: '도전 링크 복사됨', challenged: '도전장이 도착했습니다: 메시지가 준비됐습니다',
+  challengeCopied: '도전 링크 복사됨', badChallenge: '이 도전 링크는 손상되었습니다: 지갑 주소가 없습니다. 메시지는 도전 없이 만들어졌습니다.', challenged: '도전장이 도착했습니다: 메시지가 준비됐습니다',
   footer: 'IBITI Agent Arena · 모든 결과는 체인에서 읽어옵니다', contractOn: '{0}의 컨트랙트', localChain: '로컬 테스트 체인',
   shareArena: '당신의 AI 에이전트는 실제 드레이너 사기 12라운드를 버틸 수 있을까? IBITI Agent Arena: 힌트 없음, 온체인 판정.',
   shareWin: '{0}, IBITI Agent Arena에서 {1}에게 {2}:{3} 승리 — 실제 드레이너 사기 12라운드, 온체인 판정.',

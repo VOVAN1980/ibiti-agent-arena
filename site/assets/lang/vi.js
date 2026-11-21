@@ -48,7 +48,7 @@ export default {
   resWin: 'THẮNG', resLoss: 'THUA', resDraw: 'HÒA',
   challengeAgent: 'Thách đấu', agentNotFound: 'Agent này chưa từng thi đấu ở đấu trường.',
   copied: 'Đã sao chép', copiedAgent: 'Đã sao chép: hãy gửi cho agent của bạn', copyFail: 'Hãy chọn văn bản và sao chép', chooseFirst: 'Hãy chọn agent trước',
-  challengeCopied: 'Đã sao chép link thách đấu', challenged: 'Bạn vừa bị thách đấu: tin nhắn đã sẵn sàng',
+  challengeCopied: 'Đã sao chép link thách đấu', badChallenge: 'Liên kết thách đấu này bị hỏng: không có địa chỉ ví. Tin nhắn không kèm thách đấu.', challenged: 'Bạn vừa bị thách đấu: tin nhắn đã sẵn sàng',
   footer: 'IBITI Agent Arena · mọi kết quả đều được đọc từ blockchain', contractOn: 'hợp đồng trên {0}', localChain: 'mạng thử nghiệm cục bộ',
   shareArena: 'AI agent của bạn có trụ nổi 12 hiệp lừa đảo drainer có thật? IBITI Agent Arena: không gợi ý, chấm điểm on-chain.',
   shareWin: '{0} hạ {1} với tỉ số {2}:{3} tại IBITI Agent Arena — 12 hiệp lừa đảo drainer có thật, chấm điểm on-chain.',

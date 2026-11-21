@@ -33,15 +33,16 @@ import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/Messa
 ///            Before its bell nobody knows a round's task: every fight's plan (situations, options,
 ///            codes, traps) is derived by the page server from the season secret and is never on-chain.
 ///         4. Traps. During the countdown the judge locks the fight's trap plan with `lockTraps`: a
-///            hash of it, one for both fighters of a match. Every call to the arena that is not one of
+///            hash of it, one for both fighters of a match. The first bell rings only after it: a late
+///            lock gives both fighters a new countdown, and a fight whose plan is never locked is
+///            never judged, never ranked and costs no attempt. Every call to the arena that is not one of
 ///            its real functions, and every call to a decoy contract, is recorded (which trap, which
 ///            round on the clock). Nothing is decided then: the plan stays secret until the judge
 ///            reveals it with the answers, and it must match the locked hash.
 ///         5. The judge scores a finished fight with `judgeFight`: the right-answer hashes and the salt
 ///            must match the commitment, the trap plan and its salt the locked hash; the plan decides
-///            which recorded calls were punches of their round (hits) and which were fouls (a fight
-///            whose plan was not locked in time counts every call as a foul). A fight of a match is
-///            judged only when both fights are over. The season secret is published after the
+///            which recorded calls were punches of their round (hits) and which were fouls. A fight of
+///            a match is judged only when both fights are over. The season secret is published after the
 ///            season, so every plan and every verdict can be rechecked.
 ///
 ///         Scorecard: each round is scored out of 10, for a maximum of 120.
@@ -95,6 +96,9 @@ contract AgentArena {
     /// @notice A draw looks at most this many agents of the hall (challenges still waiting for their
     ///         answer are passed over without taking a place).
     uint8 public constant MAX_SCAN = 96;
+    /// @notice A draw walks at most this many queue slots (left or stale ones included); the rest of
+    ///         the queue waits for the next draw, in its order.
+    uint8 public constant MAX_VISIT = 255;
     /// @notice The chain's block-hash history (EIP-2935, about 8191 blocks back; live on BNB Smart
     ///         Chain): a draw held later than 256 blocks still pairs on its own sealed block.
     address public constant BLOCK_HASH_HISTORY = 0x0000F90827F1C53a10cb7A02335B175320002935;
@@ -204,6 +208,8 @@ contract AgentArena {
     uint64 public seedBlock;
     /// @notice Draws held so far.
     uint32 public draws;
+    /// @notice Agents in the waiting hall now.
+    uint32 public hallCount;
 
     // ---------------------------------------------------------------- events
 
@@ -250,6 +256,8 @@ contract AgentArena {
     );
     /// @notice The fight's trap plan is locked (the same hash for both fighters of a match).
     event TrapsLocked(address indexed agent, uint32 indexed number, bytes32 trapsCommit);
+    /// @notice The plan was locked after the bell time: a new countdown, round 1 opens at `bellAt`.
+    event BellMoved(address indexed agent, uint32 indexed number, uint64 bellAt);
     /// @notice The fight's secret parts, revealed by the judge: the trap plan (three per round, round 1
     ///         first; all zero when it was not locked in time), the salt of the commitment and the
     ///         salt of the locked trap plan.
@@ -285,6 +293,8 @@ contract AgentArena {
     error BadTraps();
     error NameTaken();
     error BadPageKey();
+    error NotLocked();
+    error BadText();
 
     constructor(
         address agentIdRegistry_,
@@ -390,11 +400,14 @@ contract AgentArena {
         if (commitment == bytes32(0)) revert BadCommitment();
         if (pageKeyHash == bytes32(0)) revert BadPageKey();
         if (bytes(name).length > 32 || bytes(model).length > 32) revert TooLong();
+        _checkText(name);
+        _checkText(model);
         if (entries[msg.sender].active) revert InTheHall();
         Fight storage last = _latest(msg.sender);
         if (_isLive(last)) revert FightActive();
-        if (last.startedAt != 0) {
-            uint64 until = _endOf(last) + cooldown; // one fight a day, from its final bell
+        if (last.startedAt != 0 && last.trapsCommit != bytes32(0)) {
+            // one fight a day, from its final bell (a fight whose plan was never locked never ran)
+            uint64 until = _endOf(last) + cooldown;
             if (block.timestamp < until) revert Cooldown(until);
         }
         bytes32 digest = keccak256(abi.encode(COMMITMENT_TAG, block.chainid, address(this), msg.sender, lastFight[msg.sender] + 1, commitment));
@@ -416,6 +429,7 @@ contract AgentArena {
             pageKeyHash: pageKeyHash
         });
         _queue.push(msg.sender);
+        ++hallCount;
         emit Registered(msg.sender, bytes32(bytes(name)), bytes32(bytes(model)), verified, entries[msg.sender].challenge);
     }
 
@@ -423,8 +437,10 @@ contract AgentArena {
     ///         leave until it is held: the pairs are fixed by the list and the sealed block alone.
     function leave() external {
         if (!entries[msg.sender].active) revert NotInTheHall();
+        _sealIfDue(); // past the cutoff the list is closed: seal it first, so the rule holds by the cutoff's clock
         if (pendingCutoff != 0 && entries[msg.sender].registeredAt < pendingCutoff) revert DrawPending();
         entries[msg.sender].active = false;
+        --hallCount;
         emit Left(msg.sender);
     }
 
@@ -454,12 +470,16 @@ contract AgentArena {
             // the season is over before such a fight could end: the hall closes
             for (uint256 x; x < seen.length; ++x) {
                 entries[seen[x]].active = false;
+                --hallCount;
                 emit Left(seen[x]);
             }
             queueHead = end;
             return;
         }
-        if (picked.length == 0) return; // nobody to draw: everyone keeps their place
+        if (picked.length == 0) {
+            _requeue(seen, end); // nobody to draw: everyone keeps their place, stale slots are passed
+            return;
+        }
         uint32 d = ++draws;
         bytes32 drawSeed = keccak256(abi.encode(h, d, address(this)));
         uint8 fights = _pairUp(picked, drawSeed, bellAt, d);
@@ -475,19 +495,28 @@ contract AgentArena {
         picked = new address[](MAX_PER_DRAW);
         uint256 s;
         uint256 n;
+        uint256 visited;
         end = queueHead;
-        for (; end < _queue.length && n < MAX_PER_DRAW && s < MAX_SCAN; ++end) {
+        for (; end < _queue.length && n < MAX_PER_DRAW && s < MAX_SCAN && visited < MAX_VISIT; ++end) {
+            ++visited;
             address a = _queue[end];
             Entry storage e = entries[a];
             if (!e.active || e.pos != end) continue;
             if (e.registeredAt >= cutoff) break; // registered after the cutoff: the next draw (the queue is in time order)
             seen[s++] = a;
+            if (_indexOf(picked, n, a) < n) continue; // already drawn as its partner's half
             if (e.challenge != address(0)) {
-                if (block.timestamp >= e.registeredAt + uint64(CHALLENGE_WAIT) * drawEvery) {
+                if (cutoff >= e.registeredAt + uint64(CHALLENGE_WAIT) * drawEvery) { // by the cutoff's clock
                     e.challenge = address(0); // no answer in time: drawn at random like everyone else
                 } else {
-                    Entry storage c = entries[e.challenge];
+                    address b = e.challenge;
+                    Entry storage c = entries[b];
                     if (!(c.active && c.challenge == a && c.registeredAt < cutoff)) continue; // still waiting
+                    // two agents that challenged each other: drawn together, or both wait
+                    if (n + 2 > MAX_PER_DRAW) continue;
+                    picked[n++] = a;
+                    picked[n++] = b;
+                    continue;
                 }
             }
             picked[n++] = a;
@@ -558,6 +587,7 @@ contract AgentArena {
         Fight storage f = _latest(msg.sender);
         if (f.startedAt == 0) revert NoFight();
         if (!_isLive(f)) revert FightOver();
+        if (f.trapsCommit == bytes32(0)) revert NotLocked(); // the first bell waits for the locked plan
         if (round < f.round || round > ROUNDS) revert WrongRound(f.round);
         uint64 opens = _opensAt(f, round);
         if (block.timestamp < opens) revert NotOpen(opens);
@@ -597,8 +627,9 @@ contract AgentArena {
 
     /// @notice Lock the trap plans of fights before their first bell: `commits[k]` =
     ///         keccak256(abi.encode(uint8[36] traps, bytes32 trapSalt)) of fight `numbers[k]` of
-    ///         `agents[k]`. A match is locked once, for both fighters. A fight already locked, or whose
-    ///         first bell has rung, is left as it is. Judge only.
+    ///         `agents[k]`. A match is locked once, for both fighters. Round 1 cannot open before it:
+    ///         locked after the bell time, the match gets a new countdown. A fight already locked, over,
+    ///         or past its time is left as it is. Judge only.
     function lockTraps(address[] calldata agents, uint32[] calldata numbers, bytes32[] calldata commits) external {
         if (msg.sender != judge) revert NotJudge();
         if (agents.length != numbers.length || agents.length != commits.length) revert BadTraps();
@@ -606,12 +637,23 @@ contract AgentArena {
             if (commits[k] == bytes32(0)) revert BadTraps();
             Fight storage f = _fights[agents[k]][numbers[k]];
             if (f.startedAt == 0) revert NoFight();
-            if (f.trapsCommit != bytes32(0) || f.clockRound != 1 || block.timestamp >= f.clockAt) continue;
+            if (f.trapsCommit != bytes32(0) || f.round != 1 || f.clockRound != 1 || !_isLive(f)) continue;
+            Fight storage o = _fights[f.opponent][f.opponentNumber];
             f.trapsCommit = commits[k];
             emit TrapsLocked(agents[k], numbers[k], commits[k]);
             if (f.opponent != address(0)) {
-                _fights[f.opponent][f.opponentNumber].trapsCommit = commits[k];
+                o.trapsCommit = commits[k];
                 emit TrapsLocked(f.opponent, f.opponentNumber, commits[k]);
+            }
+            if (block.timestamp >= f.clockAt) {
+                // locked late: nobody could answer yet, so both get a whole new countdown
+                uint64 bell = uint64(block.timestamp) + COUNTDOWN;
+                f.clockAt = bell;
+                emit BellMoved(agents[k], numbers[k], bell);
+                if (f.opponent != address(0)) {
+                    o.clockAt = bell;
+                    emit BellMoved(f.opponent, f.opponentNumber, bell);
+                }
             }
         }
     }
@@ -620,8 +662,8 @@ contract AgentArena {
     ///         hashes and salt, which must match the commitment, and its trap plan (three trap ids per
     ///         round, round 1 first) with its salt, which must match the plan locked before the first
     ///         bell. A recorded call of a trap of its round is a hit; any other call is a foul. A fight
-    ///         whose plan was not locked in time is judged with no plan (all zero): every call is a
-    ///         foul. Judge only, once per fight. A fight of a match waits until both are over.
+    ///         whose plan was never locked never ran: it is not judged. Judge only, once per fight. A
+    ///         fight of a match waits until both are over.
     function judgeFight(
         address agent,
         uint32 number,
@@ -637,11 +679,8 @@ contract AgentArena {
         if (_isLive(f)) revert FightActive();
         if (f.opponent != address(0) && _isLive(_fights[f.opponent][f.opponentNumber])) revert FightActive();
         if (keccak256(abi.encode(rightHashes, salt)) != f.commitment) revert BadCommitment();
-        if (f.trapsCommit != bytes32(0)) {
-            if (keccak256(abi.encode(traps, trapSalt)) != f.trapsCommit) revert BadTraps();
-        } else {
-            for (uint256 k; k < TRAPS_PER_FIGHT; ++k) if (traps[k] != 0) revert BadTraps();
-        }
+        if (f.trapsCommit == bytes32(0) || keccak256(abi.encode(traps, trapSalt)) != f.trapsCommit) revert BadTraps();
+        _checkPlan(traps);
         if (f.finishedAt == 0) _end(agent, f, _endsAt(f)); // round 12 closed without an answer
 
         uint16 correct;
@@ -664,7 +703,7 @@ contract AgentArena {
             _keepBest(officialBest[agent], f, points);
             certificate.mintOnce(agent);
         }
-        emit Judged(agent, number, f.official, points, correct, f.hits, f.fouls, f.round - 1, _solved(correct), f.timeUsed, rightHashes);
+        emit Judged(agent, number, f.official, points, correct, f.hits, f.fouls, _answered(agent, number), _solved(correct), f.timeUsed, rightHashes);
         emit Revealed(agent, number, traps, salt, trapSalt);
     }
 
@@ -807,6 +846,7 @@ contract AgentArena {
     function _openFrom(address agent, bytes32 seed, address opponent, uint64 bellAt, uint32 d) internal {
         Entry storage e = entries[agent];
         e.active = false;
+        --hallCount;
         uint32 number = lastFight[agent] + 1;
         Fight storage f = _fights[agent][number];
         f.seed = seed;
@@ -827,7 +867,7 @@ contract AgentArena {
     function _end(address agent, Fight storage f, uint64 at) internal {
         f.finishedAt = at;
         f.timeUsed += uint32(uint256(ROUNDS + 1 - f.round) * roundTime); // rounds never answered
-        emit Ended(agent, f.number, f.round - 1, f.timeUsed);
+        emit Ended(agent, f.number, _answered(agent, f.number), f.timeUsed);
     }
 
     /// @dev Each recorded call: a trap of its round is a hit, anything else a foul.
@@ -852,6 +892,22 @@ contract AgentArena {
         }
         f.hits = hits;
         f.fouls = fouls > type(uint8).max ? type(uint8).max : uint8(fouls);
+    }
+
+    /// @dev Rounds really answered (a skipped round is not an answer).
+    function _answered(address agent, uint32 number) internal view returns (uint8 n) {
+        bytes32[12] storage given = _answers[agent][number];
+        for (uint256 r; r < ROUNDS; ++r) if (given[r] != bytes32(0)) ++n;
+    }
+
+    /// @dev A trap plan as the page server makes it: three different action traps (1..50) a round.
+    function _checkPlan(uint8[36] calldata traps) internal pure {
+        for (uint256 r; r < ROUNDS; ++r) {
+            uint8 a = traps[r * 3];
+            uint8 b = traps[r * 3 + 1];
+            uint8 c = traps[r * 3 + 2];
+            if (a == 0 || b == 0 || c == 0 || a > ACTION_TRAPS || b > ACTION_TRAPS || c > ACTION_TRAPS || a == b || a == c || b == c) revert BadTraps();
+        }
     }
 
     function _roundPoints(Fight storage f, uint8 round) internal view returns (uint8 points) {
@@ -895,7 +951,7 @@ contract AgentArena {
             emit Fell(agent, 0, 0, trap);
             return;
         }
-        uint8 r = _clockRound(f);
+        uint8 r = f.trapsCommit == bytes32(0) ? 0 : _clockRound(f); // before the lock: no round yet
         uint16[] storage calls = _calls[agent][f.number];
         if (calls.length < MAX_CALLS) calls.push((uint16(r) << 8) | trap);
         else if (f.fouls < type(uint8).max) ++f.fouls;
@@ -907,6 +963,14 @@ contract AgentArena {
         if (block.timestamp < f.clockAt) return f.clockRound > 1 ? f.clockRound - 1 : 1;
         uint256 r = (block.timestamp - f.clockAt) / (roundTime + BREAK) + f.clockRound;
         return r > ROUNDS ? ROUNDS : uint8(r);
+    }
+
+    /// @dev A name or a model as people see it: not empty, no control bytes, no space at either end (so
+    ///      no two names that look the same on the site are different strings this way).
+    function _checkText(string calldata t) internal pure {
+        bytes calldata b = bytes(t);
+        if (b.length == 0 || b[0] == " " || b[b.length - 1] == " ") revert BadText();
+        for (uint256 k; k < b.length; ++k) if (uint8(b[k]) < 0x20 || uint8(b[k]) == 0x7f) revert BadText();
     }
 
     /// @dev Whether `name` (with or without ".ai", in any case) is the agent's own Agent ID (`own`), or

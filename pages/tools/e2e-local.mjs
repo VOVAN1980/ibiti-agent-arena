@@ -108,3 +108,15 @@ for (const [i, f] of fighters.entries()) {
   console.log(`${i === 0 ? 'Red ' : 'Blue'}: before the judge correct=${before[i].correct}; after: solved ${after.correct.toString(2).split('1').length - 1}/12, hits ${after.hits.toString(2).split('1').length - 1}, fouls ${after.fouls}, points ${points}, time ${after.timeUsed}s`);
 }
 if (j.judged !== 2) throw new Error(`the judge scored ${j.judged} fights`);
+// what the script played: Red wrong in round 5 and one trap call in round 2 (round 2's punch or a foul,
+// as the plan has it); Blue copies Red's code in round 7 (wrong for Blue)
+const red = await chain.fight(fighters[0].agent);
+const blue = await chain.fight(fighters[1].agent);
+const solved = (f) => f.correct.toString(2).split('1').length - 1;
+if (BigInt(red.trapsCommit) === 0n || red.trapsCommit !== blue.trapsCommit) throw new Error('not one locked plan for both');
+if (solved(red) !== 11 || solved(blue) !== 11 || (red.correct & (1 << 4)) || (blue.correct & (1 << 6))) throw new Error('the solved rounds are not what was played');
+const pointsOf = (f) => Number(cast('call', '--rpc-url', rpc, dep.arena, 'pointsOf(address)(uint8)', f.agent));
+const redHit = red.hits !== 0n;
+if (pointsOf(fighters[0]) !== 108 || pointsOf(fighters[1]) !== 110) throw new Error('the points are not what the rules give');
+if (redHit ? red.fouls !== 0 : red.fouls !== 1) throw new Error("Red's trap call is neither one hit nor one foul");
+console.log(`checked: one locked plan, 11 rounds solved each, Red's call ${redHit ? 'a punch of round 2' : 'a foul'}, points 108 and 110`);

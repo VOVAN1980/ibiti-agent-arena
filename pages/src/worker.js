@@ -61,13 +61,14 @@ async function roundTimeOf(chain, arena) {
   return ROUND_TIMES.get(arena);
 }
 
-/** The last round of a fight that has opened by `now` (0 before the bell; 12 once the fight is over). */
+/** The last round of a fight that really opened: by `now`, or by its end if it is over (a fight
+ *  given up in the countdown opened none; one whose plan was never locked opened none either). */
 function openedUpTo(f, now, roundTime) {
-  if (f.startedAt === 0) return 0;
+  if (f.startedAt === 0 || BigInt(f.trapsCommit ?? '0x0') === 0n) return 0; // the first bell waits for the lock
   const endsAt = f.clockAt + (12 - f.clockRound) * (roundTime + BREAK) + roundTime;
-  if (f.finishedAt !== 0 || now > endsAt) return 12;
-  if (now < f.clockAt) return f.clockRound - 1;
-  return Math.min(12, f.clockRound + Math.floor((now - f.clockAt) / (roundTime + BREAK)));
+  const at = Math.min(f.finishedAt !== 0 ? f.finishedAt : now, endsAt);
+  if (at < f.clockAt) return f.clockRound - 1;
+  return Math.min(12, f.clockRound + Math.floor((at - f.clockAt) / (roundTime + BREAK)));
 }
 
 /** The audience's view of a round: its theme, never before its bell. A match is fought on one card,
@@ -79,8 +80,14 @@ async function task(url, env, chain, agent, number, round) {
   if (f.startedAt === 0) return json(404, { error: 'no such fight' });
   const roundTime = await roundTimeOf(chain, env.ARENA);
   const now = await chain.now();
-  let upTo = openedUpTo(f, now, roundTime);
-  if (f.opponent !== ZERO) upTo = Math.min(upTo, openedUpTo(await chain.fightOf(f.opponent, f.opponentNumber), now, roundTime));
+  // while anyone of the card still fights, a theme is open only up to the round every such fighter has
+  // reached (it must not tip off one still in the ring); once both are out, up to the last round that
+  // really opened for either (a match given up in the countdown opened none)
+  const fights = [f, ...(f.opponent !== ZERO ? [await chain.fightOf(f.opponent, f.opponentNumber)] : [])];
+  const endsAt = (x) => x.clockAt + (12 - x.clockRound) * (roundTime + BREAK) + roundTime;
+  const live = fights.filter((x) => x.finishedAt === 0 && now <= endsAt(x));
+  const opened = (x) => openedUpTo(x, now, roundTime);
+  const upTo = live.length ? Math.min(...live.map(opened)) : Math.max(...fights.map(opened));
   if (round > upTo) return json(425, { error: 'this round has not opened yet', round });
   const id = planOf(keys.cardSeed(f.seed)).order[round - 1];
   return json(200, { round, ...themeOf(id, url.searchParams.get('lang') ?? 'en') });
@@ -89,7 +96,10 @@ async function task(url, env, chain, agent, number, round) {
 /** deps: { chain } to read the arena through, { authorization } the request's Authorization header. */
 export async function handleFight(url, env, deps = {}) {
   if (url.pathname === '/skill.md') {
-    const body = skillMd({ arena: env.ARENA, chainId: env.CHAIN_ID ?? 56, site: env.SITE_URL ?? url.origin, roundTime: Number(env.ROUND_TIME ?? 60) });
+    // the draw and the pause between fights as the arena itself has them (the defaults if unreadable)
+    const reader = deps.chain ?? makeChain({ rpc: env.RPC_URL, arena: env.ARENA });
+    const settings = reader.timings ? await reader.timings().catch(() => ({})) : {};
+    const body = skillMd({ arena: env.ARENA, chainId: env.CHAIN_ID ?? 56, site: env.SITE_URL ?? url.origin, roundTime: Number(env.ROUND_TIME ?? 60), ...settings });
     return new Response(body, { headers: { ...HEADERS, 'content-type': 'text/markdown; charset=utf-8' } });
   }
   if (url.pathname === '/calldata/answer') {
@@ -126,7 +136,8 @@ export async function handleFight(url, env, deps = {}) {
   const key = String(header?.[1] ?? url.searchParams.get('key') ?? '').trim().toLowerCase().replace(/^0x/, '');
   const keyHash = /^[0-9a-f]{64}$/.test(key) ? keccak256(key).toLowerCase() : null;
   const step = Math.max(1, Math.floor(Number(url.searchParams.get('step')) || 1));
-  const next = `${site}/fight/${agent}?key=${key}&step=${step + 1}${url.searchParams.get('format') === 'md' ? '&format=md' : ''}`;
+  // a key that came in the header stays out of the link; a key that came in the link goes on in it
+  const next = `${site}/fight/${agent}?${header ? '' : `key=${key}&`}step=${step + 1}${url.searchParams.get('format') === 'md' ? '&format=md' : ''}`;
   const page = (status, body) => text(status, `${body}\n\nNext: ${next}`);
   const denied = () => text(401, 'These pages are for the fighter only: open them with the page key from your /join answer, as ?key=<your page key> (or the header "Authorization: Key <your page key>"). Use the key that came with the transaction you registered with.');
 
@@ -155,6 +166,10 @@ export async function handleFight(url, env, deps = {}) {
   const now = await chain.now();
   const c = clockOf(f, now, roundTime);
   if (c.phase === 'over') return text(410, 'This fight is over. The scorecard is on the site.');
+  if (BigInt(f.trapsCommit ?? '0x0') === 0n && c.phase !== 'countdown') {
+    // the first bell waits for the judge to lock the fight's trap plan; locked late, a new countdown
+    return page(200, `Fight #${f.number}: the first bell waits for the judge to lock this fight's trap plan. When it is locked, a new 60-second countdown starts. Open the next link in a few seconds.`);
+  }
   if (c.phase === 'countdown') return page(200, `Fight #${f.number}: the countdown is running. Round 1 opens at ${hms(c.opensAt)} UTC (in ${c.opensAt - now} s). Nothing about any round is known before its bell. Open the next link then.`);
   if (c.phase === 'break') return page(200, `Break. Round ${c.round} opens at ${hms(c.opensAt)} UTC (in ${c.opensAt - now} s). Open the next link then.`);
   if (f.round > c.round) {

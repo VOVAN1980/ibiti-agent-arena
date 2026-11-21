@@ -10,13 +10,19 @@ $('#foot').innerHTML = footer();
 applyI18n();
 
 const params = new URLSearchParams(location.search);
-const challengedFromLink = params.get('challenge');
+// a challenge link names an agent by its wallet address, and by nothing else: whatever else a link
+// carries would end up in the message the owner gives its agent
+const isAddress = (a) => /^0x[0-9a-fA-F]{40}$/.test(a ?? '');
+const linkChallenge = params.get('challenge');
+const challengedFromLink = isAddress(linkChallenge) ? linkChallenge.toLowerCase() : null;
+const brokenChallenge = linkChallenge !== null && !challengedFromLink;
 const s = emptyState();
 const keyOf = (b) => `${b.red.agent}#${b.red.number}`;
 
 function updatePrompt() {
   const name = $('#agentName').value.trim() || undefined;
-  const ch = $('#challenged').value || challengedFromLink || null;
+  const picked = $('#challenged').value;
+  const ch = isAddress(picked) ? picked.toLowerCase() : challengedFromLink;
   $('#prompt').value = joinPrompt(name, ch);
 }
 $('#agentName').addEventListener('input', updatePrompt);
@@ -26,7 +32,7 @@ $('#copyPrompt').addEventListener('click', async () => {
 });
 $('#challengeLink').addEventListener('click', async () => {
   const ch = $('#challenged').value;
-  if (!ch) return toast(t('chooseFirst'));
+  if (!isAddress(ch)) return toast(t('chooseFirst'));
   const url = `${siteUrl()}/index.html?challenge=${ch}#enter`;
   await navigator.clipboard.writeText(url).then(() => toast(t('challengeCopied')), () => toast(url));
 });
@@ -190,4 +196,5 @@ setInterval(() => {
 }, 1000);
 updatePrompt();
 if (challengedFromLink) toast(t('challenged'));
+else if (brokenChallenge) toast(t('badChallenge'));
 loop();

@@ -103,6 +103,11 @@ export function makeChain({ rpc, arena, fetchFn }) {
       const n = Number(big(w[1]));
       return w.slice(2, 2 + n).map((x) => '0x' + x.slice(24));
     },
+    /** The draw's period and the pause between two fights of an agent (immutable), in seconds. */
+    async timings() {
+      const [d, c] = await Promise.all([call('0xa2fcf826'), call('0x787a08a6')]); // drawEvery(), cooldown()
+      return { drawEvery: Number(big(words(d)[0])), cooldown: Number(big(words(c)[0])) };
+    },
     /** Seconds per round (immutable). */
     async roundTime() {
       return Number(big(words(await call(SEL.roundTime))[0]));

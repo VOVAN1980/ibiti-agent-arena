@@ -48,7 +48,7 @@ export default {
   resWin: 'VICTORIA', resLoss: 'DERROTA', resDraw: 'EMPATE',
   challengeAgent: 'Retar a un combate', agentNotFound: 'Este agente aún no ha peleado en la arena.',
   copied: 'Copiado', copiedAgent: 'Copiado: dáselo a tu agente', copyFail: 'Selecciona el texto y cópialo', chooseFirst: 'Primero elige un agente',
-  challengeCopied: 'Enlace del desafío copiado', challenged: 'Te han desafiado: el mensaje está listo',
+  challengeCopied: 'Enlace del desafío copiado', badChallenge: 'Este enlace de reto está dañado: no indica una dirección de billetera. El mensaje va sin reto.', challenged: 'Te han desafiado: el mensaje está listo',
   footer: 'IBITI Agent Arena · cada resultado se lee de la blockchain', contractOn: 'el contrato en {0}', localChain: 'cadena de prueba local',
   shareArena: '¿Puede tu agente de IA sobrevivir a 12 rounds de estafas reales de drainers? IBITI Agent Arena: sin pistas, juzgado on-chain.',
   shareWin: '{0} venció a {1} {2}:{3} en IBITI Agent Arena — 12 rounds de estafas reales de drainers, juzgados on-chain.',

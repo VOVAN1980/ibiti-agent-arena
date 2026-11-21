@@ -7,9 +7,10 @@
 // - the draw: after a cutoff it seals the draw (if no registration did it already), waits for the
 //   sealed block, then holds the draw on its hash (AgentArena.draw); with fewer than two agents in the
 //   hall there is nobody to pair, so it is left alone (a later registration closes it);
-// - the trap plans: every fight drawn in the last minutes whose first bell has not rung yet (drawn by
-//   this judge or by anyone else) gets its trap plan locked (AgentArena.lockTraps), one hash per
-//   match, so the judge can later judge it only with that plan;
+// - the trap plans: every fight drawn in the last twenty minutes that is still waiting for its plan
+//   (drawn by this judge or by anyone else) gets it locked (AgentArena.lockTraps), one hash per match,
+//   so the judge can later judge it only with that plan. Its first bell waits for the lock: locked
+//   late, the match gets a new countdown;
 // - reads the arena's Started events of the last LOOKBACK_BLOCKS blocks (in chunks); a fight lasts at
 //   most 14 min 50 s, so the window leaves hours for retries. A fight left out longer (an outage) is
 //   judged by hand with judge.mjs;
@@ -18,7 +19,7 @@
 //   gas), or registered with a foreign commitment (it can never be judged);
 // - does nothing while an earlier transaction of the judge is still pending (no double sending);
 // - judges with the fight's right-answer hashes, salt and the trap plan it locked (plan.js; a fight
-//   whose plan was not locked in time is judged with none: every call a foul), at most
+//   whose plan was never locked never ran and is not judged), at most
 //   MAX_PER_RUN a run and MAX_PER_HOUR an hour (a guard against draining the judge's gas; the hour is
 //   counted on the chain itself, from the Judged events of the last hour of blocks);
 // - simulates every transaction first (eth_estimateGas), signs it here with the judge key (a Worker
@@ -43,6 +44,8 @@ const JUDGE = SEL('judge()');
 const DRAW = SEL('draw()');
 const PENDING_CUTOFF = SEL('pendingCutoff()');
 const SEED_BLOCK = SEL('seedBlock()');
+const HALL_COUNT = SEL('hallCount()');
+const SEASON_END = SEL('seasonEnd()');
 const CHUNK = 5000;
 const ZERO = '0x' + '0'.repeat(40);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -172,7 +175,12 @@ export async function judgeRun(env, { fetchFn = fetch, log = console.log, wait =
   let drew = false;
   if ((await word(PENDING_CUTOFF)) === 0) {
     const at = await chain.nextDrawAt();
-    if (at !== 0 && (await timeNow()) >= at && (await chain.hall()).length >= 2) { // no fight without an opponent
+    const t = await timeNow();
+    const inHall = await word(HALL_COUNT);
+    // no fight without an opponent; but at the season's end the draw closes the hall, one agent included
+    const rt = await chain.roundTime();
+    const closing = at + 60 + 12 * rt + 11 * BREAK > (await word(SEASON_END));
+    if (at !== 0 && t >= at && (inHall >= 2 || (closing && inHall >= 1))) {
       const sealed = await send(DRAW, 'seal the draw');
       for (let i = 0; sealed && i < 20 && !(await rpc('eth_getTransactionReceipt', [sealed])); i++) await wait(1000);
     }
@@ -188,7 +196,7 @@ export async function judgeRun(env, { fetchFn = fetch, log = console.log, wait =
   // ---- the trap plans of the fights just drawn, locked before their first bell
   {
     const latestNow = await blockNow();
-    const recent = Math.max(Number(env.DEPLOY_BLOCK ?? 0), latestNow - Math.ceil(Number(env.BLOCKS_PER_WEEK ?? 604800) / (7 * 24 * 60)) * 5); // five minutes of blocks
+    const recent = Math.max(Number(env.DEPLOY_BLOCK ?? 0), latestNow - Math.ceil(Number(env.BLOCKS_PER_WEEK ?? 604800) / (7 * 24 * 60)) * 20); // twenty minutes of blocks: a fight lasts at most 15
     const logs = await rpc('eth_getLogs', [{ address: arena, fromBlock: '0x' + recent.toString(16), toBlock: '0x' + latestNow.toString(16), topics: [STARTED] }]);
     const t = await timeNow();
     const items = [];
@@ -200,7 +208,9 @@ export async function judgeRun(env, { fetchFn = fetch, log = console.log, wait =
       const seed = '0x' + l.data.slice(2, 66);
       if (seen.has(seed)) continue; // the other fighter of a match: one lock covers both
       const f = await chain.fightOf(agent, number);
-      if (BigInt(f.trapsCommit) !== 0n || f.clockRound !== 1 || t >= f.clockAt) continue;
+      const rt = await chain.roundTime();
+      const endsAt = f.clockAt + 11 * (rt + BREAK) + rt;
+      if (BigInt(f.trapsCommit) !== 0n || f.round !== 1 || f.clockRound !== 1 || f.finishedAt !== 0 || t > endsAt) continue;
       seen.add(seed);
       const { traps } = planOf(keys.cardSeed(f.seed));
       items.push({ agent, number, commit: keys.trapsCommit(traps, keys.trapSalt(arena, f.seed)) });
@@ -214,6 +224,7 @@ export async function judgeRun(env, { fetchFn = fetch, log = console.log, wait =
   const roundTime = await chain.roundTime();
   const blocksPerHour = Math.ceil(Number(env.BLOCKS_PER_WEEK ?? 604800) / 168);
   const fights = new Map();
+  const done = new Set(); // fights judged already, by their Judged events: never read again
   let lastHour = 0; // judgements sent in the last hour
   for (let from = Math.max(Number(env.DEPLOY_BLOCK ?? 0), latest - Math.max(Number(env.LOOKBACK_BLOCKS ?? 20000), blocksPerHour)); from <= latest; from += CHUNK) {
     const to = Math.min(latest, from + CHUNK - 1);
@@ -221,6 +232,7 @@ export async function judgeRun(env, { fetchFn = fetch, log = console.log, wait =
     for (const l of logs) {
       if (l.topics[0] === JUDGED) {
         if (parseInt(l.blockNumber, 16) > latest - blocksPerHour) lastHour++;
+        done.add(l.topics[1] + l.topics[2]);
       } else fights.set(l.topics[1] + l.topics[2], { agent: '0x' + l.topics[1].slice(26), number: parseInt(l.topics[2], 16) });
     }
   }
@@ -232,24 +244,22 @@ export async function judgeRun(env, { fetchFn = fetch, log = console.log, wait =
 
   const over = (f) => f.finishedAt !== 0 || now > f.clockAt + (12 - f.clockRound) * (roundTime + BREAK) + roundTime;
   let judged = 0;
-  for (const { agent, number } of fights.values()) {
+  for (const [id, { agent, number }] of fights) {
     if (judged >= budget) break;
+    if (done.has(id)) continue;
     const f = await chain.fightOf(agent, number);
     if (f.judged || !over(f)) continue;
     if (f.opponent !== ZERO && !over(await chain.fightOf(f.opponent, f.opponentNumber))) continue;
     if (f.round <= 1) continue; // nothing answered
     if (f.commitment.toLowerCase() !== keys.commitment(arena, agent, number).toLowerCase()) continue; // never judgeable
     const hashes = Array.from({ length: 12 }, (_, i) => answerHash(keys.code(arena, agent, number, i + 1)));
-    // the plan locked before the first bell, or none (every call a foul) if it was not locked in time
-    let traps = new Array(36).fill(0);
-    let trapSalt = '0x' + '0'.repeat(64);
-    if (BigInt(f.trapsCommit) !== 0n) {
-      traps = planOf(keys.cardSeed(f.seed)).traps;
-      trapSalt = keys.trapSalt(arena, f.seed);
-      if (keys.trapsCommit(traps, trapSalt).toLowerCase() !== f.trapsCommit.toLowerCase()) {
-        log(agent + '#' + number + ': its locked trap plan is not this server\'s: left out');
-        continue;
-      }
+    // the plan locked before the first bell; a fight whose plan was never locked never ran
+    if (BigInt(f.trapsCommit) === 0n) continue;
+    const traps = planOf(keys.cardSeed(f.seed)).traps;
+    const trapSalt = keys.trapSalt(arena, f.seed);
+    if (keys.trapsCommit(traps, trapSalt).toLowerCase() !== f.trapsCommit.toLowerCase()) {
+      log(agent + '#' + number + ': its locked trap plan is not this server\'s: left out');
+      continue;
     }
     const data = judgeCalldata(agent, number, hashes, keys.salt(arena, agent, number), traps, trapSalt);
     if ((await send(data, agent + '#' + number + ' judged')) !== null) judged++;

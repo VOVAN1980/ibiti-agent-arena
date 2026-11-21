@@ -94,12 +94,20 @@ function fight(s, agent, n) {
 export async function refresh(s) {
   const latest = parseInt(await rpc('eth_blockNumber', []), 16);
   const step = CFG.logStep ?? 50000;
+  // the cursor moves after every range folded in full, and an event is folded only once: a read that
+  // fails halfway never doubles answers, fouls or matches
+  s.seen ??= new Set();
   for (let from = s.fromBlock; from <= latest; from += step) {
     const to = Math.min(latest, from + step - 1);
     const logs = await rpc('eth_getLogs', [{ address: CFG.arena, fromBlock: '0x' + from.toString(16), toBlock: '0x' + to.toString(16) }]);
-    for (const l of logs) apply(s, l);
+    for (const l of logs) {
+      const id = l.transactionHash + ':' + l.logIndex;
+      if (s.seen.has(id)) continue;
+      s.seen.add(id);
+      apply(s, l);
+    }
+    s.fromBlock = to + 1;
   }
-  s.fromBlock = latest + 1;
   s.latestBlock = latest;
   s.now = await chainNow();
   // the waiting hall now (in order of registration) and the next cutoff
@@ -281,11 +289,12 @@ export function rating(s, { official = false, beforeBlock = Infinity } = {}) {
     const j = f.judged;
     if (!j || j.empty || j.block >= beforeBlock || (official && !j.official)) continue; // a silent fight is not ranked
     const b = best.get(f.agent);
-    if (!b || j.points > b.points || (j.points === b.points && j.timeUsed < b.timeUsed)) best.set(f.agent, { agent: f.agent, number: f.number, ...j });
+    if (!b || j.points > b.points || (j.points === b.points && j.timeUsed < b.timeUsed)) best.set(f.agent, { agent: f.agent, number: f.number, startBlock: f.block, ...j });
   }
   const fightsOf = (a) => [...s.fights.values()].filter((f) => f.agent === a && f.judged && !f.judged.empty).length;
   return [...best.values()]
-    .sort((a, b) => b.points - a.points || a.timeUsed - b.timeUsed || a.block - b.block)
+    // equal points and time: the earlier fight first, then the address (never the order of judging)
+    .sort((a, b) => b.points - a.points || a.timeUsed - b.timeUsed || a.startBlock - b.startBlock || (a.agent < b.agent ? -1 : 1))
     .map((r, i) => ({ ...r, rank: i + 1, name: nameOf(s, r.agent), model: s.fighters.get(r.agent)?.model ?? '', fights: fightsOf(r.agent) }));
 }
 

@@ -48,7 +48,7 @@ export default {
   resWin: 'VICTOIRE', resLoss: 'DÉFAITE', resDraw: 'NUL',
   challengeAgent: 'Défier en combat', agentNotFound: 'Cet agent n’a pas encore combattu dans l’arène.',
   copied: 'Copié', copiedAgent: 'Copié : donnez-le à votre agent', copyFail: 'Sélectionnez le texte et copiez-le', chooseFirst: 'Choisissez d’abord un agent',
-  challengeCopied: 'Lien du défi copié', challenged: 'Un défi vous attend : le message est prêt',
+  challengeCopied: 'Lien du défi copié', badChallenge: "Ce lien de défi est cassé : il n'indique pas d'adresse de portefeuille. Le message est sans défi.", challenged: 'Un défi vous attend : le message est prêt',
   footer: 'IBITI Agent Arena · chaque résultat est lu sur la blockchain', contractOn: 'le contrat sur {0}', localChain: 'chaîne de test locale',
   shareArena: 'Ton agent IA peut-il survivre à 12 rounds de vraies arnaques de drainers ? IBITI Agent Arena : aucun indice, jugé on-chain.',
   shareWin: '{0} a battu {1} {2}:{3} sur IBITI Agent Arena — 12 rounds de vraies arnaques de drainers, jugés on-chain.',

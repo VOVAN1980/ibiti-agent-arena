@@ -479,9 +479,9 @@ const PAGE_KEY_HASH = '0xba71975203170949a83539fc450e1488efe18f0c19a82896026cebf
 
 /** A fake arena: fight 2 of A, `round` = the first round not answered yet; the clock stands in
  *  `clockRound` (5 s into it), or in the countdown, or in the break after it. */
-function fakeChain({ round = 3, clockRound = round, live = true, startedAt = 1, commitment = KEYS.commitment(ARENA, A, 2), secretCommit = KEYS.commit, countdown = false, inBreak = false, inHall = false, opponent = null, pageKeyHash = PAGE_KEY_HASH } = {}) {
+function fakeChain({ round = 3, clockRound = round, live = true, startedAt = 1, commitment = KEYS.commitment(ARENA, A, 2), secretCommit = KEYS.commit, countdown = false, inBreak = false, inHall = false, opponent = null, pageKeyHash = PAGE_KEY_HASH, trapsCommit = '0x' + '77'.repeat(32) } = {}) {
   const now = countdown ? BELL - 4 : BELL + (Math.min(clockRound, 12) - 1) * 70 + (inBreak ? 64 : 5);
-  const mine = { seed: SEED, startedAt, finishedAt: 0, hits: 0n, number: 2, correct: 0, round, fouls: 0, official: true, clockAt: BELL, clockRound: 1, timeUsed: 0, late: 0, judged: false, commitment, opponent: opponent ? B : ZERO_ADDR, opponentNumber: opponent ? 1 : 0, pageKeyHash };
+  const mine = { seed: SEED, startedAt, finishedAt: 0, hits: 0n, number: 2, correct: 0, round, fouls: 0, official: true, clockAt: BELL, clockRound: 1, timeUsed: 0, late: 0, judged: false, commitment, opponent: opponent ? B : ZERO_ADDR, opponentNumber: opponent ? 1 : 0, pageKeyHash, trapsCommit };
   return {
     lastFight: async () => 2,
     fight: async () => mine,
@@ -661,6 +661,12 @@ test('only the fighter sees its pages: the key whose hash it registered, nothing
   assert.equal(await byHeader(`Key ${PAGE_KEY}`), 200);
   assert.equal(await byHeader(`Key ${'cd'.repeat(32)}`), 401);
   assert.equal((await get(`&key=${PAGE_KEY}`, fakeChain({ countdown: true, round: 1 }))).status, 200, 'the countdown');
+  const waiting = await get(`&key=${PAGE_KEY}`, fakeChain({ round: 1, trapsCommit: '0x' + '0'.repeat(64) }));
+  assert.match(waiting.body, /the first bell waits for the judge to lock this fight's trap plan/);
+  assert.ok(!waiting.body.includes('Round 1 of 12'), 'no round before the lock');
+  const viaHeader = await (await handleFight(new URL(`https://x/fight/${A}?format=md&step=3`), ENV, { chain: fakeChain({ countdown: true, round: 1 }), authorization: `Key ${PAGE_KEY}` })).text();
+  assert.match(viaHeader, /Next: https:\/\/x\/fight\/0x1{40}\?step=4&format=md/);
+  assert.ok(!viaHeader.includes(PAGE_KEY), 'a key sent in the header is never printed in a link');
   // a key is for one fight: another fight's hash does not open with it
   assert.equal((await get(`&key=${PAGE_KEY}`, fakeChain({ pageKeyHash: '0x' + 'ee'.repeat(32) }))).status, 401, "another fight's key");
   // the hall needs the key of the hall entry; a fight that is over needs none
@@ -730,6 +736,13 @@ test('the Cloudflare host: site settings, a read-only RPC, the fighters\' side',
   assert.equal((await get('/rpc')).status, 405, 'GET');
   const batch = await (await get('/rpc', { method: 'POST', body: '[{"method":"eth_call"}]' })).json();
   assert.equal(batch.error.message, 'read-only', 'one call at a time, no batches');
+  // this arena only, in bounded ranges: the judge shares the node
+  const ask = (method, params) => get('/rpc', { method: 'POST', body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) }).then((r) => r.json());
+  assert.equal((await ask('eth_call', [{ to: '0x' + '99'.repeat(20), data: '0x' }, 'latest'])).error.message, 'this arena only');
+  assert.equal((await ask('eth_getLogs', [{ address: '0x' + '99'.repeat(20), fromBlock: '0x1', toBlock: '0x2' }])).error.message, 'this arena only');
+  assert.equal((await ask('eth_getLogs', [{ address: ARENA, fromBlock: '0x0', toBlock: '0x' + (60000).toString(16) }])).error.message, 'a range of at most 50000 blocks');
+  assert.equal((await ask('eth_getBlockByNumber', ['latest', true])).error.message, 'no full blocks');
+  assert.equal((await get('/rpc', { method: 'POST', headers: { 'content-length': '9000' }, body: 'x' })).status, 413, 'too large, by its header');
   const skill = await (await get('/skill.md')).text();
   assert.ok(skill.includes('https://arena.example/join/<your wallet address>'), 'links point at this site');
 });
@@ -832,7 +845,8 @@ test('the Cloudflare judge keeps to 60 judgements an hour, counted on the chain'
   const key = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
   const word = (h) => String(h).replace(/^0x/, '').padStart(64, '0');
   // A's fight 1: over, 4 rounds answered, started with this server's commitment
-  const fight = '0x' + [SEED, '1', '64', '0', '1', '0', '5', '0', '1', 'a', '0', '0', '0', KEYS.commitment(ARENA, A, 1), '0', '1', '0'].map(word).join('');
+  const locked = KEYS.trapsCommit(planOf(KEYS.cardSeed(SEED)).traps, KEYS.trapSalt(ARENA, SEED));
+  const fight = '0x' + [SEED, '1', '64', '0', '1', '0', '5', '0', '1', 'a', '0', '0', '0', KEYS.commitment(ARENA, A, 1), '0', '1', '0', '1', locked].map(word).join('');
   const run = async (judgedLastHour) => {
     const sent = [];
     const logs = [{ topics: [STARTED, '0x' + word(A), '0x' + word('1')], blockNumber: '0x2328' }, ...Array.from({ length: judgedLastHour }, () => ({ topics: [JUDGED], blockNumber: '0x2700' }))];
@@ -882,12 +896,40 @@ test("the audience sees a round's theme only once it has opened, for both fighte
   assert.equal((await ask(4, fakeChain({ round: 3 }))).status, 425, 'the next round is secret until its bell');
   // a match: if this fight is over, the opponent still fights round 3 of the same card: round 4 stays secret
   const over = fakeChain({ round: 13, clockRound: 3, opponent: { finishedAt: 0, clockAt: BELL, clockRound: 1, round: 3 } });
-  over.fightOf = async (who) => (who === B ? { seed: SEED, startedAt: 1, finishedAt: 0, clockAt: BELL, clockRound: 1, opponent: A, opponentNumber: 2 } : { seed: SEED, startedAt: 1, finishedAt: BELL + 100, clockAt: BELL, clockRound: 1, opponent: B, opponentNumber: 1 });
+  over.fightOf = async (who) => (who === B ? { seed: SEED, startedAt: 1, finishedAt: 0, clockAt: BELL, clockRound: 1, opponent: A, opponentNumber: 2, trapsCommit: '0x' + '77'.repeat(32) } : { seed: SEED, startedAt: 1, finishedAt: BELL + 100, clockAt: BELL, clockRound: 1, opponent: B, opponentNumber: 1, trapsCommit: '0x' + '77'.repeat(32) });
   assert.equal((await ask(4, over)).status, 425);
   assert.equal((await ask(3, over)).status, 200);
+  // the first bell waits for the locked plan: no theme without it, even past the bell time
+  assert.equal((await ask(1, fakeChain({ round: 1, trapsCommit: '0x' + '0'.repeat(64) }))).status, 425);
+  // both gave up during the countdown: no round ever opened, so no theme, even after the fight
+  const gaveUp = fakeChain({ round: 1, live: false });
+  gaveUp.fightOf = async (who) => ({ seed: SEED, startedAt: 1, finishedAt: BELL - 20, clockAt: BELL, clockRound: 1, opponent: who === B ? A : B, opponentNumber: who === B ? 2 : 1, trapsCommit: '0x' + '77'.repeat(32) });
+  assert.equal((await ask(1, gaveUp)).status, 425, 'given up before the first bell: nothing opened');
+  // both stopped in round 3: rounds 1-3 opened, round 4 never did
+  const stopped = fakeChain({ round: 4, live: false });
+  stopped.fightOf = async (who) => ({ seed: SEED, startedAt: 1, finishedAt: BELL + 2 * 70 + 30, clockAt: BELL, clockRound: 1, opponent: who === B ? A : B, opponentNumber: who === B ? 2 : 1, trapsCommit: '0x' + '77'.repeat(32) });
+  assert.equal((await ask(3, stopped)).status, 200);
+  assert.equal((await ask(4, stopped)).status, 425, 'a round that never opened stays secret');
   // nowhere in the site's code
   for (const f of ['i18n.js', 'lang/ru.js', 'match.js']) {
     const code = readFileSync(new URL(`../../site/assets/${f}`, import.meta.url), 'utf8');
     assert.ok(!code.includes(TASKS[312].name) && !/task12/.test(code), `${f} holds no round theme`);
   }
+});
+
+test('no hints: with fewer than two codes on a page, no decoy is built from the right one', () => {
+  let lonely = 0;
+  for (let s = 0; s < 60; s++) {
+    const seed = KEYS.cardSeed('0x' + (s + 7000).toString(16).padStart(64, '0'));
+    for (let r = 1; r <= 12; r++) {
+      const code = KEYS.code(ARENA, A, s + 1, r);
+      const p = renderRound(base({ seed, round: r, code, passKey: KEYS.passKey, traps: [31, 32, 33], spare: [4, 5, 6, 7, 8, 9] }));
+      const text = p.md.replace(/[​­⁠]/g, '');
+      const codes = new Set(text.match(/[A-HJ-KM-NP-Z2-9]{4}(?:-[A-HJ-KM-NP-Z2-9]{4}){3}/g) ?? []);
+      if (codes.size > 2) continue; // several options: any of them may be a decoy's base
+      lonely++;
+      assert.ok(!text.toLowerCase().includes(code.toLowerCase().replaceAll('-', '')), `seed ${s} round ${r}: the right code, twisted, in a decoy`);
+    }
+  }
+  assert.ok(lonely > 0, 'pages with a single code were checked');
 });
