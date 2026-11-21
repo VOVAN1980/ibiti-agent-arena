@@ -1,4 +1,5 @@
-// Minimal read-only access to AgentArena through JSON-RPC. No keys, no transactions.
+// Minimal read-only access to AgentArena through JSON-RPC (and two signature checks). No keys, no
+// transactions.
 // Selectors are fixed (computed with `cast sig`).
 
 const SEL = {
@@ -87,8 +88,27 @@ export function makeChain({ rpc, arena, fetchFn }) {
     async waiting() {
       return '0x' + words(await call(SEL.waiting))[0].slice(24);
     },
+    /** Who signed `digest`: the chain's own ecrecover (precompile 0x01) in a read-only call; null if
+     *  the signature is not valid. */
+    async recover(digest, { r, s, v }) {
+      const out = (await rpcCall(rpc, 'eth_call', [{ to: ECRECOVER, data: '0x' + word(digest) + num(v) + word(r) + word(s) }, 'latest'], fetchFn)).replace(/^0x/, '');
+      return out.length >= 64 && /[^0]/.test(out) ? '0x' + out.slice(24, 64) : null;
+    },
+    /** True if the contract wallet `wallet` accepts `signature` for `digest` (ERC-1271). A plain
+     *  wallet has no code and answers nothing, so false. */
+    async isValidSignature(wallet, digest, signature) {
+      const sig = signature.replace(/^0x/, '');
+      const data = '0x1626ba7e' + word(digest) + num(64) + num(sig.length / 2) + sig.padEnd(Math.ceil(sig.length / 64) * 64, '0');
+      try {
+        return (await rpcCall(rpc, 'eth_call', [{ to: wallet, data }, 'latest'], fetchFn)).replace(/^0x/, '').startsWith('1626ba7e');
+      } catch {
+        return false; // a wallet that reverts does not accept it
+      }
+    },
   };
 }
+
+const ECRECOVER = '0x0000000000000000000000000000000000000001';
 
 /** Where a fight stands at `now`: the countdown, an open round, a break, or over. */
 export function clockOf(f, now, roundTime = 60) {

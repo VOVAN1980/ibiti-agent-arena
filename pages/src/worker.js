@@ -1,11 +1,16 @@
 // The page server (a Cloudflare Worker). Stateless: it holds no keys and no money.
 //
 //   GET /commit/<address>          the commitment to pass to start() for the agent's next fight
-//   GET /fight/<address>[?format=md]
+//   GET /access/<address>          what the agent signs (EIP-712) to see its own pages of that fight
+//   GET /fight/<address>?sig=<signature>[&format=md]
 //
 // One link per agent for the whole fight. It always shows the round the agent has to answer now;
 // answering on-chain opens the next round, so the agent just reloads the same link. Everything else
 // is answered with a short plain-text reason.
+//
+// Only the fighter sees a live fight's pages: the link needs the signature of its own wallet for
+// that fight (see access.js). Answers are public on-chain and a match is fought on one card, so
+// pages seen by anyone else would let them copy the fighter's decisions.
 //
 // Environment:
 //   RPC_URL   BNB Smart Chain JSON-RPC endpoint
@@ -21,6 +26,7 @@ import { makeChain, clockOf } from './chain.js';
 import { renderRound } from './render.js';
 import { skillMd } from './skill.js';
 import { arenaKeys } from './keys.js';
+import { accessRequest, signedBy } from './access.js';
 
 const HEADERS = { 'cache-control': 'no-store', 'x-robots-tag': 'noindex, nofollow', 'referrer-policy': 'no-referrer' };
 const hms = (unix) => new Date(unix * 1000).toISOString().slice(11, 19);
@@ -34,7 +40,7 @@ export async function handleFight(url, env, deps = {}) {
     const body = skillMd({ arena: env.ARENA, chainId: env.CHAIN_ID ?? 56, site: env.SITE_URL ?? url.origin, roundTime: Number(env.ROUND_TIME ?? 60) });
     return new Response(body, { headers: { ...HEADERS, 'content-type': 'text/markdown; charset=utf-8' } });
   }
-  const m = url.pathname.match(/^\/(fight|commit)\/(0x[0-9a-fA-F]{40})\/?$/);
+  const m = url.pathname.match(/^\/(fight|commit|access)\/(0x[0-9a-fA-F]{40})\/?$/);
   if (!m) return text(404, 'Not found. Your fight page is /fight/<your wallet address>.');
   const agent = m[2].toLowerCase();
 
@@ -53,6 +59,12 @@ export async function handleFight(url, env, deps = {}) {
     const next = (await chain.lastFight(agent)) + 1;
     return text(200, keys.commitment(env.ARENA, agent, next));
   }
+  const chainId = Number(env.CHAIN_ID ?? 56);
+  if (m[1] === 'access') {
+    // the live fight, or else the next one: sign it before start() or join()
+    const number = (await chain.lastFight(agent)) + ((await chain.isLive(agent)) ? 0 : 1);
+    return new Response(JSON.stringify(accessRequest(env.ARENA, chainId, agent, number)) + '\n', { headers: { ...HEADERS, 'content-type': 'application/json; charset=utf-8' } });
+  }
 
   const f = await chain.fight(agent);
   if (f.startedAt === 0) {
@@ -65,6 +77,9 @@ export async function handleFight(url, env, deps = {}) {
   if (f.round < 1 || f.round > 12) return text(410, 'All 12 rounds are answered. The scorecard is on the site.');
   if (f.commitment.toLowerCase() !== keys.commitment(env.ARENA, agent, f.number).toLowerCase()) {
     return text(409, 'This fight was started with a wrong commitment, so it cannot be judged. Call finish(), wait for the cooldown, get the commitment at /commit/<your address> and start again.');
+  }
+  if (!(await signedBy(chain, { arena: env.ARENA, chainId, agent, number: f.number, sig: url.searchParams.get('sig') }))) {
+    return text(401, `These pages are for the fighter only. Sign the request at /access/<your address> with your own wallet (EIP-712, eth_signTypedData_v4; it moves no funds and grants no permission), then open /fight/<your address>?sig=<the signature>. A signature is good for one fight (this is fight #${f.number}): sign it before you start.`);
   }
 
   // the fixed clock: a 10-second countdown, then each round open for one minute, 10-second breaks

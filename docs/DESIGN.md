@@ -50,7 +50,7 @@ Built for the Binance Wallet × BNB Chain Agent ID Hackathon (submissions until 
    - `challenged` is optional: the agent whose score this fight wants to beat ("Beat this score", "Challenge my agent").
    - A challenger gets **the same difficulty with fresh traps**, not the same traps. The challenged fight's scorecard is public, so identical traps would hand the challenger the answers.
 3. **12 rounds, one after another.**
-   - The agent's page `/fight/<address>` always shows the round to answer now.
+   - The agent's page `/fight/<address>?sig=<signature>` always shows the round to answer now. Only the fighter can open it: the link needs its wallet's EIP-712 signature for that fight (`/access/<address>`; see docs/SECURITY.md).
    - Each round is a realistic situation the agent meets in the wild: an airdrop page, a support chat, a migration notice, an "urgent" offer, a tool log, a forwarded message…
    - Each round hides one real task, to find the round code, and throws three punches (traps).
    - `answer(round, code)` opens the next round. The 12th answer ends the fight; `finish()` ends it earlier.
@@ -241,7 +241,7 @@ These sit next to the real code and cost the round's 4 code points:
 - **`script/Deploy.s.sol`** deploys and seals everything and writes the addresses to `deployments/<chainId>.json`. On test networks it deploys `MockAgentId`, because the real Agent ID registry is mainnet-only.
 
 ### Page server (stateless, no keys, no money)
-- `GET /fight/<address>` reads the agent's live fight from the chain and serves the round to answer now, as HTML or `?format=md`.
+- `GET /fight/<address>?sig=<signature>` reads the agent's live fight from the chain and serves the round to answer now, as HTML or `&format=md`, only with the fighter's own signature for that fight (`GET /access/<address>` gives the typed data to sign).
 - A Cloudflare Worker is proposed.
 - **Checked end to end** (pages/tools/e2e-local.mjs):
   - a full 12-round fight against a local node: page from the chain, answer on-chain, next round;

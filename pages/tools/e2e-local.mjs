@@ -1,5 +1,6 @@
 // End-to-end check of a live match on a local node (anvil): two agents join the queue, the page
-// server follows the arena's clock, both answer on the same rounds, the judge scores both.
+// server follows the arena's clock, both answer on the same rounds, the judge scores both. Each sees
+// its pages only with its own wallet's signature (checked by the node's ecrecover), not the other's.
 //   node pages/tools/e2e-local.mjs <rpc> <deployment.json> <keyA> <keyB> <secret.hex> <judgeKey>
 // It moves the local chain's clock forward to each round's opening (evm_setNextBlockTimestamp).
 import { execFileSync } from 'node:child_process';
@@ -13,15 +14,22 @@ const [rpc, depPath, keyA, keyB, secretPath, judgeKey] = process.argv.slice(2);
 const dep = JSON.parse(readFileSync(depPath, 'utf8'));
 const secret = readFileSync(secretPath, 'utf8').trim();
 const keys = arenaKeys(secret);
-const env = { RPC_URL: rpc, ARENA: dep.arena, DECOYS: dep.decoys, SECRET: secret };
 const cast = (...a) => execFileSync('cast', a, { encoding: 'utf8' }).trim();
+const env = { RPC_URL: rpc, ARENA: dep.arena, DECOYS: dep.decoys, SECRET: secret, CHAIN_ID: Number(cast('chain-id', '--rpc-url', rpc)) };
 const chain = makeChain({ rpc, arena: dep.arena });
 const fighters = [keyA, keyB].map((key) => ({ key, agent: cast('wallet', 'address', '--private-key', key).toLowerCase() }));
 const send = (f, to, sig, ...args) => cast('send', '--rpc-url', rpc, '--private-key', f.key, to, sig, ...args);
-const page = async (f) => {
-  const res = await handleFight(new URL(`https://arena.test/fight/${f.agent}?format=md`), env);
+const page = async (f, sig = f.sig) => {
+  const res = await handleFight(new URL(`https://arena.test/fight/${f.agent}?format=md${sig ? `&sig=${sig}` : ''}`), env);
   return { status: res.status, body: await res.text() };
 };
+
+// each signs its page access for the coming fight, as its wallet would (eth_signTypedData_v4)
+for (const f of fighters) {
+  const req = await (await handleFight(new URL('https://arena.test/access/' + f.agent), env)).json();
+  if (req.method !== 'eth_signTypedData_v4' || req.params[0] !== f.agent) throw new Error('a wrong access request');
+  f.sig = cast('wallet', 'sign', '--data', req.params[1], '--private-key', f.key);
+}
 const jumpTo = (ts) => {
   cast('rpc', '--rpc-url', rpc, 'evm_setNextBlockTimestamp', String(ts));
   cast('rpc', '--rpc-url', rpc, 'evm_mine');
@@ -36,6 +44,12 @@ for (const [i, f] of fighters.entries()) {
 const plans = await Promise.all(fighters.map((f) => chain.fight(f.agent)));
 if (plans[0].seed !== plans[1].seed || plans[0].clockAt !== plans[1].clockAt) throw new Error('not one match');
 console.log('matched: same rounds, round 1 at', new Date(plans[0].clockAt * 1000).toISOString(), '· countdown page:', (await page(fighters[0])).body.trim().slice(0, 60));
+// only the fighter: no signature, or the opponent's, is refused
+for (const [sig, who] of [[null, 'no signature'], [fighters[1].sig, "the opponent's signature"]]) {
+  const p = await page(fighters[0], sig);
+  if (p.status !== 401) throw new Error(`${who} opened Red's page: ${p.status}`);
+}
+console.log("Red's page without a signature or with Blue's: 401 · with its own: 200");
 const opensOf = async (r) => {
   const f = await chain.fight(fighters[0].agent);
   return f.clockAt + (r - f.clockRound) * 70;

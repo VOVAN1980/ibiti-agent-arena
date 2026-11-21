@@ -13,6 +13,7 @@ import { keccak256, isPassRound } from '../src/keccak.js';
 import { skillMd } from '../src/skill.js';
 import { arenaKeys, answerHash } from '../src/keys.js';
 import { handleFight } from '../src/worker.js';
+import { accessDigest, accessTypedData, splitSig, ACCESS_STATEMENT } from '../src/access.js';
 
 const ARENA = '0x7a3f2c9e5b1d4a6f8e0c2b4d6f8a1c3e5b7d9f21';
 const DECOYS = Object.fromEntries([13, 15, 18, 21, 22, 23, 24, 26, 27].map((t) => [t, `0x${String(t).padStart(2, '0')}${'ab'.repeat(19)}`]));
@@ -430,11 +431,16 @@ test('placeholders fill only known keys', () => {
 const ZERO_ADDR = '0x0000000000000000000000000000000000000000';
 const BELL = 1795200000;
 
+/** A's page signature in these tests: the fake chain's ecrecover gives A for it, over the digest of
+ *  A's fight 2 on chain 56 only (the real recovery is checked by e2e-local on a node). */
+const SIG = '0x' + 'ab'.repeat(64) + '1b';
+
 /** A fake arena: fight 2 of A, `round` = the first round not answered yet; the clock stands in
  *  `clockRound` (5 s into it), or in the countdown, or in the break after it. */
-function fakeChain({ round = 3, clockRound = round, live = true, startedAt = 1, commitment = KEYS.commitment(ARENA, A, 2), secretCommit = KEYS.commit, countdown = false, inBreak = false, waiting = ZERO_ADDR } = {}) {
+function fakeChain({ round = 3, clockRound = round, live = true, startedAt = 1, commitment = KEYS.commitment(ARENA, A, 2), secretCommit = KEYS.commit, countdown = false, inBreak = false, waiting = ZERO_ADDR, contractWallet = false } = {}) {
   const traps = [...Array(36).keys()].map((i) => i + 1);
   const now = countdown ? BELL - 4 : BELL + (Math.min(clockRound, 12) - 1) * 70 + (inBreak ? 64 : 5);
+  const signedByA = (digest, r) => digest === accessDigest(ARENA, 56, A, 2) && r === 'ab'.repeat(32);
   return {
     lastFight: async () => 2,
     fight: async () => ({ seed: SEED, startedAt, finishedAt: 0, hits: 0n, number: 2, correct: 0, round, fouls: 0, official: true, clockAt: BELL, clockRound: 1, timeUsed: 0, late: 0, judged: false, commitment, opponent: ZERO_ADDR, opponentNumber: 0 }),
@@ -443,12 +449,14 @@ function fakeChain({ round = 3, clockRound = round, live = true, startedAt = 1, 
     secretCommit: async () => secretCommit,
     waiting: async () => waiting,
     now: async () => now,
+    recover: async (digest, { r }) => (!contractWallet && signedByA(digest, r) ? A : B),
+    isValidSignature: async (wallet, digest, sig) => contractWallet && wallet === A && signedByA(digest, sig.slice(2, 66)),
   };
 }
 
 test('the server follows the clock: countdown, open round, answered round, break, queue', async () => {
   const get = async (chain) => {
-    const r = await handleFight(new URL(`https://x/fight/${A}?format=md`), ENV, { chain });
+    const r = await handleFight(new URL(`https://x/fight/${A}?format=md&sig=${SIG}`), ENV, { chain });
     return { status: r.status, body: await r.text() };
   };
   let r = await get(fakeChain({ round: 1, countdown: true }));
@@ -520,17 +528,67 @@ test('no hints: without the secret a page cannot be rebuilt to tell the right op
 const ENV = { ARENA, DECOYS: JSON.stringify(DECOYS), SECRET: '11'.repeat(32) };
 
 test('the server shows the agent its current round, with its own code', async () => {
-  const res = await handleFight(new URL(`https://x/fight/${A}`), ENV, { chain: fakeChain() });
+  const res = await handleFight(new URL(`https://x/fight/${A}?sig=${SIG}`), ENV, { chain: fakeChain() });
   assert.equal(res.status, 200);
   const html = await res.text();
   assert.ok(html.includes(KEYS.code(ARENA, A, 2, 3)), 'the code of round 3 of fight 2');
   assert.ok(html.includes('Fight #2 · Round 3 of 12 — &quot;Mirror Transfer&quot;'));
   assert.ok(html.includes('the bell rings at'));
-  const md = await (await handleFight(new URL(`https://x/fight/${A}?format=md`), ENV, { chain: fakeChain() })).text();
+  const md = await (await handleFight(new URL(`https://x/fight/${A}?format=md&sig=${SIG}`), ENV, { chain: fakeChain() })).text();
   assert.ok(md.startsWith('# IBITI Agent Arena — round card'));
   assert.ok(md.includes('after a 10-second break, on this same page.'));
-  const last = await (await handleFight(new URL(`https://x/fight/${A}?format=md`), ENV, { chain: fakeChain({ round: 12 }) })).text();
+  const last = await (await handleFight(new URL(`https://x/fight/${A}?format=md&sig=${SIG}`), ENV, { chain: fakeChain({ round: 12 }) })).text();
   assert.ok(last.includes('This is the last round'));
+});
+
+test('only the fighter sees its pages: its own signature for this fight, nothing else', async () => {
+  const get = async (q, chain = fakeChain()) => {
+    const r = await handleFight(new URL(`https://x/fight/${A}?format=md${q}`), ENV, { chain });
+    return { status: r.status, body: await r.text() };
+  };
+  const refused = await get('');
+  assert.equal(refused.status, 401, 'no signature');
+  assert.match(refused.body, /for the fighter only\. Sign the request at \/access\/<your address>.*fight #2/);
+  assert.ok(!refused.body.includes(KEYS.code(ARENA, A, 2, 3)));
+  assert.equal((await get(`&sig=0x${'cd'.repeat(64)}1b`)).status, 401, 'someone else signed it');
+  assert.equal((await get('&sig=hello')).status, 401, 'not a signature');
+  assert.equal((await get(`&sig=${SIG}`, fakeChain({ countdown: true, round: 1 }))).status, 200, 'the countdown, signed');
+  assert.equal((await get(`&sig=${SIG}`, fakeChain({ contractWallet: true }))).status, 200, 'a contract wallet that accepts it (ERC-1271)');
+  // a signature is for one fight: fight 2's does not open fight 3
+  const fight3 = { ...fakeChain(), lastFight: async () => 3, fight: async () => ({ ...(await fakeChain().fight()), number: 3, commitment: KEYS.commitment(ARENA, A, 3) }) };
+  assert.equal((await get(`&sig=${SIG}`, fight3)).status, 401, 'last fight\'s signature');
+  // what does not need a signature: the queue, a fight that is over
+  assert.equal((await get('', fakeChain({ startedAt: 0, waiting: A }))).status, 404);
+  assert.equal((await get('', fakeChain({ live: false }))).status, 410);
+});
+
+test('the access request: the live fight or the next one, typed data a wallet signs', async () => {
+  const get = async (chain) => (await handleFight(new URL(`https://x/access/${A}`), ENV, { chain })).json();
+  const live = await get(fakeChain());
+  assert.equal(live.method, 'eth_signTypedData_v4');
+  assert.equal(live.params[0], A);
+  const t = JSON.parse(live.params[1]);
+  assert.equal(t.primaryType, 'FightPages');
+  assert.deepEqual(t.domain, { name: 'IBITI Agent Arena', version: '1', chainId: 56, verifyingContract: ARENA });
+  assert.deepEqual(t.message, { statement: ACCESS_STATEMENT, fighter: A, fight: 2 });
+  assert.deepEqual(Object.keys(t.types.FightPages.reduce((o, f) => ({ ...o, [f.name]: f.type }), {})), ['statement', 'fighter', 'fight'], 'no spender, amount or deadline');
+  assert.equal(JSON.parse((await get(fakeChain({ live: false }))).params[1]).message.fight, 3, 'between fights: the next one');
+});
+
+test('the access digest is standard EIP-712 (checked against cast), and signatures of every form parse', () => {
+  // `cast wallet sign --data` of this typed data and `cast wallet sign --no-hash` of this digest give
+  // the same signature (anvil key #0)
+  const me = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266';
+  assert.equal(accessDigest(ARENA, 56, me, 2), '0x2270a6e8bc75269ab0e6a1f57ae0723676e00455297a1d8186d2526522c32487');
+  assert.equal(accessTypedData(ARENA, 56, me, 2).message.fighter, me);
+  const full = '1d97aa250fd0f256bccea038336c77094ee6001050a9f61e2ece679817391f314897c2eb3b8d8ec72d0be0de2af1fa71c39fe93dec2356cde789fb44a63b696f1c';
+  const parts = splitSig(full);
+  assert.deepEqual(parts, { r: full.slice(0, 64), s: full.slice(64, 128), v: 28 });
+  assert.deepEqual(splitSig(full.slice(0, 128) + '01'), parts, 'v as 0/1');
+  const compact = full.slice(0, 64) + (BigInt('0x' + full.slice(64, 128)) | (1n << 255n)).toString(16);
+  assert.deepEqual(splitSig(compact), parts, 'EIP-2098 compact');
+  assert.equal(splitSig(full.slice(0, 128) + '05'), null);
+  assert.equal(splitSig('ab'), null);
 });
 
 test('the server refuses: no fight yet, fight over, all rounds answered, bad path', async () => {
