@@ -1022,7 +1022,7 @@ export async function createScene(root) {
     } else if (p.lap && !reduced) {
       if (f.lapI == null) {
         f.lapI = 0;
-        f.dice = side === 'red' ? 7 : 23; // its own run of chances
+        f.dice = 1 + Math.floor(Math.random() * 2147483000); // its own run of chances, new on every visit
         f.nextFlair = t + 5 + (side === 'red' ? 2 : 7);
       }
       const lapAt = (i) => new THREE.Vector2(...lap.at[i % lap.at.length]);
@@ -1047,13 +1047,13 @@ export async function createScene(root) {
           f.lapI--; // it stays at this corner for the show
           f.showUntil = t + 1.8 + (f.dice % 17) / 10;
           f.gesture = pick(lap.show);
-        } else if (roll < lap.stops + 9 && other.present && other.pose === 'hype' && !other.act && t - state.lastTaunt > 24) {
+        } else if (roll < lap.stops + 9 && tt > 6 && other.present && other.pose === 'hype' && !other.act && t - state.lastTaunt > 24) {
           state.lastTaunt = t;
           f.act = { kind: 'taunt', since: t, len: 2.4, gesture: pick(lap.taunts) };
           moment('taunt', side);
           // two times in three the other answers, a moment later
           if (f.dice % 3) other.act = { kind: 'answer', from: t + 0.7, since: t, len: 1.9, gesture: LAPS[otherSide].answers[f.dice % LAPS[otherSide].answers.length] };
-        } else if (roll < lap.stops + 20 && tt > 3 && t - (f.lastClimb ?? -99) > 30) {
+        } else if (roll < lap.stops + 20 && tt > 8 && t - (f.lastClimb ?? -99) > 30) {
           f.lastClimb = t;
           f.act = { kind: 'climb', phase: 'go', since: t, gesture: pick(lap.ropes) };
         }
