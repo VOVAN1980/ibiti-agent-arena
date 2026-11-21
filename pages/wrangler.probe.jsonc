@@ -1,0 +1,16 @@
+// The connection test (src/probe.js) as its own small Worker, apart from the arena: can an agent read
+// a page by itself and sign the arena's page-access request? No transaction, nothing of the season.
+// The probe secret is a Worker secret (`wrangler secret put PROBE_SECRET -c wrangler.probe.jsonc`).
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ibiti-agent-arena-probe",
+  "main": "src/probe.js",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "vars": {
+    // BNB Smart Chain, read-only: the chain's ecrecover and ERC-1271 for a contract wallet
+    "RPC_URL": "https://bsc-rpc.publicnode.com",
+    "CHAIN_ID": 56
+  }
+}
