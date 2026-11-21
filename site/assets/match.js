@@ -7,7 +7,8 @@
 // The scoreboard is rebuilt only when something changes; between reads of the chain only the clock
 // and the bars move, in place (so a page translator has nothing to redo every second).
 import { CFG, emptyState, refresh, bouts, verdict, clockOf, nameOf, rounds, trapName, ROUNDS } from './arena.js';
-import { $, esc, keep, tName, header, footer, avatar, shareButtons, mmss, siteUrl, agentUrl, matchUrl, t, roundName, applyI18n } from './ui.js';
+import { $, esc, keep, tName, header, footer, avatar, shareButtons, mmss, siteUrl, agentUrl, matchUrl, t, applyI18n } from './ui.js';
+import { forFight, loadTheme, loadAll, themeName, themeText, themesKnown } from './themes.js';
 import { gong, beep, ding, thud, cheer, boo, crowdLevel, setMusic, soundOn, setSound } from './sound.js';
 import { createScene as createFlatScene } from './scene.js';
 
@@ -125,14 +126,17 @@ function flash(side) {
   c.classList.add('flash');
 }
 
-/** The lower third: what the agents are solving in this round. */
+/** The lower third: what the agents are solving in this round (its theme comes from the server at
+ *  the bell; until it arrives, only the round number). */
 function banner(kind, round = 0, extra = '') {
-  const sig = `${kind}|${round}|${extra}`;
+  const sig = `${kind}|${round}|${extra}|${kind === 'task' ? themeName(round) : ''}`;
   if (sig === bannerSig) return;
   bannerSig = sig;
   const el = $('#banner');
   if (kind === 'task') {
-    el.innerHTML = `<div class="bhead"><span class="bround" translate="no">${round} / ${ROUNDS}</span><span class="bname">${esc(roundName(round))}</span></div><div class="btext"><b>${esc(t('taskLabel'))}:</b> ${esc(t(`task${round}`))}</div>`;
+    const text = themeText(round);
+    el.innerHTML = `<div class="bhead"><span class="bround" translate="no">${round} / ${ROUNDS}</span><span class="bname">${esc(themeName(round))}</span></div>${text ? `<div class="btext"><b>${esc(t('taskLabel'))}:</b> ${esc(text)}</div>` : ''}`;
+    if (!text) loadTheme(round).then((th) => th && banner('task', round));
   } else if (kind === 'text') el.innerHTML = `<div class="btext">${esc(extra)}</div>`;
   else if (kind === 'html') el.innerHTML = extra; // built from escaped parts
   else el.innerHTML = '';
@@ -198,7 +202,7 @@ function cornerHtml(f, side, v) {
 function gongView(c, judged, waitingJudge) {
   if (judged) return { title: t('finalBellTitle'), value: t('end'), label: t('judgedOnChain'), part: 0 };
   if (c.phase === 'countdown') return { title: t('getReady'), value: String(c.left), label: t('countdown'), part: c.left / 10 };
-  if (c.phase === 'open') return { title: t('round', c.round), value: mmss(c.left), label: roundName(c.round), part: c.left / RT, hurry: c.left <= 10 };
+  if (c.phase === 'open') return { title: t('round', c.round), value: mmss(c.left), label: themeName(c.round), part: c.left / RT, hurry: c.left <= 10 };
   if (c.phase === 'break') return { title: t('breakTitle'), value: String(c.left), label: t('nextRound', c.round), part: c.left / 10 };
   return { title: t('finalBellTitle'), value: '—', label: waitingJudge ? t('waitingJudge') : t('over'), part: 0 };
 }
@@ -233,7 +237,7 @@ function cues(b, c, v, views) {
     scene.signal();
     scene.pyro('round');
     cheer(0.5);
-    announce(c.round === 1 ? t('fightGo') : t('roundBig', c.round), roundName(c.round));
+    announce(c.round === 1 ? t('fightGo') : t('roundBig', c.round), themeName(c.round));
   }
   // a round closed: whoever did not answer in time gets booed
   if (!first && cue.phase === 'open' && (c.phase !== 'open' || c.round !== cue.round)) {
@@ -314,14 +318,14 @@ function stage(b, c, v, views) {
     scene.setLights('sweep');
     setMusic('hype');
     crowdLevel(0.55);
-    banner('text', 0, t('bannerNext', c.round, roundName(c.round)));
+    banner('text', 0, t('bannerNext', c.round)); // the next round's theme stays secret until its bell
   } else {
     scene.setLights('focus');
     setMusic(null);
     crowdLevel(0.5);
     banner('text', 0, t('judgingNote'));
   }
-  scene.setTicker(`IBITI AGENT ARENA   ◆   ${nameOf(s, b.red.agent)}${b.blue ? `  VS  ${nameOf(s, b.blue.agent)}` : ''}   ◆   ${c.phase === 'open' ? `${t('round', c.round)} · ${roundName(c.round)}` : t('live')}`);
+  scene.setTicker(`IBITI AGENT ARENA   ◆   ${nameOf(s, b.red.agent)}${b.blue ? `  VS  ${nameOf(s, b.blue.agent)}` : ''}   ◆   ${c.phase === 'open' ? t('round', c.round) : t('live')}`);
 }
 
 function renderRing(b) {
@@ -415,13 +419,14 @@ function cell(r, side) {
 }
 
 function renderRounds(b) {
-  const sig = JSON.stringify([b.red.judged, b.blue?.judged, b.red.answers.length, b.blue?.answers.length], (k, x) => (typeof x === 'bigint' ? x.toString() : x));
+  if (themesKnown() < 12) loadAll().then(() => themesKnown() === 12 && renderRounds(b)); // all open once the fight is over
+  const sig = JSON.stringify([b.red.judged, b.blue?.judged, b.red.answers.length, b.blue?.answers.length, themesKnown()], (k, x) => (typeof x === 'bigint' ? x.toString() : x));
   if (sig === roundsSig) return;
   roundsSig = sig;
   const rr = rounds(b.red);
   const rb = b.blue ? rounds(b.blue) : [];
   $('#rounds').innerHTML = `<tr><th>${t('roundCol')}</th><th><span class="dot red"></span>${keep(nameOf(s, b.red.agent))}</th>${b.blue ? `<th><span class="dot blue"></span>${keep(nameOf(s, b.blue.agent))}</th>` : ''}</tr>` +
-    rr.map((r, i) => `<tr class="r"><td><b>${r.round}</b> <span class="tiny">${esc(roundName(r.round))}</span></td>${cell(r, 'red')}${b.blue ? cell(rb[i], 'blue') : ''}</tr>`).join('');
+    rr.map((r, i) => `<tr class="r"><td><b>${r.round}</b> <span class="tiny">${esc(themeName(r.round))}</span></td>${cell(r, 'red')}${b.blue ? cell(rb[i], 'blue') : ''}</tr>`).join('');
   $('#after').style.display = '';
 }
 
@@ -430,6 +435,7 @@ function renderRounds(b) {
 async function playReplay(b) {
   if (replaying || !b || !verdict(b)) return;
   replaying = true;
+  await loadAll(); // the fight is over: every theme is open
   const hud = $('#ring');
   $('#arena').scrollIntoView({ behavior: 'smooth', block: 'start' });
   const sides = b.blue ? ['red', 'blue'] : ['red'];
@@ -437,7 +443,7 @@ async function playReplay(b) {
   const plan = { red: rounds(b.red), blue: b.blue ? rounds(b.blue) : null };
   const total = { red: 0, blue: 0 };
   const blank = { pct: 100, note: '', bad: false, pips: Array(ROUNDS).fill('') };
-  hud.innerHTML = `<div class="corners">${cornerHtml(b.red, 'red', blank)}${gongHtml({ title: t('round', 1), value: mmss(RT), label: roundName(1), part: 1 }, false, true)}${b.blue ? cornerHtml(b.blue, 'blue', blank) : ''}</div>`;
+  hud.innerHTML = `<div class="corners">${cornerHtml(b.red, 'red', blank)}${gongHtml({ title: t('round', 1), value: mmss(RT), label: themeName(1), part: 1 }, false, true)}${b.blue ? cornerHtml(b.blue, 'blue', blank) : ''}</div>`;
   hud.classList.add('replaying');
   hud.dataset.replay = t('replayTitle');
   hud.querySelectorAll('.bar').forEach((x) => x.classList.add('quick'));
@@ -459,7 +465,7 @@ async function playReplay(b) {
 
   for (let r = 1; r <= ROUNDS; r++) {
     hud.querySelector('.gong .rdt').textContent = t('round', r);
-    hud.querySelector('.gong .ph').textContent = roundName(r);
+    hud.querySelector('.gong .ph').textContent = themeName(r);
     hud.querySelector('.gong .tm').textContent = mmss(RT);
     hud.querySelector('.gong circle.left').setAttribute('stroke-dashoffset', offset(1));
     for (const side of sides) {
@@ -471,12 +477,12 @@ async function playReplay(b) {
     scene.setLights('focus');
     setMusic('tension');
     banner('task', r);
-    scene.setBoard([t('round', r), mmss(RT), roundName(r)]);
+    scene.setBoard([t('round', r), mmss(RT), themeName(r)]);
     scene.signal();
     scene.pyro('round');
     gong();
     strike();
-    announce(r === 1 ? t('fightGo') : t('roundBig', r), roundName(r));
+    announce(r === 1 ? t('fightGo') : t('roundBig', r), themeName(r));
     await sleep(1300);
 
     // the round runs, faster than life, until the last answer (or the bell)
@@ -561,6 +567,7 @@ async function loop() {
     await refresh(s);
     const b = findBout();
     if (b) {
+      forFight(b.red.agent, b.red.number);
       if (!replaying) renderRing(b);
     } else $('#ring').innerHTML = `<div class="hudmsg">${t('notOnChain')}</div>`;
   } catch (e) {

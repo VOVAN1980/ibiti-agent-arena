@@ -1,36 +1,44 @@
-// The judge on Cloudflare: a Cron Trigger runs `judgeRun` every minute (host.js `scheduled`). It
-// does what pages/tools/judge.mjs does on a computer, without keeping any state: the chain says which
-// fights are judged.
+// The judge on Cloudflare: a Cron Trigger runs `judgeRun` every minute (host.js `scheduled`). It holds
+// the draws and scores the fights, without keeping any state: the chain says what is due.
 //
 // Each run:
+// - the draw: after a cutoff it seals the draw (if no registration did it already), waits for the
+//   sealed block, then holds the draw on its hash (AgentArena.draw); a draw with an empty hall is left
+//   alone (a later registration closes it);
 // - reads the arena's Started events of the last LOOKBACK_BLOCKS blocks (in chunks); a fight lasts at
-//   most 14 minutes, so the window leaves hours for retries. A fight left out longer (an outage) is
+//   most 14 min 50 s, so the window leaves hours for retries. A fight left out longer (an outage) is
 //   judged by hand with judge.mjs;
-// - skips a fight that is judged, still running, waiting for its opponent's fight to end (a live
-//   match is judged only when both fights are over), empty (nothing answered: it would score 0 and
-//   only cost gas), or started with a foreign commitment (it can never be judged);
-// - does nothing while an earlier judgement is still pending (no double sending);
-// - sends at most MAX_PER_RUN judgements a run and MAX_PER_HOUR an hour (a guard against draining
-//   the judge's gas). The hour is counted on the chain itself: the Judged events of the last hour of
-//   blocks, since only the judge emits them;
-// - simulates each judgement first (eth_estimateGas), signs it here with the judge key (a Worker
+// - skips a fight that is judged, still running, waiting for its opponent's fight to end (a match is
+//   judged only when both fights are over), empty (nothing answered: it would score 0 and only cost
+//   gas), or registered with a foreign commitment (it can never be judged);
+// - does nothing while an earlier transaction of the judge is still pending (no double sending);
+// - judges with the fight's right-answer hashes, salt and secret trap plan (plan.js), at most
+//   MAX_PER_RUN a run and MAX_PER_HOUR an hour (a guard against draining the judge's gas; the hour is
+//   counted on the chain itself, from the Judged events of the last hour of blocks);
+// - simulates every transaction first (eth_estimateGas), signs it here with the judge key (a Worker
 //   secret) and sends it as a raw transaction.
 //
 // Environment: RPC_URL, ARENA, CHAIN_ID, DEPLOY_BLOCK, BLOCKS_PER_WEEK, SECRET (Worker secret),
-// JUDGE_KEY (Worker secret), LOOKBACK_BLOCKS (default 20000), MAX_PER_RUN (default 5),
-// MAX_PER_HOUR (default 60).
+// JUDGE_KEY (Worker secret), LOOKBACK_BLOCKS (default 20000), MAX_PER_RUN (default 16),
+// MAX_PER_HOUR (default 240).
 
 import { secp256k1 } from '@noble/curves/secp256k1.js';
 import { keccak256 } from './keccak.js';
 import { arenaKeys, answerHash } from './keys.js';
 import { makeChain, BREAK } from './chain.js';
+import { planOf } from './plan.js';
 
-export const STARTED = keccak256(utf8Hex('Started(address,uint32,bytes32,bool,bytes32,bytes32,address,bool)'));
+export const STARTED = keccak256(utf8Hex('Started(address,uint32,bytes32,bool,bytes32,bytes32,address,uint32)'));
 export const JUDGED = keccak256(utf8Hex('Judged(address,uint32,bool,uint8,uint16,uint64,uint8,uint8,uint8,uint32,bytes32[12])'));
-const JUDGE_FIGHT = keccak256(utf8Hex('judgeFight(address,uint32,bytes32[12],bytes32)')).slice(0, 10);
-const JUDGE = keccak256(utf8Hex('judge()')).slice(0, 10);
+const SEL = (sig) => keccak256(utf8Hex(sig)).slice(0, 10);
+const JUDGE_FIGHT = SEL('judgeFight(address,uint32,bytes32[12],bytes32,uint8[36])');
+const JUDGE = SEL('judge()');
+const DRAW = SEL('draw()');
+const PENDING_CUTOFF = SEL('pendingCutoff()');
+const SEED_BLOCK = SEL('seedBlock()');
 const CHUNK = 5000;
 const ZERO = '0x' + '0'.repeat(40);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function utf8Hex(s) {
   return [...new TextEncoder().encode(s)].map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -84,18 +92,18 @@ export function addressOf(key) {
 }
 
 /** The judgeFight call: all arguments are static, so the encoding is the words one after another. */
-export function judgeCalldata(agent, number, rightHashes, salt) {
-  return JUDGE_FIGHT + w(agent) + w(Number(number).toString(16)) + rightHashes.map(w).join('') + w(salt);
+export function judgeCalldata(agent, number, rightHashes, salt, traps) {
+  return JUDGE_FIGHT + w(agent) + w(Number(number).toString(16)) + rightHashes.map(w).join('') + w(salt) + traps.map((t) => w(Number(t).toString(16))).join('');
 }
 
 // ------------------------------------------------------------------ one run
 
-export async function judgeRun(env, { fetchFn = fetch, log = console.log } = {}) {
+export async function judgeRun(env, { fetchFn = fetch, log = console.log, wait = sleep } = {}) {
   const rpcUrl = env.RPC_URL;
   const rpc = async (method, params) => {
     const res = await fetchFn(rpcUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
     const j = await res.json();
-    if (j.error) throw new Error(`${method}: ${j.error.message}`);
+    if (j.error) throw new Error(method + ': ' + j.error.message);
     return j.result;
   };
   const arena = env.ARENA;
@@ -104,14 +112,49 @@ export async function judgeRun(env, { fetchFn = fetch, log = console.log } = {})
   if ((await chain.secretCommit()).toLowerCase() !== keys.commit.toLowerCase()) throw new Error('the secret does not match the arena');
   const me = addressOf(env.JUDGE_KEY);
   const judge = '0x' + (await rpc('eth_call', [{ to: arena, data: JUDGE }, 'latest'])).slice(-40);
-  if (judge.toLowerCase() !== me.toLowerCase()) throw new Error('JUDGE_KEY is not the arena\'s judge');
+  if (judge.toLowerCase() !== me.toLowerCase()) throw new Error("JUDGE_KEY is not the arena's judge");
 
-  // an earlier judgement still on its way: wait for it, never send twice
+  // an earlier transaction still on its way: wait for it, never send twice
   const [pendingNonce, minedNonce] = await Promise.all(['pending', 'latest'].map((tag) => rpc('eth_getTransactionCount', [me, tag])));
-  if (BigInt(pendingNonce) > BigInt(minedNonce)) return { judged: 0, waiting: true };
+  if (BigInt(pendingNonce) > BigInt(minedNonce)) return { judged: 0, drew: false, waiting: true };
+  let nonce = BigInt(pendingNonce);
+  const chainId = Number(env.CHAIN_ID ?? 56);
+  const send = async (data, what) => {
+    let gas;
+    try {
+      gas = (BigInt(await rpc('eth_estimateGas', [{ from: me, to: arena, data }])) * 12n) / 10n;
+    } catch (e) {
+      log(what + ': not now (' + e.message + ')');
+      return null;
+    }
+    const gasPrice = BigInt(await rpc('eth_gasPrice', []));
+    const hash = await rpc('eth_sendRawTransaction', [signTx({ nonce, gasPrice, gas, to: arena, data, chainId }, env.JUDGE_KEY)]);
+    nonce++;
+    log(what + ': sent ' + hash);
+    return hash;
+  };
+  const word = async (data) => Number(BigInt(await rpc('eth_call', [{ to: arena, data }, 'latest'])));
+  const blockNow = async () => parseInt(await rpc('eth_blockNumber', []), 16);
+  const timeNow = async () => parseInt((await rpc('eth_getBlockByNumber', ['latest', false])).timestamp, 16);
 
-  const latest = parseInt(await rpc('eth_blockNumber', []), 16);
-  const now = parseInt((await rpc('eth_getBlockByNumber', ['latest', false])).timestamp, 16);
+  // ---- the draw: seal after the cutoff, then hold it on the sealed block's hash
+  let drew = false;
+  if ((await word(PENDING_CUTOFF)) === 0) {
+    const at = await chain.nextDrawAt();
+    if (at !== 0 && (await timeNow()) >= at && (await chain.hall()).length > 0) {
+      const sealed = await send(DRAW, 'seal the draw');
+      for (let i = 0; sealed && i < 20 && !(await rpc('eth_getTransactionReceipt', [sealed])); i++) await wait(1000);
+    }
+  }
+  if ((await word(PENDING_CUTOFF)) !== 0) {
+    const sb = await word(SEED_BLOCK);
+    for (let i = 0; i < 20 && (await blockNow()) <= sb; i++) await wait(1000);
+    drew = (await send(DRAW, 'hold the draw')) !== null;
+  }
+
+  // ---- the judgements
+  const latest = await blockNow();
+  const now = await timeNow();
   const roundTime = await chain.roundTime();
   const blocksPerHour = Math.ceil(Number(env.BLOCKS_PER_WEEK ?? 604800) / 168);
   const fights = new Map();
@@ -125,14 +168,13 @@ export async function judgeRun(env, { fetchFn = fetch, log = console.log } = {})
       } else fights.set(l.topics[1] + l.topics[2], { agent: '0x' + l.topics[1].slice(26), number: parseInt(l.topics[2], 16) });
     }
   }
-  const budget = Math.min(Number(env.MAX_PER_RUN ?? 5), Number(env.MAX_PER_HOUR ?? 60) - lastHour);
+  const budget = Math.min(Number(env.MAX_PER_RUN ?? 16), Number(env.MAX_PER_HOUR ?? 240) - lastHour);
   if (budget <= 0) {
-    log(`hourly limit reached: ${lastHour} judgements in the last hour`);
-    return { judged: 0, waiting: false, limited: true };
+    log('hourly limit reached: ' + lastHour + ' judgements in the last hour');
+    return { judged: 0, drew, waiting: false, limited: true };
   }
 
   const over = (f) => f.finishedAt !== 0 || now > f.clockAt + (12 - f.clockRound) * (roundTime + BREAK) + roundTime;
-  let nonce = BigInt(pendingNonce);
   let judged = 0;
   for (const { agent, number } of fights.values()) {
     if (judged >= budget) break;
@@ -142,20 +184,9 @@ export async function judgeRun(env, { fetchFn = fetch, log = console.log } = {})
     if (f.round <= 1) continue; // nothing answered
     if (f.commitment.toLowerCase() !== keys.commitment(arena, agent, number).toLowerCase()) continue; // never judgeable
     const hashes = Array.from({ length: 12 }, (_, i) => answerHash(keys.code(arena, agent, number, i + 1)));
-    const data = judgeCalldata(agent, number, hashes, keys.salt(arena, agent, number));
-    let gas;
-    try {
-      gas = (BigInt(await rpc('eth_estimateGas', [{ from: me, to: arena, data }])) * 12n) / 10n;
-    } catch (e) {
-      log(`${agent}#${number}: not judged now (${e.message})`);
-      continue;
-    }
-    const gasPrice = BigInt(await rpc('eth_gasPrice', []));
-    const raw = signTx({ nonce, gasPrice, gas, to: arena, data, chainId: Number(env.CHAIN_ID ?? 56) }, env.JUDGE_KEY);
-    const hash = await rpc('eth_sendRawTransaction', [raw]);
-    log(`${agent}#${number}: judgement sent ${hash}`);
-    nonce++;
-    judged++;
+    const { traps } = planOf(keys.cardSeed(f.seed));
+    const data = judgeCalldata(agent, number, hashes, keys.salt(arena, agent, number), traps);
+    if ((await send(data, agent + '#' + number + ' judged')) !== null) judged++;
   }
-  return { judged, waiting: false };
+  return { judged, drew, waiting: false };
 }

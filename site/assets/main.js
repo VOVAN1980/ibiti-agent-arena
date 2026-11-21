@@ -2,7 +2,7 @@
 // The lists are rebuilt only when something changes; the clocks tick in place, so the page stays
 // still (and a page translator has nothing to redo every second).
 import { CFG, emptyState, refresh, rating, bouts, verdict, isLive, clockOf, nameOf, arenaStats } from './arena.js';
-import { $, esc, keep, header, footer, cup, shareButtons, joinPrompt, mmss, siteUrl, toast, t, roundName, applyI18n } from './ui.js';
+import { $, esc, keep, header, footer, cup, shareButtons, joinPrompt, mmss, siteUrl, toast, t, applyI18n } from './ui.js';
 
 $('#head').innerHTML = header('arena');
 $('#foot').innerHTML = footer();
@@ -100,7 +100,7 @@ function renderStats() {
     tile(st.fights, t('statFights')) +
     tile(st.agents, t('statAgents')) +
     tile(st.fights ? t('statOf', st.fell, st.fights) : '0', t('statFell'), st.fell > 0) +
-    tile(st.worst ? t('statWorstVal', st.worst) : '—', st.worst ? `${t('statWorst')}: ${roundName(st.worst)}` : t('statWorst'), !!st.worst);
+    tile(st.worst ? t('statWorstVal', st.worst) : '—', st.worst ? `${t('statWorst')}: ${t('round', st.worst)}` : t('statWorst'), !!st.worst);
 }
 
 let queueSig = '';

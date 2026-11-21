@@ -5,14 +5,15 @@
 const SEL = {
   lastFight: '0x366f8e07', // lastFight(address)
   fightOf: '0x32799e5d', // fightOf(address,uint32)
-  trapsAt: '0x1b5585e5', // trapsAt(address)
   isLive: '0x50c116b8', // isLive(address)
   secretCommit: '0x24627013', // secretCommit()
-  waiting: '0xb405c549', // waiting()
   roundTime: '0xee5f8c8f', // roundTime()
+  entries: '0xf29ee125', // entries(address)
+  nextDrawAt: '0x748e1910', // nextDrawAt()
+  hall: '0x78a2ce59', // hall()
 };
 
-/** The countdown before round 1 and the break between rounds (AgentArena.BREAK). */
+/** The break between rounds (AgentArena.BREAK). */
 export const BREAK = 10;
 
 const word = (hex) => hex.replace(/^0x/, '').toLowerCase().padStart(64, '0');
@@ -49,7 +50,7 @@ export function makeChain({ rpc, arena, fetchFn }) {
     },
     /** A fight: fightOf(address,uint32) returns (seed, startedAt, finishedAt, hits, number, correct,
      *  round, fouls, official, clockAt, timeUsed, late, judged, commitment, opponent, clockRound,
-     *  opponentNumber). `correct` is set only by the judge, after the fight. Round r opens at
+     *  opponentNumber, draw). `correct`, `hits` and `fouls` are set only by the judge. Round r opens at
      *  clockAt + (r - clockRound) * (roundTime + BREAK); the clock moves on early when everyone answered. */
     async fightOf(agent, number) {
       const w = words(await call(SEL.fightOf + word(agent) + num(number)));
@@ -71,6 +72,7 @@ export function makeChain({ rpc, arena, fetchFn }) {
         opponent: '0x' + w[14].slice(24),
         clockRound: Number(big(w[15])),
         opponentNumber: Number(big(w[16])),
+        draw: Number(big(w[17] ?? '0')),
       };
     },
     /** The agent's latest fight (all zero if it never fought). */
@@ -80,14 +82,24 @@ export function makeChain({ rpc, arena, fetchFn }) {
     async isLive(agent) {
       return big(words(await call(SEL.isLive + word(agent)))[0]) !== 0n;
     },
-    async traps(agent) {
-      return words(await call(SEL.trapsAt + word(agent))).slice(0, 36).map((x) => Number(big(x)));
-    },
     async secretCommit() {
       return '0x' + words(await call(SEL.secretCommit))[0];
     },
-    async waiting() {
-      return '0x' + words(await call(SEL.waiting))[0].slice(24);
+    /** The agent's place in the waiting hall: entries(address) returns (name, model, commitment,
+     *  challenge, pos, waited, verified, active). */
+    async entry(agent) {
+      const w = words(await call(SEL.entries + word(agent)));
+      return { challenge: '0x' + w[3].slice(24), waited: Number(big(w[5])), verified: big(w[6]) !== 0n, active: big(w[7]) !== 0n };
+    },
+    /** When the next draw may be held (0 before the first registration). */
+    async nextDrawAt() {
+      return Number(big(words(await call(SEL.nextDrawAt))[0]));
+    },
+    /** The agents in the waiting hall, in order of registration. */
+    async hall() {
+      const w = words(await call(SEL.hall));
+      const n = Number(big(w[1]));
+      return w.slice(2, 2 + n).map((x) => '0x' + x.slice(24));
     },
     /** Seconds per round (immutable). */
     async roundTime() {

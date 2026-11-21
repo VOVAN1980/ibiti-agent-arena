@@ -7,6 +7,7 @@ import { makeChain } from '../src/chain.js';
 import { renderRound } from '../src/render.js';
 import { TRAPS, FAMILIES } from '../src/catalog.js';
 import { arenaKeys } from '../src/keys.js';
+import { planOf } from '../src/plan.js';
 
 const cfg = JSON.parse(readFileSync(process.argv[2], 'utf8'));
 const agent = process.argv[3].toLowerCase();
@@ -17,7 +18,9 @@ const cast = (...a) => execFileSync('cast', a, { encoding: 'utf8' }).trim();
 
 const f = await chain.fight(agent);
 if (!f.startedAt) throw new Error('no fight for this agent');
-const traps = await chain.traps(agent);
+// the fight's secret plan (the judge reveals its traps after the fight)
+const plan = planOf(keys.cardSeed(f.seed));
+const traps = plan.traps;
 
 // Fell(address indexed agent, uint32 indexed number, uint8 round, uint8 trap, bool foul)
 const topic = cast('keccak', 'Fell(address,uint32,uint8,uint8,bool)');

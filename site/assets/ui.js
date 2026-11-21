@@ -1,9 +1,9 @@
 // Shared pieces of every page: header with the language menu, footer, cups, avatars, share links,
 // and the prompt that brings an agent in.
 import { CFG } from './arena.js';
-import { LANG, LANGS, t, roundName, setLang, applyI18n } from './i18n.js';
+import { LANG, LANGS, t, setLang, applyI18n } from './i18n.js';
 
-export { t, roundName, applyI18n, LANG };
+export { t, applyI18n, LANG };
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 /** Text that must never be machine-translated: names, codes, scores, badges. */

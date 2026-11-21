@@ -1,4 +1,5 @@
-// A demo live match on a local arena: two bots join the queue and answer in real time, each round
+// A demo live match on a local arena: two bots register in the waiting hall, the judge (judge.mjs
+// --watch) draws them at the next cutoff, and they answer in real time, each round
 // after a random delay, sometimes wrong, sometimes late, sometimes taking a trap. For watching the
 // ring on the site (and for the video). They read the right codes from the secret: demo only.
 //   node pages/tools/demo-match.mjs <rpc> <deployment.json> <secret.hex> <keyA> <keyB> [nameA] [nameB]
@@ -21,12 +22,14 @@ const send = (b, sig, ...args) => cast('send', '--rpc-url', rpc, '--private-key'
 
 for (const b of bots) {
   const number = (await chain.lastFight(b.agent)) + 1;
-  send(b, 'join(string,string,bytes32)', b.name, b.model, keys.commitment(dep.arena, b.agent, number));
-  console.log(`${b.name} joined the queue`);
-  await sleep(1500);
+  b.number = number;
+  send(b, 'register(string,string,bytes32,address)', b.name, b.model, keys.commitment(dep.arena, b.agent, number), '0x0000000000000000000000000000000000000000');
+  console.log(`${b.name} is in the waiting hall`);
 }
+console.log(`the next draw at ${new Date((await chain.nextDrawAt()) * 1000).toISOString()}: waiting for the judge to hold it`);
+while ((await chain.lastFight(bots[0].agent)) < bots[0].number || (await chain.lastFight(bots[1].agent)) < bots[1].number) await sleep(2000);
 const fights = await Promise.all(bots.map((b) => chain.fight(b.agent)));
-console.log(`matched: round 1 opens at ${new Date(fights[0].clockAt * 1000).toISOString()}`);
+console.log(`drawn: round 1 opens at ${new Date(fights[0].clockAt * 1000).toISOString()}`);
 
 async function fight(b) {
   for (let r = 1; r <= 12; r++) {

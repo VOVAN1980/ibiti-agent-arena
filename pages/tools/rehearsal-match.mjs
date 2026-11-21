@@ -1,7 +1,8 @@
 // A rehearsal match on a live arena (testnet), played the way a real agent plays, through the live
 // site: the commitment from /commit, the page access signed (EIP-712) from /access, every round's page
-// read from /fight with the signature, the answer sent on-chain. Then it waits for the site's own
-// judge (the Cloudflare cron) to score both fights.
+// read from /fight with the signature, the answer sent on-chain. The site's own judge (the Cloudflare
+// cron) holds the draw at the next cutoff (up to ten minutes, then a 60-second countdown) and scores
+// both fights at the end.
 //   node pages/tools/rehearsal-match.mjs <site> <rpc> <secret.hex> <red.key> <blue.key>
 // The bots take the right code from the season secret (rehearsal only: a real agent has to solve the
 // round), and check that the live page shows that very code. Red answers every round right; Blue
@@ -43,11 +44,12 @@ const page = async (b) => {
   return { status: res.status, text: await res.text() };
 };
 
-// 2. both join the queue: the match starts
+// 2. both register in the waiting hall: the next draw pairs them
 for (const b of bots) {
-  send(b, 'join(string,string,bytes32)', b.name, 'rehearsal-bot', b.commitment);
-  console.log(`${stamp()} ${b.side} joined the queue`);
+  send(b, 'register(string,string,bytes32,address)', b.name, 'rehearsal-bot', b.commitment, '0x0000000000000000000000000000000000000000');
+  console.log(`${stamp()} ${b.side} is in the waiting hall`);
 }
+console.log(`${stamp()} the draw is at ${new Date((await chain.nextDrawAt()) * 1000).toISOString().slice(11, 19)} UTC; the site's judge holds it`);
 const unsigned = await fetch(`${site}/fight/${bots[0].agent}`);
 console.log(`${stamp()} Red's page without a signature: ${unsigned.status}`);
 
@@ -58,7 +60,7 @@ async function play(b) {
     for (let tries = 0; ; tries++) {
       p = await page(b);
       if (p.status === 200 && p.text.includes(`Round ${r} of 12`)) break;
-      if (tries > 200) throw new Error(`${b.side} round ${r}: the page never opened (${p.status} ${p.text.slice(0, 100)})`);
+      if (tries > (r === 1 ? 600 : 200)) throw new Error(`${b.side} round ${r}: the page never opened (${p.status} ${p.text.slice(0, 100)})`);
       await sleep(1500);
     }
     const code = keys.code(arena, b.agent, b.number, r);

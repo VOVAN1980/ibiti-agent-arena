@@ -1,6 +1,9 @@
 import { test } from 'node:test';
+import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { renderRound, scenarioOrder, fill } from '../src/render.js';
+import { planOf, TASKS } from '../src/plan.js';
+import { themeOf } from '../src/themes.js';
 import { TRAPS, FOREIGN } from '../src/catalog.js';
 import { SCENARIOS } from '../src/scenarios.js';
 import { deliver, toTags, TIER_METHODS } from '../src/delivery.js';
@@ -42,11 +45,43 @@ test('every fighter of a tournament meets the same situation and the same hidden
   }
 });
 
-test('situations: rounds 1–2 warm-up lookups, rounds 3–12 one treasurer\'s day in order', () => {
-  const o1 = scenarioOrder(SEED);
-  assert.equal(o1.length, 12);
-  assert.ok(o1.slice(0, 2).every((i) => i < 100));
-  assert.deepEqual(o1.slice(2), [303, 304, 305, 306, 307, 308, 309, 310, 311, 312]);
+test('the secret plan: three tiers, every task after the ones it needs, different in every fight', () => {
+  const plans = new Set();
+  const last = new Set();
+  for (let s = 0; s < 300; s++) {
+    const seed = KEYS.cardSeed('0x' + s.toString(16).padStart(64, '0'));
+    const { order, traps } = planOf(seed);
+    assert.equal(new Set(order).size, 12, 'twelve different tasks');
+    order.forEach((id, i) => {
+      assert.equal(TASKS[id].tier, i < 4 ? 1 : i < 8 ? 2 : 3, `seed ${s} round ${i + 1}: its tier`);
+      for (const n of TASKS[id].needs ?? []) assert.ok(order.indexOf(n) > -1 && order.indexOf(n) < i, `seed ${s}: ${id} after ${n}`);
+    });
+    assert.equal(new Set(traps).size, 36);
+    assert.ok(traps.every((t) => t >= 1 && t <= 50));
+    plans.add(order.join());
+    last.add(order[11]);
+  }
+  assert.equal(plans.size, 300, 'no two fights share a plan');
+  assert.ok(last.size >= 8, 'even the last round has many possible themes');
+  // only the secret makes the plan: the on-chain seed alone tells nothing
+  const chainSeed = '0x' + '5e'.repeat(32);
+  assert.notDeepEqual(planOf(KEYS.cardSeed(chainSeed)).order, planOf(arenaKeys('22'.repeat(32)).cardSeed(chainSeed)).order);
+  assert.deepEqual(scenarioOrder(SEED), planOf(SEED).order);
+});
+
+test('the treasurer\'s day: "round 5" in a task means the round that task has in this fight', () => {
+  for (let s = 0; s < 60; s++) {
+    const seed = KEYS.cardSeed('0x' + (900 + s).toString(16).padStart(64, '0'));
+    const plan = planOf(seed);
+    const at = (id) => plan.order.indexOf(id) + 1;
+    for (const [id, needs] of [[305, [303, 304]], [309, [305, 306]], [311, [306]], [312, [303]]]) {
+      const r = at(id);
+      if (!r) continue;
+      const p = renderRound(base({ seed, round: r, code: KEYS.code(ARENA, A, 1, r), passKey: KEYS.passKey, plan, traps: plan.traps.slice((r - 1) * 3, r * 3) }));
+      const named = [...p.md.matchAll(/\bround (\d+)\b/g)].map((m) => Number(m[1]));
+      for (const n of needs) assert.ok(named.includes(at(n)), `seed ${s}: task ${id} in round ${r} refers to round ${at(n)}`);
+    }
+  }
 });
 
 const WALLET_ROUNDS = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
@@ -249,10 +284,11 @@ test('(other leagues) every decision table has exactly one right row, or none wh
   }
 });
 
-test('the final round is a decision and says so in its title', () => {
+test('the final round is one of the hardest tasks and says so in its title', () => {
   const p = renderRound(base({ round: 12, code: PASS, traps: [1, 2, 3] }));
   assert.match(p.title, /^Final round — /);
-  assert.equal(p.meta.scenario, 312);
+  assert.equal(TASKS[p.meta.scenario].tier, 3);
+  assert.equal(p.meta.name, TASKS[p.meta.scenario].name);
 });
 
 // ------------------------------------------------------------------ the real code
@@ -437,17 +473,18 @@ const SIG = '0x' + 'ab'.repeat(64) + '1b';
 
 /** A fake arena: fight 2 of A, `round` = the first round not answered yet; the clock stands in
  *  `clockRound` (5 s into it), or in the countdown, or in the break after it. */
-function fakeChain({ round = 3, clockRound = round, live = true, startedAt = 1, commitment = KEYS.commitment(ARENA, A, 2), secretCommit = KEYS.commit, countdown = false, inBreak = false, waiting = ZERO_ADDR, contractWallet = false } = {}) {
-  const traps = [...Array(36).keys()].map((i) => i + 1);
+function fakeChain({ round = 3, clockRound = round, live = true, startedAt = 1, commitment = KEYS.commitment(ARENA, A, 2), secretCommit = KEYS.commit, countdown = false, inBreak = false, inHall = false, contractWallet = false, opponent = null } = {}) {
   const now = countdown ? BELL - 4 : BELL + (Math.min(clockRound, 12) - 1) * 70 + (inBreak ? 64 : 5);
   const signedByA = (digest, r) => digest === accessDigest(ARENA, 56, A, 2) && r === 'ab'.repeat(32);
+  const mine = { seed: SEED, startedAt, finishedAt: 0, hits: 0n, number: 2, correct: 0, round, fouls: 0, official: true, clockAt: BELL, clockRound: 1, timeUsed: 0, late: 0, judged: false, commitment, opponent: opponent ? B : ZERO_ADDR, opponentNumber: opponent ? 1 : 0 };
   return {
     lastFight: async () => 2,
-    fight: async () => ({ seed: SEED, startedAt, finishedAt: 0, hits: 0n, number: 2, correct: 0, round, fouls: 0, official: true, clockAt: BELL, clockRound: 1, timeUsed: 0, late: 0, judged: false, commitment, opponent: ZERO_ADDR, opponentNumber: 0 }),
+    fight: async () => mine,
+    fightOf: async (who) => (who === B && opponent ? { ...mine, ...opponent, opponent: A, opponentNumber: 2 } : mine),
     isLive: async () => live,
-    traps: async () => traps,
     secretCommit: async () => secretCommit,
-    waiting: async () => waiting,
+    entry: async () => ({ active: inHall, waited: 0, verified: true, challenge: ZERO_ADDR }),
+    nextDrawAt: async () => BELL + 600,
     now: async () => now,
     roundTime: async () => 60,
     recover: async (digest, { r }) => (!contractWallet && signedByA(digest, r) ? A : B),
@@ -469,11 +506,11 @@ test('the server follows the clock: countdown, open round, answered round, break
   assert.match(r.body, /Break\. Round 4 opens at .* \(in 6 s\)/);
   r = await get(fakeChain({ round: 2, clockRound: 4 })); // rounds 2 and 3 missed: round 4 is shown
   assert.ok(r.body.includes('Round 4 of 12') && r.body.includes(KEYS.code(ARENA, A, 2, 4)));
-  r = await get(fakeChain({ startedAt: 0, waiting: A }));
+  r = await get(fakeChain({ startedAt: 0, inHall: true }));
   assert.equal(r.status, 404);
-  assert.match(r.body, /in the queue, waiting for an opponent/);
-  r = await get(fakeChain({ live: false, waiting: A })); // back in the queue after an earlier fight
-  assert.match(r.body, /in the queue, waiting for an opponent/, 'not "this fight is over"');
+  assert.match(r.body, /in the waiting hall. The next draw is at .* UTC/);
+  r = await get(fakeChain({ live: false, inHall: true })); // back in the hall after an earlier fight
+  assert.match(r.body, /in the waiting hall/, 'not "this fight is over"');
 });
 
 test('the server gives the commitment of the next fight and checks it, and its own secret', async () => {
@@ -508,17 +545,23 @@ test('no hints: the real code appears exactly once on a page, never inside a lur
   assert.equal(checked, 360);
 });
 
-test('no hints: a glued trap sticks to every option, not only to the right one', () => {
-  for (let s = 0; s < 20; s++) {
+test('no hints: a glued trap sticks to every option, not only to the right one (every task type)', () => {
+  let rows = 0;
+  const kinds = new Set();
+  for (let s = 0; s < 60; s++) {
     const seed = KEYS.cardSeed('0x' + s.toString(16).padStart(64, '0'));
-    for (const r of [3, 4, 5, 6, 7, 9, 10]) {
+    for (let r = 1; r <= 12; r++) {
       const p = renderRound(base({ seed, round: r, code: KEYS.code(ARENA, A, 1, r), passKey: KEYS.passKey, traps: [44, 1, 2] }));
       const glued = p.meta.traps.find((t) => t.method === 'glued');
       if (!glued) continue;
       const grid = p.md.split('\n').filter((l) => /^\| [A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}/.test(l));
-      for (const row of grid) assert.match(row, /^\| [A-Z2-9-]{19} — /, `round ${r}: every option ID carries the glued text`);
+      for (const row of grid) assert.match(row, /^\| [A-Z2-9-]{19} — /, `task ${p.meta.scenario} in round ${r}: every option ID carries the glued text`);
+      rows += grid.length;
+      if (grid.length) kinds.add(Math.floor(p.meta.scenario / 100));
     }
   }
+  assert.ok(rows > 200, 'option tables were checked');
+  assert.deepEqual([...kinds].sort(), [1, 2, 3], 'decision tables, hard rounds and the treasurer\'s day');
 });
 
 test('no hints: the same card seen again shows none of the same wrong IDs', () => {
@@ -556,7 +599,8 @@ test('the server shows the agent its current round, with its own code', async ()
   assert.equal(res.status, 200);
   const html = await res.text();
   assert.ok(html.includes(KEYS.code(ARENA, A, 2, 3)), 'the code of round 3 of fight 2');
-  assert.ok(html.includes('Fight #2 · Round 3 of 12 — &quot;Mirror Transfer&quot;'));
+  const name = TASKS[planOf(KEYS.cardSeed(SEED)).order[2]].name;
+  assert.ok(html.includes(`Fight #2 · Round 3 of 12 — &quot;${name}&quot;`), 'the name of the task the plan put in round 3');
   assert.ok(html.includes('the bell rings at'));
   const md = await (await handleFight(new URL(`https://x/fight/${A}?format=md&sig=${SIG}`), ENV, { chain: fakeChain() })).text();
   assert.ok(md.startsWith('# IBITI Agent Arena — round card'));
@@ -587,7 +631,7 @@ test('only the fighter sees its pages: its own signature for this fight, nothing
   const fight3 = { ...fakeChain(), lastFight: async () => 3, fight: async () => ({ ...(await fakeChain().fight()), number: 3, commitment: KEYS.commitment(ARENA, A, 3) }) };
   assert.equal((await get(`&sig=${SIG}`, fight3)).status, 401, 'last fight\'s signature');
   // what does not need a signature: the queue, a fight that is over
-  assert.equal((await get('', fakeChain({ startedAt: 0, waiting: A }))).status, 404);
+  assert.equal((await get('', fakeChain({ startedAt: 0, inHall: true }))).status, 404);
   assert.equal((await get('', fakeChain({ live: false }))).status, 410);
 });
 
@@ -681,9 +725,12 @@ test('the Cloudflare judge signs exactly what Foundry signs', async () => {
     '0xf867058405f5e1008303d090947a3f2c9e5b1d4a6f8e0c2b4d6f8a1c3e5b7d9f21808212348193a0093729e83984c35bd0a8306cfaad5e3cfac07023eca4b71281a34263dbd65448a02d6872c18d0be6d11aaac6bc1c4de2b4300b029bc9a9d779fd10086ff99427f1',
   );
   // judgeFight(address,uint32,bytes32[12],bytes32): selector of `cast sig`, then 15 static words
-  const data = judgeCalldata(A, 2, Array.from({ length: 12 }, (_, i) => '0x' + (i + 1).toString(16).padStart(64, '0')), '0x' + 'ab'.repeat(32));
-  assert.ok(data.startsWith('0x617f72ee'));
-  assert.equal((data.length - 10) / 64, 15);
+  // judgeFight(address,uint32,bytes32[12],bytes32,uint8[36]): selector of `cast sig`, then 51 static words
+  const traps = Array.from({ length: 36 }, (_, i) => i + 1);
+  const data = judgeCalldata(A, 2, Array.from({ length: 12 }, (_, i) => '0x' + (i + 1).toString(16).padStart(64, '0')), '0x' + 'ab'.repeat(32), traps);
+  assert.ok(data.startsWith('0x597e0c03'));
+  assert.equal((data.length - 10) / 64, 51);
+  assert.equal(data.slice(-64), '24'.padStart(64, '0'), 'the last trap id, 36');
 });
 
 test('the Cloudflare judge keeps to 60 judgements an hour, counted on the chain', async () => {
@@ -705,6 +752,8 @@ test('the Cloudflare judge keeps to 60 judgements an hour, counted on the chain'
           if (p.data.startsWith('0x24627013')) return ok(KEYS.commit); // secretCommit()
           if (p.data.startsWith('0x32799e5d')) return ok(fight); // fightOf
           if (p.data.startsWith('0xee5f8c8f')) return ok('0x' + word('3c')); // roundTime() = 60
+          if (p.data.startsWith('0xef92e6ba')) return ok('0x' + word('0')); // pendingCutoff(): no draw sealed
+          if (p.data.startsWith('0x748e1910')) return ok('0x' + word('0')); // nextDrawAt(): nobody registered
           return ok('0x' + word(addressOf(key))); // judge()
         case 'eth_getTransactionCount': return ok('0x5');
         case 'eth_blockNumber': return ok('0x' + (10000).toString(16));
@@ -716,10 +765,36 @@ test('the Cloudflare judge keeps to 60 judgements an hour, counted on the chain'
         default: throw new Error(q.method);
       }
     };
-    await judgeRun({ RPC_URL: 'http://rpc', ARENA, CHAIN_ID: 56, DEPLOY_BLOCK: 0, BLOCKS_PER_WEEK: 604800, SECRET: '11'.repeat(32), JUDGE_KEY: key }, { fetchFn, log: () => {} });
+    await judgeRun({ RPC_URL: 'http://rpc', ARENA, CHAIN_ID: 56, DEPLOY_BLOCK: 0, BLOCKS_PER_WEEK: 604800, SECRET: '11'.repeat(32), JUDGE_KEY: key, MAX_PER_HOUR: 60 }, { fetchFn, log: () => {}, wait: async () => {} });
     return sent.length;
   };
   assert.equal(await run(60), 0, 'sixty judgements in the last hour: no more');
   assert.equal(await run(59), 1, 'fifty-nine: one more');
   assert.equal(await run(0), 1, 'none: the fight is judged');
+});
+
+test("the audience sees a round's theme only once it has opened, for both fighters of a match", async () => {
+  const ask = async (round, chain, lang = 'en') => {
+    const r = await handleFight(new URL(`https://x/task/${A}/2/${round}?lang=${lang}`), ENV, { chain });
+    return { status: r.status, body: await r.json() };
+  };
+  const plan = planOf(KEYS.cardSeed(SEED));
+  // the countdown: nothing yet
+  assert.equal((await ask(1, fakeChain({ countdown: true, round: 1 }))).status, 425);
+  // round 3 is open: rounds 1-3 have themes, round 4 not yet
+  const open = await ask(3, fakeChain({ round: 3 }), 'ru');
+  assert.equal(open.status, 200);
+  assert.deepEqual(open.body, { round: 3, ...themeOf(plan.order[2], 'ru') });
+  assert.equal((await ask(1, fakeChain({ round: 3 }))).status, 200);
+  assert.equal((await ask(4, fakeChain({ round: 3 }))).status, 425, 'the next round is secret until its bell');
+  // a match: if this fight is over, the opponent still fights round 3 of the same card: round 4 stays secret
+  const over = fakeChain({ round: 13, clockRound: 3, opponent: { finishedAt: 0, clockAt: BELL, clockRound: 1, round: 3 } });
+  over.fightOf = async (who) => (who === B ? { seed: SEED, startedAt: 1, finishedAt: 0, clockAt: BELL, clockRound: 1, opponent: A, opponentNumber: 2 } : { seed: SEED, startedAt: 1, finishedAt: BELL + 100, clockAt: BELL, clockRound: 1, opponent: B, opponentNumber: 1 });
+  assert.equal((await ask(4, over)).status, 425);
+  assert.equal((await ask(3, over)).status, 200);
+  // nowhere in the site's code
+  for (const f of ['i18n.js', 'lang/ru.js', 'match.js']) {
+    const code = readFileSync(new URL(`../../site/assets/${f}`, import.meta.url), 'utf8');
+    assert.ok(!code.includes(TASKS[312].name) && !/task12/.test(code), `${f} holds no round theme`);
+  }
 });

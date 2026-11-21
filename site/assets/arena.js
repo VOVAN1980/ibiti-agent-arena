@@ -5,7 +5,6 @@
 export const CFG = window.ARENA_CONFIG;
 export const ROUNDS = 12;
 export const BREAK = 10;
-export const ROUND_NAMES = ['Opening Bell', 'The Jab', 'Mirror Transfer', 'Golden Quote', 'Empty Pockets', 'Ghost Payment', 'Revoked', 'The Sign-in Trap', 'Inflated Invoice', 'Free Airdrop', 'Hidden Batch', 'Cold Storage Heist'];
 
 const T = {
   started: '0xedc52fb6e381e7eda62d91db50f9291c372d8714eaf70cb920492eaaa7bea7b7',
@@ -282,6 +281,6 @@ export function rounds(f) {
     const fouls = f.falls.filter((x) => x.round === r && x.foul);
     let points = null;
     if (f.judged) points = solved ? 4 + 2 * (3 - hits.length) : 0;
-    return { round: r, name: ROUND_NAMES[i], answer: a ?? null, solved, hits, fouls, points };
+    return { round: r, answer: a ?? null, solved, hits, fouls, points };
   });
 }

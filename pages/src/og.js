@@ -4,9 +4,9 @@
 // "Night Owl 86 : 78 Iron Fox". Previews are in English: a crawler has no language.
 
 const TOPIC = {
-  started: '0xedc52fb6e381e7eda62d91db50f9291c372d8714eaf70cb920492eaaa7bea7b7',
+  started: '0x1f0a803b340f18c069591b04eca4f49892175c5fcb11f82bd92c7e01eef3498b', // Started(address,uint32,bytes32,bool,bytes32,bytes32,address,uint32)
   judged: '0x72e2438d123b5dc0eb021a0e91584f9268b8dbc84049b95899e13a1697bb2f2f',
-  waiting: '0xd0f4dd5f2a28991313642b536ad7aaee60552177ce4c6ad071295f716c45a852',
+  registered: '0xf2c78f5b308dd0ce240b8977e6c0ab5c62ba3ba48ba9972f695f3529ae589784', // Registered(address,bytes32,bytes32,bool,address)
 };
 const FIGHT_OF = '0x32799e5d';
 const ROUND_TIME = '0xee5f8c8f'; // roundTime()
@@ -36,7 +36,7 @@ async function side(env, agent, number) {
   let name = started.length ? text32(words(started[0].data)[2]) : '';
   if (!name) {
     // the first agent of a match gave its name when it joined the queue
-    const waited = await rpc(env.rpc, 'eth_getLogs', [{ address: env.arena, fromBlock: from, toBlock: started[0]?.blockNumber ?? 'latest', topics: [TOPIC.waiting, '0x' + addrWord(agent)] }]);
+    const waited = await rpc(env.rpc, 'eth_getLogs', [{ address: env.arena, fromBlock: from, toBlock: started[0]?.blockNumber ?? 'latest', topics: [TOPIC.registered, '0x' + addrWord(agent)] }]);
     if (waited.length) name = text32(words(waited[waited.length - 1].data)[0]);
   }
   const points = judged.length ? Number(BigInt('0x' + words(judged[0].data)[1])) : null;
@@ -81,7 +81,7 @@ async function describe(url, env) {
   if (page === 'agent.html' && /^0x[0-9a-f]{40}$/.test(a)) {
     const from = '0x' + BigInt(env.deployBlock ?? 0).toString(16);
     const named = [];
-    for (const t0 of [TOPIC.started, TOPIC.waiting]) {
+    for (const t0 of [TOPIC.started, TOPIC.registered]) {
       const logs = await rpc(env.rpc, 'eth_getLogs', [{ address: env.arena, fromBlock: from, toBlock: 'latest', topics: [t0, '0x' + addrWord(a)] }]);
       for (const l of logs) named.push(text32(words(l.data)[t0 === TOPIC.started ? 2 : 0]));
     }
