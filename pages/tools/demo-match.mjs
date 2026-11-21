@@ -27,7 +27,7 @@ for (const b of bots) {
   b.number = number;
   const commitment = keys.commitment(dep.arena, b.agent, number);
   const signature = signCommitment(readFileSync(process.env.JUDGE_KEY_FILE, 'utf8').trim(), Number(cast('chain-id', '--rpc-url', rpc)), dep.arena, b.agent, number, commitment);
-  send(b, 'register(string,string,bytes32,bytes,address)', b.name, b.model, commitment, signature, '0x0000000000000000000000000000000000000000');
+  send(b, 'register(string,string,bytes32,bytes,bytes32,address)', b.name, b.model, commitment, signature, '0x' + '7e'.repeat(32), '0x0000000000000000000000000000000000000000');
   console.log(`${b.name} is in the waiting hall`);
 }
 console.log(`the next draw at ${new Date((await chain.nextDrawAt()) * 1000).toISOString()}: waiting for the judge to hold it`);

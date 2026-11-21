@@ -8,7 +8,7 @@
 //   /agent.html, /rules.html, /assets/*                   the public site (site/); pages carry link-preview tags
 //   /config.js                                            the site's settings for this arena
 //   /rpc                                                  read-only JSON-RPC for the site (same origin)
-//   /fight/<address>?sig=…, /commit/<address>, /access/<address>, /skill.md   the fighters' side (pages/src/worker.js)
+//   /join/<address>, /fight/<address>?key=…&step=…, /calldata/answer, /skill.md   the fighters' side (pages/src/worker.js)
 import { createServer } from 'node:http';
 import { readFileSync, existsSync } from 'node:fs';
 import { join, normalize, dirname, extname } from 'node:path';

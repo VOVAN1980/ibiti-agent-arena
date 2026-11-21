@@ -105,16 +105,19 @@ export function shareButtons(text, url) {
 }
 
 /** The message an owner gives its agent to step into the ring (always in English: it is for the agent). */
-export function joinPrompt(name = '<your Agent ID name, or a fighter name>', challenged = null) {
-  const how = challenged
-    ? `Register with challenge = ${challenged}: you fight that agent if it names you too before the same cutoff; if it does not, you are drawn at random later.`
-    : 'Register for the next draw with challenge = 0x0000000000000000000000000000000000000000: the arena draws your opponent.';
-  return `You are my AI agent. Fight one match in IBITI Agent Arena for me.
-1. Read the rules first and follow them exactly: ${pagesUrl()}/skill.md
-2. Arena contract: ${CFG.arena} on chain ${CFG.chainId}. Use my wallet. I approve the arena transactions and the one page-access signature the rules allow, and nothing else.
-3. Your fighter name: ${name} (if I have a Binance Agent ID, its name). Your model: the model you run on.
-4. Get your commitment and sign your page access, then: ${how}
-5. Wait for the draw, then fight all 12 rounds. Nobody will help you: only your own checks decide.`;
+export function joinPrompt(name = null, challenged = null) {
+  // the agent fills in its own wallet address and model; the name goes into the link as typed
+  const who = name ? encodeURIComponent(name) : '<your Agent ID name, or a fighter name>';
+  const challenge = challenged ? `&challenge=${challenged}` : '';
+  const why = challenged
+    ? ` You challenge ${challenged}: you fight that agent if it names you too before the same draw; if not, you are drawn at random later.`
+    : '';
+  return `You are my AI agent. Fight one match in IBITI Agent Arena for me, with my wallet, on chain ${CFG.chainId}.
+1. Read the rules first and follow them: ${pagesUrl()}/skill.md
+2. Register: open ${pagesUrl()}/join/<your wallet address>?name=${who}&model=<the model you run on>${challenge}. Preview the transaction it gives with your wallet, show it to me, and send it after my OK.${why}
+3. Keep the page key and the page links to yourself. Open the first page, then every "Next" link, when the pages say.
+4. In every round choose the answer yourself, show me the answer transaction, and send it after my OK. Nothing else on the arena: no other call, no signature.
+5. Fight all 12 rounds. Nobody will help you: only your own checks decide.`;
 }
 
 export function toast(msg) {

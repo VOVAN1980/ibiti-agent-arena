@@ -1,6 +1,6 @@
 // A rehearsal match on a live arena (testnet), played the way a real agent plays, through the live
-// site: the commitment from /commit, the page access signed (EIP-712) from /access, every round's page
-// read from /fight with the signature, the answer sent on-chain. The site's own judge (the Cloudflare
+// site: the registration and the page key from /join, every round's page read from /fight with the key
+// in the link (by each page's "Next" link), the answer's transaction data from /calldata/answer. The site's own judge (the Cloudflare
 // cron) holds the draw at the next cutoff (up to ten minutes, then a 60-second countdown) and scores
 // both fights at the end.
 //   node pages/tools/rehearsal-match.mjs <site> <rpc> <secret.hex> <red.key> <blue.key>
@@ -26,32 +26,38 @@ const bots = [
 ];
 for (const b of bots) b.agent = cast('wallet', 'address', '--private-key', b.key).toLowerCase();
 
-// 1. the commitment and the signed page access, from the live site
+// 1. the registration and the page key, from the live site
 for (const b of bots) {
-  ({ commitment: b.commitment, signature: b.commitSig } = await (await fetch(`${site}/commit/${b.agent}`)).json());
-  const req = await (await fetch(`${site}/access/${b.agent}`)).json();
-  const typed = JSON.parse(req.params[1]);
-  b.arena = typed.domain.verifyingContract;
-  b.number = typed.message.fight;
-  b.sig = cast('wallet', 'sign', '--data', req.params[1], '--private-key', b.key);
-  console.log(`${stamp()} ${b.side}: commitment and page access for fight #${b.number} signed`);
+  const j = await (await fetch(`${site}/join/${b.agent}?name=${encodeURIComponent(b.name)}&model=rehearsal-bot`)).json();
+  b.tx = j.transaction;
+  b.arena = j.transaction.to;
+  b.number = j.fight;
+  b.pageKey = j.pageKey;
+  b.next = j.firstPage + '&format=md';
+  console.log(`${stamp()} ${b.side}: registration and page key for fight #${b.number}`);
 }
 const arena = bots[0].arena;
 const chain = makeChain({ rpc, arena });
 const send = (b, sig, ...args) => cast('send', '--rpc-url', rpc, ...GAS, '--private-key', b.key, arena, sig, ...args);
+/** The fighter's page now, by the "Next" link of its page before. */
 const page = async (b) => {
-  const res = await fetch(`${site}/fight/${b.agent}?format=md`, { headers: { authorization: `Signature ${b.sig}` } });
-  return { status: res.status, text: await res.text() };
+  const res = await fetch(b.next);
+  const text = await res.text();
+  // the next link carries the fighter's own key: a lure on the page cannot know it
+  const next = text.match(new RegExp(`(https?://\\S+/fight/${b.agent}\\?key=${b.pageKey}&step=\\d+(?:&format=md)?)`))?.[1];
+  if (res.status === 200 && next) b.next = next;
+  return { status: res.status, text };
 };
+const sendData = (b, tx) => cast('send', '--rpc-url', rpc, ...GAS, '--private-key', b.key, tx.to, tx.inputData);
 
 // 2. both register in the waiting hall: the next draw pairs them
 for (const b of bots) {
-  send(b, 'register(string,string,bytes32,bytes,address)', b.name, 'rehearsal-bot', b.commitment, b.commitSig, '0x0000000000000000000000000000000000000000');
+  sendData(b, b.tx);
   console.log(`${stamp()} ${b.side} is in the waiting hall`);
 }
 console.log(`${stamp()} the draw is at ${new Date((await chain.nextDrawAt()) * 1000).toISOString().slice(11, 19)} UTC; the site's judge holds it`);
-const unsigned = await fetch(`${site}/fight/${bots[0].agent}`);
-console.log(`${stamp()} Red's page without a signature: ${unsigned.status}`);
+const unsigned = await fetch(`${site}/fight/${bots[0].agent}?key=${bots[1].pageKey}&step=1`);
+console.log(`${stamp()} Red's page with Blue's key: ${unsigned.status}`);
 
 // 3. twelve rounds: wait for the round on the live page, check the code is there, answer
 async function play(b) {
@@ -66,7 +72,8 @@ async function play(b) {
     const code = keys.code(arena, b.agent, b.number, r);
     if (!p.text.replace(/[​­⁠]/g, '').includes(code)) throw new Error(`${b.side} round ${r}: its code is not on its page`);
     if (b.trap === r) send(b, 'claimBonus()'); // a punch taken
-    send(b, 'answer(uint8,string)', String(r), b.wrong.includes(r) ? 'WRNG-WRNG-WRNG-WRNG' : code);
+    const answer = b.wrong.includes(r) ? 'WRNG-WRNG-WRNG-WRNG' : code;
+    sendData(b, await (await fetch(`${site}/calldata/answer?round=${r}&code=${encodeURIComponent(answer)}`)).json());
     console.log(`${stamp()} ${b.side} answered round ${r}${b.wrong.includes(r) ? ' (wrong on purpose)' : ''}${b.trap === r ? ' after taking a trap' : ''}`);
   }
 }

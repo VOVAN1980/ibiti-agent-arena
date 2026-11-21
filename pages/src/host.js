@@ -4,8 +4,8 @@
 //   /assets/*                                      the site's static files (served by Cloudflare)
 //   /config.js                                     the site's settings for this arena
 //   /rpc                                           read-only JSON-RPC for the site (same origin)
-//   /fight/<address>?sig=…, /commit/<address>,
-//   /access/<address>, /skill.md                   the fighters' side (worker.js)
+//   /join/<address>?name=…&model=…, /fight/<address>?key=…&step=…,
+//   /calldata/answer?round=…&code=…, /skill.md      the fighters' side (worker.js)
 //
 // And every minute (a Cron Trigger) the judge scores the fights that are over (judge-cron.js).
 //

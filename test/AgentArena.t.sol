@@ -46,6 +46,8 @@ contract AgentArenaTest is Test {
     uint64 constant COOLDOWN = 1 days; // one fight a day
     uint64 constant ROUND_TIME = 60;
     uint64 constant DRAW_EVERY = 600; // a draw every ten minutes
+    /// @dev The hash of a page key: the page server gives the key at /join, the agent registers its hash.
+    bytes32 constant PAGE_KEY_HASH = keccak256("a page key");
 
     function setUp() public {
         vm.warp(1_800_000_000);
@@ -83,7 +85,7 @@ contract AgentArenaTest is Test {
         bytes32 commitment = _next(who);
         bytes memory sig = _sig(who, commitment);
         vm.prank(who);
-        arena.register(_nameOf(who), "claude-opus-5.5", commitment, sig, challenge);
+        arena.register(_nameOf(who), "claude-opus-5.5", commitment, sig, PAGE_KEY_HASH, challenge);
     }
 
     /// @dev The judge's signature of a commitment for `who`'s next fight, as /commit gives it. Taken
@@ -351,7 +353,7 @@ contract AgentArenaTest is Test {
         a.seal();
         vm.prank(alice);
         vm.expectRevert(AgentArena.NotSealed.selector);
-        a.register("alice", "y", bytes32(uint256(1)), "", address(0));
+        a.register("alice", "y", bytes32(uint256(1)), "", PAGE_KEY_HASH, address(0));
     }
 
     function test_onlyAdminSetsUp() public {
@@ -416,7 +418,7 @@ contract AgentArenaTest is Test {
         bytes32 c = _next(alice);
         vm.prank(alice);
         vm.expectRevert(AgentArena.InTheHall.selector);
-        arena.register("alice", "m", c, "", address(0));
+        arena.register("alice", "m", c, "", PAGE_KEY_HASH, address(0));
         vm.prank(alice);
         arena.leave();
         assertEq(arena.hall().length, 0);
@@ -605,7 +607,7 @@ contract AgentArenaTest is Test {
         bytes32 c = _next(alice);
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(AgentArena.Cooldown.selector, uint64(bell + COOLDOWN)));
-        arena.register("alice", "m", c, "", address(0));
+        arena.register("alice", "m", c, "", PAGE_KEY_HASH, address(0));
         vm.warp(bell + COOLDOWN);
         _register(alice);
     }
@@ -621,21 +623,21 @@ contract AgentArenaTest is Test {
         bytes32 c = _next(alice);
         vm.prank(alice);
         vm.expectRevert(AgentArena.FightActive.selector);
-        arena.register("alice", "m", c, "", address(0));
+        arena.register("alice", "m", c, "", PAGE_KEY_HASH, address(0));
     }
 
     function test_onlyItsOwnAgentIdNameIsOfficial() public {
         bytes32 c = _next(alice);
         bytes memory sg = _sig(alice, c);
         vm.prank(alice);
-        arena.register("Alice.AI", "m", c, sg, address(0));
-        (,,,,,, bool verified,) = arena.entries(alice);
+        arena.register("Alice.AI", "m", c, sg, PAGE_KEY_HASH, address(0));
+        (,,,,,, bool verified,,) = arena.entries(alice);
         assertTrue(verified, "its own name, with .ai, in any case");
         c = _next(carol);
         sg = _sig(carol, c);
         vm.prank(carol);
-        arena.register("Night Owl", "m", c, sg, address(0));
-        (,,,,,, verified,) = arena.entries(carol);
+        arena.register("Night Owl", "m", c, sg, PAGE_KEY_HASH, address(0));
+        (,,,,,, verified,,) = arena.entries(carol);
         assertFalse(verified, "an Agent ID holder under another name fights in the open division");
     }
 
@@ -646,11 +648,11 @@ contract AgentArenaTest is Test {
         for (uint256 i; i < refused.length; ++i) {
             vm.prank(bob);
             vm.expectRevert(AgentArena.NameTaken.selector);
-            arena.register(refused[i], "m", c, sg, address(0));
+            arena.register(refused[i], "m", c, sg, PAGE_KEY_HASH, address(0));
         }
         vm.prank(bob);
-        arena.register("bob", "m", c, sg, address(0)); // a free name, no Agent ID: the open division
-        (,,,,,, bool verified,) = arena.entries(bob);
+        arena.register("bob", "m", c, sg, PAGE_KEY_HASH, address(0)); // a free name, no Agent ID: the open division
+        (,,,,,, bool verified,,) = arena.entries(bob);
         assertFalse(verified);
     }
 
@@ -658,12 +660,12 @@ contract AgentArenaTest is Test {
         vm.warp(SEASON_END);
         vm.prank(alice);
         vm.expectRevert(AgentArena.SeasonOver.selector);
-        arena.register("alice", "b", bytes32(uint256(1)), "", address(0));
+        arena.register("alice", "b", bytes32(uint256(1)), "", PAGE_KEY_HASH, address(0));
         // nor when a fight drawn at the next cutoff could end after the season
         vm.warp(SEASON_END - 900);
         vm.prank(alice);
         vm.expectRevert(AgentArena.SeasonOver.selector);
-        arena.register("alice", "b", bytes32(uint256(1)), "", address(0));
+        arena.register("alice", "b", bytes32(uint256(1)), "", PAGE_KEY_HASH, address(0));
     }
 
     function test_noFightStartsThatCouldEndAfterTheSeason() public {
@@ -680,14 +682,31 @@ contract AgentArenaTest is Test {
         assertEq(arena.draws(), 0);
     }
 
+    function test_theFightKeepsThePageKeyHashOfItsRegistration() public {
+        bytes32 c = _next(alice);
+        bytes memory sg = _sig(alice, c);
+        vm.prank(alice);
+        vm.expectRevert(AgentArena.BadPageKey.selector);
+        arena.register("alice", "m", c, sg, bytes32(0), address(0));
+        bytes32 mine = keccak256("alice's page key");
+        vm.prank(alice);
+        arena.register("alice", "m", c, sg, mine, address(0));
+        (,,,,,,,, bytes32 inTheHall) = arena.entries(alice);
+        assertEq(inTheHall, mine);
+        _register(bob);
+        _draw();
+        assertEq(_fight(alice).pageKeyHash, mine, "the round pages of this fight open with alice's key only");
+        assertEq(_fight(bob).pageKeyHash, PAGE_KEY_HASH);
+    }
+
     function test_registrationNeedsACommitmentAndShortNames() public {
         vm.startPrank(alice);
         vm.expectRevert(AgentArena.BadCommitment.selector);
-        arena.register("alice", "b", bytes32(0), "", address(0));
+        arena.register("alice", "b", bytes32(0), "", PAGE_KEY_HASH, address(0));
         vm.expectRevert(AgentArena.TooLong.selector);
-        arena.register("a name that is longer than thirty-two bytes", "b", bytes32(uint256(1)), "", address(0));
+        arena.register("a name that is longer than thirty-two bytes", "b", bytes32(uint256(1)), "", PAGE_KEY_HASH, address(0));
         vm.expectRevert(AgentArena.TooLong.selector);
-        arena.register("alice", "a model that is longer than thirty-two bytes", bytes32(uint256(1)), "", address(0));
+        arena.register("alice", "a model that is longer than thirty-two bytes", bytes32(uint256(1)), "", PAGE_KEY_HASH, address(0));
         vm.stopPrank();
     }
 
@@ -699,14 +718,14 @@ contract AgentArenaTest is Test {
         bytes memory good = _sig(alice, c);
         vm.startPrank(alice);
         vm.expectRevert(AgentArena.BadCommitment.selector);
-        arena.register("alice", "m", c, "", address(0));
+        arena.register("alice", "m", c, "", PAGE_KEY_HASH, address(0));
         vm.expectRevert(AgentArena.BadCommitment.selector);
-        arena.register("alice", "m", c, other, address(0));
+        arena.register("alice", "m", c, other, PAGE_KEY_HASH, address(0));
         vm.expectRevert(AgentArena.BadCommitment.selector);
-        arena.register("alice", "m", c, stranger, address(0));
+        arena.register("alice", "m", c, stranger, PAGE_KEY_HASH, address(0));
         vm.expectRevert(AgentArena.BadCommitment.selector);
-        arena.register("alice", "m", c, forBob, address(0));
-        arena.register("alice", "m", c, good, address(0));
+        arena.register("alice", "m", c, forBob, PAGE_KEY_HASH, address(0));
+        arena.register("alice", "m", c, good, PAGE_KEY_HASH, address(0));
         vm.stopPrank();
         // and every fight the arena opens can be judged
         _register(bob);
@@ -1186,7 +1205,7 @@ contract AgentArenaTest is Test {
         (bool ok,) = address(arena).call{value: 1}("");
         assertFalse(ok, "arena accepted BNB");
         (ok,) = address(arena).call{value: 1}(
-            abi.encodeWithSignature("register(string,string,bytes32,bytes,address)", "a", "b", bytes32(uint256(1)), "", address(0))
+            abi.encodeWithSignature("register(string,string,bytes32,bytes,bytes32,address)", "a", "b", bytes32(uint256(1)), "", PAGE_KEY_HASH, address(0))
         );
         assertFalse(ok, "register accepted BNB");
         (ok,) = address(arena.certificate()).call{value: 1}("");

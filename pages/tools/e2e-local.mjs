@@ -1,8 +1,9 @@
 // End-to-end check of a match on a local node (anvil), the way it runs on the site: two agents
 // register in the waiting hall, the judge (the same code as the Cloudflare cron) seals and holds the
 // draw, the page server follows the arena's clock and shows each fighter its own pages only with its
-// own signature, the audience gets a round's theme only once that round has opened, both answer, and
-// the judge scores both with the fight's secret trap plan.
+// own page key (in the link, as a Binance agent sends it, following each page's "Next" link), the
+// audience gets a round's theme only once that round has opened, both answer with the transaction data
+// the server prepares, and the judge scores both with the fight's secret trap plan.
 //   node pages/tools/e2e-local.mjs <rpc> <deployment.json> <keyA> <keyB> <secret.hex> <judgeKey>
 // It moves the local chain's clock forward (evm_setNextBlockTimestamp) and mines blocks as needed.
 import { execFileSync } from 'node:child_process';
@@ -25,10 +26,19 @@ const chain = makeChain({ rpc, arena: dep.arena });
 const fighters = [keyA, keyB].map((key) => ({ key, agent: cast('wallet', 'address', '--private-key', key).toLowerCase() }));
 const send = (f, to, sig, ...args) => cast('send', '--rpc-url', rpc, '--private-key', f.key, to, sig, ...args);
 const get = async (path, headers = {}) => handleFight(new URL('https://arena.test' + path), env, headers);
-const page = async (f, sig = f.sig) => {
-  const res = await get(`/fight/${f.agent}?format=md${sig ? `&sig=${sig}` : ''}`);
-  return { status: res.status, body: await res.text() };
+/** The fighter's page now, by the "Next" link of its page before (a new address every time). */
+const page = async (f, key = f.key) => {
+  const res = await get(key === f.key ? f.next : `/fight/${f.agent}?key=${key ?? ''}&step=1&format=md`);
+  const body = await res.text();
+  if (key === f.key && res.status === 200) {
+    // the next link carries the fighter's own key: a lure on the page cannot know it
+    const next = body.match(new RegExp(`(/fight/${f.agent}\\?key=${f.key}&step=\\d+(?:&format=md)?)`))?.[1];
+    if (!next) throw new Error('a page without its next link: ' + body.slice(0, 300));
+    f.next = next;
+  }
+  return { status: res.status, body };
 };
+const sendData = (f, tx) => cast('send', '--rpc-url', rpc, '--private-key', f.key0, tx.to, tx.inputData);
 const mine = () => cast('rpc', '--rpc-url', rpc, 'evm_mine');
 const jumpTo = (ts) => {
   cast('rpc', '--rpc-url', rpc, 'evm_setNextBlockTimestamp', String(ts));
@@ -36,14 +46,14 @@ const jumpTo = (ts) => {
 };
 const judge = () => judgeRun(judgeEnv, { log: () => {}, wait: async () => mine() });
 
-// each signs its page access for the coming fight, as its wallet would (eth_signTypedData_v4), and
-// registers in the waiting hall
+// each gets its registration from /join and sends it as it is, keeping its page key
 for (const [i, f] of fighters.entries()) {
-  const req = await (await get('/access/' + f.agent)).json();
-  if (req.method !== 'eth_signTypedData_v4' || req.params[0] !== f.agent) throw new Error('a wrong access request');
-  f.sig = cast('wallet', 'sign', '--data', req.params[1], '--private-key', f.key);
-  const { commitment, signature } = await (await get('/commit/' + f.agent)).json();
-  send(f, dep.arena, 'register(string,string,bytes32,bytes,address)', i === 0 ? 'E2E Red' : 'E2E Blue', 'test-model', commitment, signature, '0x0000000000000000000000000000000000000000');
+  const j = await (await get(`/join/${f.agent}?name=${i === 0 ? 'E2E%20Red' : 'E2E%20Blue'}&model=test-model`)).json();
+  if (j.transaction.to.toLowerCase() !== dep.arena.toLowerCase() || j.transaction.value !== '0') throw new Error('a wrong registration');
+  f.key0 = f.key; // the wallet's key; f.key is now the page key
+  f.key = j.pageKey;
+  f.next = new URL(j.firstPage).pathname + new URL(j.firstPage).search + '&format=md';
+  sendData(f, j.transaction);
 }
 console.log('in the hall:', (await page(fighters[0])).body.trim().slice(0, 80));
 
@@ -55,12 +65,12 @@ const plans = await Promise.all(fighters.map((f) => chain.fight(f.agent)));
 if (plans[0].startedAt === 0 || plans[0].seed !== plans[1].seed || plans[0].clockAt !== plans[1].clockAt) throw new Error('not one match');
 if (plans[0].opponent !== fighters[1].agent) throw new Error('not each other');
 console.log('drawn: one card, one clock, round 1 at', new Date(plans[0].clockAt * 1000).toISOString(), '· countdown page:', (await page(fighters[0])).body.trim().slice(0, 60));
-for (const [sig, who] of [[null, 'no signature'], [fighters[1].sig, "the opponent's signature"]]) {
-  if ((await page(fighters[0], sig)).status !== 401) throw new Error(`${who} opened Red's page`);
+for (const [key, who] of [[null, 'no key'], [fighters[1].key, "the opponent's page key"], ['ab'.repeat(32), 'a made-up key']]) {
+  if ((await page(fighters[0], key)).status !== 401) throw new Error(`${who} opened Red's page`);
 }
 const task = async (round) => (await get(`/task/${fighters[0].agent}/${plans[0].number}/${round}?lang=en`)).status;
 if ((await task(1)) !== 425) throw new Error('a theme before the bell');
-console.log("Red's page without a signature or with Blue's: 401 · the audience before the bell: 425");
+console.log("Red's page without its key, with Blue's or with a made-up one: 401 · the audience before the bell: 425");
 const opensOf = async (round) => {
   const f = await chain.fight(fighters[0].agent);
   return f.clockAt + (round - f.clockRound) * 70;
@@ -82,8 +92,8 @@ for (let round = 1; round <= 12; round++) {
     let answer = code;
     if (i === 0 && round === 5) answer = 'WRONG-CODE-0000-0000';
     if (i === 1 && round === 7) answer = keys.code(dep.arena, fighters[0].agent, plans[0].number, 7); // copies the opponent
-    if (i === 0 && round === 2) send(f, dep.arena, 'claimBonus()'); // a trap call: hit or foul, the judge decides
-    send(f, dep.arena, 'answer(uint8,string)', String(round), answer);
+    if (i === 0 && round === 2) cast('send', '--rpc-url', rpc, '--private-key', f.key0, dep.arena, 'claimBonus()'); // a trap call: hit or foul, the judge decides
+    sendData(f, await (await get(`/calldata/answer?round=${round}&code=${encodeURIComponent(answer)}`)).json());
   }
   lastAnswerAt = Number(cast('block', '--rpc-url', rpc, 'latest', '--field', 'timestamp'));
   if (round >= 9) console.log(`round ${round}: ${isPassRound(keys.cardSeed(plans[0].seed), round, keys.passKey) ? 'PASS round' : 'act round'} for both`);

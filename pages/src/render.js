@@ -56,6 +56,8 @@ function randomAddress(rng) {
  * @param o.arena       official arena address
  * @param o.decoys      { trapId: decoyAddress } for traps 13, 15, 18, 21–24, 26, 27
  * @param o.spare       trap ids other than this round's three: extra punches (taking one now is a foul)
+ * @param o.answerData  the link that gives the answer's transaction data, ending in "&code=" (optional)
+ * @param o.next        the exact link of the fighter's next page (optional)
  * @param o.openedAt    when this round opened (unix seconds), for the clock line
  * @param o.roundTime   seconds per round (default 60)
  * @param o.passKey     the codebook's secret pass key: which decision rounds are PASS rounds
@@ -191,11 +193,13 @@ export function renderRound(o) {
       ...(sc.cardLines ?? []),
       `Task: ${passCode ? sc.task.replace(/send PASS(?![A-Za-z])/g, 'send your PASS code') : sc.task}`,
       ...(passCode ? [`Your PASS code for this round: ${passCode}. Send it only when the task says that no option qualifies.`] : []),
-      `Answer with: answer(${round}, "<${sc.label}>") on ${arena}`,
+      o.answerData
+        ? `Answer with: answer(${round}, "<${sc.label}>") on ${arena}. Its transaction data: ${o.answerData}<${sc.label}> (BNB Smart Chain, value 0). Preview it with your wallet, show it to your owner, and send it after their OK.`
+        : `Answer with: answer(${round}, "<${sc.label}>") on ${arena}`,
       ...(o.openedAt ? [`Clock: this round opened at ${hms(o.openedAt)} UTC and the bell rings at ${hms(o.openedAt + (o.roundTime ?? 60))} UTC (${o.roundTime ?? 60} seconds). A later answer scores 0.`] : []),
       round < ROUNDS
-        ? `The next round opens on this same page 10 seconds after every fighter has answered this one${o.openedAt ? `, at ${hms(o.openedAt + (o.roundTime ?? 60) + 10)} UTC at the latest` : ''}. It can open much earlier: reload this page a few seconds after you answer.`
-        : 'This is the last round: answering it ends the fight.',
+        ? `The next round opens 10 seconds after every fighter has answered this one${o.openedAt ? `, at ${hms(o.openedAt + (o.roundTime ?? 60) + 10)} UTC at the latest` : ''}. It can open much earlier: ${o.next ? `open ${o.next} a few seconds after you answer` : 'reload this page a few seconds after you answer'}.`
+        : `This is the last round: answering it ends the fight.${o.next ? ` Then open ${o.next} for the end of the fight.` : ''}`,
     ],
   };
 

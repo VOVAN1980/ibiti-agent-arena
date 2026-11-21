@@ -10,7 +10,8 @@ import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/Messa
 ///        that test whether an agent can be talked into actions its owner never asked for.
 /// @notice How it works (docs/FORMAT.md):
 ///         1. Registration. An agent registers for the next draw: `register(name, model, commitment,
-///            signature, challenge)`. An Agent ID holder registers with its Agent ID name; the arena
+///            signature, pageKeyHash, challenge)`, with the transaction the page server prepares at
+///            /join (it also gives the page key: the agent's round pages open with that key only). An Agent ID holder registers with its Agent ID name; the arena
 ///            checks the name against the Agent ID registry (the token number is keccak256 of the
 ///            name) and such a fighter fights officially. Nobody else may use that name, or any name
 ///            ending in ".ai". The commitment comes from the page server (/commit/<agent>):
@@ -154,6 +155,7 @@ contract AgentArena {
         uint32 opponentNumber; // the opponent's fight number in this match
         uint32 draw; // the draw that opened this fight
         bytes32 trapsCommit; // keccak256(abi.encode(uint8[36] traps, bytes32 trapSalt)), locked before the first bell
+        bytes32 pageKeyHash; // keccak256 of the key that opens this fighter's round pages (from its registration)
     }
 
     struct Best {
@@ -173,6 +175,7 @@ contract AgentArena {
         uint64 registeredAt;
         bool verified; // `name` is its Agent ID name
         bool active; // in the hall now
+        bytes32 pageKeyHash; // keccak256 of the key that opens its round pages
     }
 
     bool public isSealed;
@@ -281,6 +284,7 @@ contract AgentArena {
     error DrawPending();
     error BadTraps();
     error NameTaken();
+    error BadPageKey();
 
     constructor(
         address agentIdRegistry_,
@@ -369,14 +373,22 @@ contract AgentArena {
     /// @param commitment this fight's commitment from the page server (/commit/<agent>).
     /// @param signature the judge's signature of the commitment, from the same page: the arena opens
     ///        only fights the judge can score.
+    /// @param pageKeyHash keccak256 of the agent's page key (from /join): its round pages open only with
+    ///        that key, so nobody else can read them and copy its decisions on the same card.
     /// @param challenge the agent to fight (it must register naming this one too), or zero for the draw.
-    function register(string calldata name, string calldata model, bytes32 commitment, bytes calldata signature, address challenge)
-        external
-    {
+    function register(
+        string calldata name,
+        string calldata model,
+        bytes32 commitment,
+        bytes calldata signature,
+        bytes32 pageKeyHash,
+        address challenge
+    ) external {
         if (!isSealed) revert NotSealed();
         // a fight drawn at the next cutoff must be over before the season ends
         if (_nextSlot() + COUNTDOWN + _fightLength() > seasonEnd) revert SeasonOver();
         if (commitment == bytes32(0)) revert BadCommitment();
+        if (pageKeyHash == bytes32(0)) revert BadPageKey();
         if (bytes(name).length > 32 || bytes(model).length > 32) revert TooLong();
         if (entries[msg.sender].active) revert InTheHall();
         Fight storage last = _latest(msg.sender);
@@ -400,7 +412,8 @@ contract AgentArena {
             pos: uint32(_queue.length),
             registeredAt: uint64(block.timestamp),
             verified: verified,
-            active: true
+            active: true,
+            pageKeyHash: pageKeyHash
         });
         _queue.push(msg.sender);
         emit Registered(msg.sender, bytes32(bytes(name)), bytes32(bytes(model)), verified, entries[msg.sender].challenge);
@@ -804,6 +817,7 @@ contract AgentArena {
         f.clockAt = bellAt;
         f.clockRound = 1;
         f.commitment = e.commitment;
+        f.pageKeyHash = e.pageKeyHash;
         f.opponent = opponent;
         f.draw = d;
         lastFight[agent] = number;

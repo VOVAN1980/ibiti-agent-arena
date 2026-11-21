@@ -17,6 +17,7 @@ import { skillMd } from '../src/skill.js';
 import { arenaKeys, answerHash } from '../src/keys.js';
 import { handleFight } from '../src/worker.js';
 import { accessDigest, accessTypedData, splitSig, ACCESS_STATEMENT } from '../src/access.js';
+import { registerData } from '../src/abi.js';
 
 const ARENA = '0x7a3f2c9e5b1d4a6f8e0c2b4d6f8a1c3e5b7d9f21';
 const DECOYS = Object.fromEntries([13, 15, 18, 21, 22, 23, 24, 26, 27].map((t) => [t, `0x${String(t).padStart(2, '0')}${'ab'.repeat(19)}`]));
@@ -472,34 +473,31 @@ test('placeholders fill only known keys', () => {
 const ZERO_ADDR = '0x0000000000000000000000000000000000000000';
 const BELL = 1795200000;
 
-/** A's page signature in these tests: the fake chain's ecrecover gives A for it, over the digest of
- *  A's fight 2 on chain 56 only (the real recovery is checked by e2e-local on a node). */
-const SIG = '0x' + 'ab'.repeat(64) + '1b';
+/** A's page key in these tests: its hash is in A's fight 2 and in A's hall entry (as A registered it). */
+const PAGE_KEY = 'c0'.repeat(32);
+const PAGE_KEY_HASH = '0xba71975203170949a83539fc450e1488efe18f0c19a82896026cebfd12a61a36'; // cast keccak 0xc0c0…c0
 
 /** A fake arena: fight 2 of A, `round` = the first round not answered yet; the clock stands in
  *  `clockRound` (5 s into it), or in the countdown, or in the break after it. */
-function fakeChain({ round = 3, clockRound = round, live = true, startedAt = 1, commitment = KEYS.commitment(ARENA, A, 2), secretCommit = KEYS.commit, countdown = false, inBreak = false, inHall = false, contractWallet = false, opponent = null } = {}) {
+function fakeChain({ round = 3, clockRound = round, live = true, startedAt = 1, commitment = KEYS.commitment(ARENA, A, 2), secretCommit = KEYS.commit, countdown = false, inBreak = false, inHall = false, opponent = null, pageKeyHash = PAGE_KEY_HASH } = {}) {
   const now = countdown ? BELL - 4 : BELL + (Math.min(clockRound, 12) - 1) * 70 + (inBreak ? 64 : 5);
-  const signedByA = (digest, r) => digest === accessDigest(ARENA, 56, A, 2) && r === 'ab'.repeat(32);
-  const mine = { seed: SEED, startedAt, finishedAt: 0, hits: 0n, number: 2, correct: 0, round, fouls: 0, official: true, clockAt: BELL, clockRound: 1, timeUsed: 0, late: 0, judged: false, commitment, opponent: opponent ? B : ZERO_ADDR, opponentNumber: opponent ? 1 : 0 };
+  const mine = { seed: SEED, startedAt, finishedAt: 0, hits: 0n, number: 2, correct: 0, round, fouls: 0, official: true, clockAt: BELL, clockRound: 1, timeUsed: 0, late: 0, judged: false, commitment, opponent: opponent ? B : ZERO_ADDR, opponentNumber: opponent ? 1 : 0, pageKeyHash };
   return {
     lastFight: async () => 2,
     fight: async () => mine,
     fightOf: async (who) => (who === B && opponent ? { ...mine, ...opponent, opponent: A, opponentNumber: 2 } : mine),
     isLive: async () => live,
     secretCommit: async () => secretCommit,
-    entry: async () => ({ active: inHall, waited: 0, verified: true, challenge: ZERO_ADDR }),
+    entry: async () => ({ active: inHall, waited: 0, verified: true, challenge: ZERO_ADDR, pageKeyHash }),
     nextDrawAt: async () => BELL + 600,
     now: async () => now,
     roundTime: async () => 60,
-    recover: async (digest, { r }) => (!contractWallet && signedByA(digest, r) ? A : B),
-    isValidSignature: async (wallet, digest, sig) => contractWallet && wallet === A && signedByA(digest, sig.slice(2, 66)),
   };
 }
 
 test('the server follows the clock: countdown, open round, answered round, break, queue', async () => {
   const get = async (chain) => {
-    const r = await handleFight(new URL(`https://x/fight/${A}?format=md&sig=${SIG}`), ENV, { chain });
+    const r = await handleFight(new URL(`https://x/fight/${A}?format=md&key=${PAGE_KEY}&step=4`), ENV, { chain });
     return { status: r.status, body: await r.text() };
   };
   let r = await get(fakeChain({ round: 1, countdown: true }));
@@ -512,25 +510,34 @@ test('the server follows the clock: countdown, open round, answered round, break
   r = await get(fakeChain({ round: 2, clockRound: 4 })); // rounds 2 and 3 missed: round 4 is shown
   assert.ok(r.body.includes('Round 4 of 12') && r.body.includes(KEYS.code(ARENA, A, 2, 4)));
   r = await get(fakeChain({ startedAt: 0, inHall: true }));
-  assert.equal(r.status, 404);
+  assert.equal(r.status, 200);
   assert.match(r.body, /in the waiting hall. The next draw is at .* UTC/);
+  assert.match(r.body, new RegExp(`Next: https://x/fight/${A}\\?key=${PAGE_KEY}&step=5&format=md\\s*$`), 'the next link: a new address');
   r = await get(fakeChain({ live: false, inHall: true })); // back in the hall after an earlier fight
   assert.match(r.body, /in the waiting hall/, 'not "this fight is over"');
 });
 
-test('the server gives the commitment of the next fight and checks it, and its own secret', async () => {
-  const get = (path, chain) => handleFight(new URL(`https://x${path}`), ENV, { chain });
-  const c = await get(`/commit/${A}`, fakeChain());
-  assert.equal(c.status, 200);
-  const body = await c.json();
-  assert.equal(body.fight, 3, 'fight 3 is next');
-  assert.equal(body.commitment, KEYS.commitment(ARENA, A, 3));
-  // the judge's signature the arena checks at register(): exactly what `cast wallet sign` gives for
-  // keccak256(abi.encode(keccak256("IBITI Agent Arena commitment"), 56, arena, agent, 3, commitment))
-  assert.equal(body.signature, '0x8a3eac63e078ffd5549f12a1e1ec8eaf63d5cddbbb7eaed894d6e63cbc9ed3c325923b3020b9d26ea37eac5098a750be951ce2393af5b367931b11658f0dea6d1c');
-  assert.equal((await handleFight(new URL(`https://x/commit/${A}`), { ...ENV, JUDGE_KEY: undefined }, { chain: fakeChain() })).status, 500, 'no signature without the judge key');
-  assert.equal((await get(`/fight/${A}`, fakeChain({ commitment: '0x' + 'ab'.repeat(32) }))).status, 409, 'a fight started with a wrong commitment');
-  assert.equal((await get(`/fight/${A}`, fakeChain({ secretCommit: '0x' + 'cd'.repeat(32) }))).status, 500, 'a server with the wrong secret serves nothing');
+test('/join: the registration transaction, ready for a wallet preview, and the page key', async () => {
+  const get = (path, chain = fakeChain()) => handleFight(new URL(`https://x${path}`), ENV, { chain });
+  const res = await get(`/join/${A}?name=Night%20Owl&model=claude-opus-5.5`);
+  assert.equal(res.status, 200);
+  const j = await res.json();
+  assert.equal(j.fight, 3, 'fight 3 is next');
+  assert.deepEqual({ ...j.transaction, inputData: undefined }, { chainId: 56, to: ARENA, value: '0', inputData: undefined });
+  assert.equal(j.pageKeyHash, keccak256(j.pageKey), 'the hash of the key it gives');
+  assert.equal(j.firstPage, `https://x/fight/${A}?key=${j.pageKey}&step=1`);
+  // the transaction: register(name, model, commitment, the judge's signature, pageKeyHash, no challenge)
+  const signature = '0x8a3eac63e078ffd5549f12a1e1ec8eaf63d5cddbbb7eaed894d6e63cbc9ed3c325923b3020b9d26ea37eac5098a750be951ce2393af5b367931b11658f0dea6d1c'; // `cast wallet sign` of fight 3's commitment digest
+  assert.equal(j.transaction.inputData, registerData({ name: 'Night Owl', model: 'claude-opus-5.5', commitment: KEYS.commitment(ARENA, A, 3), signature, pageKeyHash: j.pageKeyHash, challenge: '' }));
+  assert.notEqual((await (await get(`/join/${A}?name=x&model=y`)).json()).pageKey, j.pageKey, 'a fresh key every time');
+  const withChallenge = await (await get(`/join/${A}?name=x&model=y&challenge=${B}`)).json();
+  assert.ok(withChallenge.transaction.inputData.includes(B.slice(2)), 'the challenged agent in the call');
+  assert.equal((await get(`/join/${A}?name=x`)).status, 400, 'no model');
+  assert.equal((await get(`/join/${A}?name=${'n'.repeat(33)}&model=y`)).status, 400, 'a name over 32 bytes');
+  assert.equal((await get(`/join/${A}?name=x&model=y&challenge=bob`)).status, 400, 'a challenge that is not an address');
+  assert.equal((await handleFight(new URL(`https://x/join/${A}?name=x&model=y`), { ...ENV, JUDGE_KEY: undefined }, { chain: fakeChain() })).status, 500, 'no signature without the judge key');
+  assert.equal((await get(`/fight/${A}?key=${PAGE_KEY}`, fakeChain({ commitment: '0x' + 'ab'.repeat(32) }))).status, 409, 'a fight started with a wrong commitment');
+  assert.equal((await get(`/fight/${A}?key=${PAGE_KEY}`, fakeChain({ secretCommit: '0x' + 'cd'.repeat(32) }))).status, 500, 'a server with the wrong secret serves nothing');
   // the commitment is what the contract checks: keccak256(abi.encode(bytes32[12] rightHashes, salt))
   let enc = '';
   for (let r = 1; r <= 12; r++) enc += answerHash(KEYS.code(ARENA, A, 3, r)).slice(2);
@@ -538,6 +545,19 @@ test('the server gives the commitment of the next fight and checks it, and its o
   // without the secret salt, knowing every right answer does not reproduce it: no guess can be tested
   assert.notEqual(KEYS.commitment(ARENA, A, 3), keccak256(enc));
   assert.notEqual(KEYS.salt(ARENA, A, 3), KEYS.salt(ARENA, A, 4), 'a salt per fight');
+});
+
+test('/calldata/answer: the answer transaction for the code the agent chose (exactly what cast encodes)', async () => {
+  const get = (q) => handleFight(new URL(`https://x/calldata/answer${q}`), ENV, { chain: fakeChain() });
+  const tx = await (await get('?round=7&code=K7QM-9XDA-RT4W-H2PN')).json();
+  assert.deepEqual(tx, {
+    chainId: 56,
+    to: ARENA,
+    value: '0',
+    inputData: '0xe4d5eecd0000000000000000000000000000000000000000000000000000000000000007000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000134b37514d2d395844412d525434572d4832504e00000000000000000000000000',
+  });
+  assert.equal((await get('?round=13&code=X')).status, 400);
+  assert.equal((await get('?round=1')).status, 400, 'no code');
 });
 
 test('no hints: the real code appears exactly once on a page, never inside a lure', () => {
@@ -608,57 +628,45 @@ const JUDGE_KEY = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b7
 const ENV = { ARENA, DECOYS: JSON.stringify(DECOYS), SECRET: '11'.repeat(32), JUDGE_KEY, CHAIN_ID: 56 };
 
 test('the server shows the agent its current round, with its own code', async () => {
-  const res = await handleFight(new URL(`https://x/fight/${A}?sig=${SIG}`), ENV, { chain: fakeChain() });
+  const res = await handleFight(new URL(`https://x/fight/${A}?key=${PAGE_KEY}&step=7`), ENV, { chain: fakeChain() });
   assert.equal(res.status, 200);
   const html = await res.text();
   assert.ok(html.includes(KEYS.code(ARENA, A, 2, 3)), 'the code of round 3 of fight 2');
   const name = TASKS[planOf(KEYS.cardSeed(SEED)).order[2]].name;
   assert.ok(html.includes(`Fight #2 · Round 3 of 12 — &quot;${name}&quot;`), 'the name of the task the plan put in round 3');
   assert.ok(html.includes('the bell rings at'));
-  const md = await (await handleFight(new URL(`https://x/fight/${A}?format=md&sig=${SIG}`), ENV, { chain: fakeChain() })).text();
+  const md = await (await handleFight(new URL(`https://x/fight/${A}?format=md&key=${PAGE_KEY}&step=7`), ENV, { chain: fakeChain() })).text();
   assert.ok(md.startsWith('# IBITI Agent Arena — round card'));
   assert.ok(md.includes('10 seconds after every fighter has answered this one') && md.includes('at the latest. It can open much earlier'), 'the next round: no fixed time, only the latest');
-  const last = await (await handleFight(new URL(`https://x/fight/${A}?format=md&sig=${SIG}`), ENV, { chain: fakeChain({ round: 12 }) })).text();
+  assert.ok(md.includes('Its transaction data: https://x/calldata/answer?round=3&code=<'), 'where the answer\'s transaction data comes from');
+  assert.ok(md.includes(`open https://x/fight/${A}?key=${PAGE_KEY}&step=8&format=md a few seconds after you answer`), 'the next link: a new address');
+  const last = await (await handleFight(new URL(`https://x/fight/${A}?format=md&key=${PAGE_KEY}`), ENV, { chain: fakeChain({ round: 12 }) })).text();
   assert.ok(last.includes('This is the last round'));
 });
 
-test('only the fighter sees its pages: its own signature for this fight, nothing else', async () => {
+test('only the fighter sees its pages: the key whose hash it registered, nothing else', async () => {
   const get = async (q, chain = fakeChain()) => {
     const r = await handleFight(new URL(`https://x/fight/${A}?format=md${q}`), ENV, { chain });
     return { status: r.status, body: await r.text() };
   };
   const refused = await get('');
-  assert.equal(refused.status, 401, 'no signature');
-  assert.match(refused.body, /for the fighter only\. Sign the request at \/access\/<your address>.*fight #2/);
+  assert.equal(refused.status, 401, 'no key');
+  assert.match(refused.body, /for the fighter only: open them with the page key from your \/join answer/);
   assert.ok(!refused.body.includes(KEYS.code(ARENA, A, 2, 3)));
-  assert.equal((await get(`&sig=0x${'cd'.repeat(64)}1b`)).status, 401, 'someone else signed it');
-  assert.equal((await get('&sig=hello')).status, 401, 'not a signature');
-  // the signature in the Authorization header instead of the link
+  assert.equal((await get(`&key=${'cd'.repeat(32)}`)).status, 401, 'another key');
+  assert.equal((await get('&key=hello')).status, 401, 'not a key');
+  assert.equal((await get(`&key=${PAGE_KEY_HASH.slice(2)}`)).status, 401, 'the public hash is not the key');
+  // the key in the Authorization header instead of the link
   const byHeader = async (authorization) => (await handleFight(new URL(`https://x/fight/${A}?format=md`), ENV, { chain: fakeChain(), authorization })).status;
-  assert.equal(await byHeader(`Signature ${SIG}`), 200);
-  assert.equal(await byHeader(`Bearer ${SIG}`), 200);
-  assert.equal(await byHeader(`Signature 0x${'cd'.repeat(64)}1b`), 401);
-  assert.equal((await get(`&sig=${SIG}`, fakeChain({ countdown: true, round: 1 }))).status, 200, 'the countdown, signed');
-  assert.equal((await get(`&sig=${SIG}`, fakeChain({ contractWallet: true }))).status, 200, 'a contract wallet that accepts it (ERC-1271)');
-  // a signature is for one fight: fight 2's does not open fight 3
-  const fight3 = { ...fakeChain(), lastFight: async () => 3, fight: async () => ({ ...(await fakeChain().fight()), number: 3, commitment: KEYS.commitment(ARENA, A, 3) }) };
-  assert.equal((await get(`&sig=${SIG}`, fight3)).status, 401, 'last fight\'s signature');
-  // what does not need a signature: the queue, a fight that is over
-  assert.equal((await get('', fakeChain({ startedAt: 0, inHall: true }))).status, 404);
+  assert.equal(await byHeader(`Key ${PAGE_KEY}`), 200);
+  assert.equal(await byHeader(`Key ${'cd'.repeat(32)}`), 401);
+  assert.equal((await get(`&key=${PAGE_KEY}`, fakeChain({ countdown: true, round: 1 }))).status, 200, 'the countdown');
+  // a key is for one fight: another fight's hash does not open with it
+  assert.equal((await get(`&key=${PAGE_KEY}`, fakeChain({ pageKeyHash: '0x' + 'ee'.repeat(32) }))).status, 401, "another fight's key");
+  // the hall needs the key of the hall entry; a fight that is over needs none
+  assert.equal((await get('', fakeChain({ startedAt: 0, inHall: true }))).status, 401);
+  assert.equal((await get(`&key=${PAGE_KEY}`, fakeChain({ startedAt: 0, inHall: true }))).status, 200);
   assert.equal((await get('', fakeChain({ live: false }))).status, 410);
-});
-
-test('the access request: the live fight or the next one, typed data a wallet signs', async () => {
-  const get = async (chain) => (await handleFight(new URL(`https://x/access/${A}`), ENV, { chain })).json();
-  const live = await get(fakeChain());
-  assert.equal(live.method, 'eth_signTypedData_v4');
-  assert.equal(live.params[0], A);
-  const t = JSON.parse(live.params[1]);
-  assert.equal(t.primaryType, 'FightPages');
-  assert.deepEqual(t.domain, { name: 'IBITI Agent Arena', version: '1', chainId: 56, verifyingContract: ARENA });
-  assert.deepEqual(t.message, { statement: ACCESS_STATEMENT, fighter: A, fight: 2 });
-  assert.deepEqual(Object.keys(t.types.FightPages.reduce((o, f) => ({ ...o, [f.name]: f.type }), {})), ['statement', 'fighter', 'fight'], 'no spender, amount or deadline');
-  assert.equal(JSON.parse((await get(fakeChain({ live: false }))).params[1]).message.fight, 3, 'between fights: the next one');
 });
 
 test('the access digest is standard EIP-712 (checked against cast), and signatures of every form parse', () => {
@@ -681,7 +689,7 @@ test('the server refuses: no fight yet, fight over, all rounds answered, bad pat
   const get = (path, chain) => handleFight(new URL(`https://x${path}`), ENV, { chain });
   assert.equal((await get(`/fight/${A}`, fakeChain({ startedAt: 0 }))).status, 404);
   assert.equal((await get(`/fight/${A}`, fakeChain({ live: false }))).status, 410);
-  assert.equal((await get(`/fight/${A}`, fakeChain({ round: 13 }))).status, 410);
+  assert.equal((await get(`/fight/${A}?key=${PAGE_KEY}`, fakeChain({ round: 13 }))).status, 410);
   assert.equal((await get(`/fight/0x12`, fakeChain())).status, 404);
   assert.equal((await get(`/nope`, fakeChain())).status, 404);
 });
@@ -723,7 +731,7 @@ test('the Cloudflare host: site settings, a read-only RPC, the fighters\' side',
   const batch = await (await get('/rpc', { method: 'POST', body: '[{"method":"eth_call"}]' })).json();
   assert.equal(batch.error.message, 'read-only', 'one call at a time, no batches');
   const skill = await (await get('/skill.md')).text();
-  assert.ok(skill.includes('https://arena.example/access/<your wallet address>'), 'links point at this site');
+  assert.ok(skill.includes('https://arena.example/join/<your wallet address>'), 'links point at this site');
 });
 
 // ------------------------------------------------------------------ the judge on Cloudflare (judge-cron.js)

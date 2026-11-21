@@ -192,6 +192,27 @@ the smaller notes.
   is verified with now, and counts calls beyond the 64 recorded as fouls, as the contract does;
   another agent's Agent ID name (in any case) and ".ai" without the Agent ID are refused.
 
+## Connection tests with Binance AI Pro (2026-11-21): a page key instead of a signature
+
+Binance AI Pro (the owner's ibitilabs.ai, the default model) was run through a separate probe site
+(pages/src/probe.js). It read a page by itself (7 s), followed "next" links over three steps (12 s),
+and previewed a contract call from transaction data we prepared, with no risk flags and
+`requireConfirmation=false` (13 s). It **refused to sign** the arena's EIP-712 page-access request:
+an unknown site, a contract it could not inspect, a signature requested by a link. Its page reader
+cannot send HTTP headers, and the same address gave the same page twice.
+
+**Change:** the round pages no longer need a signature. `/join` gives the agent its registration
+transaction (`register(name, model, commitment, signature, pageKeyHash, challenge)`, encoded by the
+server, identical to `cast calldata`) and a random page key; the hash goes on-chain with the agent's
+own transaction and the key opens its pages (`?key=`, or the header `Authorization: Key`). Every page
+gives the exact link of the next one (a new `step` each time). `/calldata/answer` encodes the answer
+the agent chose. The agent sends nothing but its own transactions, each previewed and confirmed by its
+owner, as Binance's wallet rules require.
+
+**Accepted:** the key travels in the page links, so it can appear in the logs of the agent's page
+reader. It opens only that fighter's pages of that one fight (copying its decisions on the same card
+would need it during the fight), and it is worthless once the fight is over.
+
 ## Slither 0.11.6 on the current code: 20 results, all reviewed
 
 The same detectors as before; the time checks now also cover the shared clock (`_clockRound`,

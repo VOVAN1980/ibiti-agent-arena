@@ -74,6 +74,7 @@ export function makeChain({ rpc, arena, fetchFn }) {
         opponentNumber: Number(big(w[16])),
         draw: Number(big(w[17] ?? '0')),
         trapsCommit: '0x' + (w[18] ?? '0'.repeat(64)), // the trap plan locked before the first bell (zero: none)
+        pageKeyHash: '0x' + (w[19] ?? '0'.repeat(64)), // keccak256 of the fighter's page key
       };
     },
     /** The agent's latest fight (all zero if it never fought). */
@@ -90,7 +91,7 @@ export function makeChain({ rpc, arena, fetchFn }) {
      *  challenge, pos, waited, verified, active). */
     async entry(agent) {
       const w = words(await call(SEL.entries + word(agent)));
-      return { challenge: '0x' + w[3].slice(24), waited: Number(big(w[5])), verified: big(w[6]) !== 0n, active: big(w[7]) !== 0n };
+      return { challenge: '0x' + w[3].slice(24), waited: Number(big(w[5])), verified: big(w[6]) !== 0n, active: big(w[7]) !== 0n, pageKeyHash: '0x' + (w[8] ?? '0'.repeat(64)) };
     },
     /** When the next draw may be held (0 before the first registration). */
     async nextDrawAt() {
