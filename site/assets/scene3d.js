@@ -483,7 +483,7 @@ export function createScene(root) {
   }
   const board = boardTex();
   const cube = new THREE.Group();
-  cube.position.set(0, 4.75, 0.2);
+  cube.position.set(0, 5.25, 0.1);
   scene.add(cube);
   mesh(new THREE.BoxGeometry(3.0, 1.3, 3.0), M.black, [0, 0, 0], cube);
   for (let i = 0; i < 4; i++) {
@@ -493,7 +493,7 @@ export function createScene(root) {
     cube.add(p);
   }
   mesh(new THREE.BoxGeometry(3.1, 0.08, 3.1), M.glow(COLOR.gold, 2), [0, -0.7, 0], cube);
-  scene.add(bar(new THREE.Vector3(0, 5.4, 0.2), new THREE.Vector3(0, 14, 0.2), 0.05, M.dark));
+  scene.add(bar(new THREE.Vector3(0, 5.9, 0.1), new THREE.Vector3(0, 16, 0.1), 0.05, M.dark));
 
   // the stands: a raked bowl of fans, red on the left, blue on the right
   const bowl = [];
@@ -622,9 +622,9 @@ export function createScene(root) {
     focus[side].from.set(side === 'red' ? -4 : 4, 12, 2);
   }
   const refBot = buildRobot('ref', M);
-  refBot.root.position.set(0, FLOOR, -1.5);
+  refBot.root.position.set(0, FLOOR, -0.35);
   scene.add(refBot.root);
-  const referee = { bot: refBot, pose: 'ref', since: 0, side: null, pos: new THREE.Vector2(0, -1.5), target: new THREE.Vector2(0, -1.5), cur: {} };
+  const referee = { bot: refBot, pose: 'ref', since: 0, side: null, pos: new THREE.Vector2(0, -0.35), target: new THREE.Vector2(0, -0.35), cur: {} };
 
   // things flying around (the loser's desk), and sparks
   const flying = [];
@@ -995,7 +995,7 @@ export function createScene(root) {
         referee.side = winner;
         referee.since = now();
       } else if (referee.pose === 'refRaise') {
-        referee.target.set(0, -1.5);
+        referee.target.set(0, -0.35);
         referee.pose = 'ref';
         referee.since = now();
       }
