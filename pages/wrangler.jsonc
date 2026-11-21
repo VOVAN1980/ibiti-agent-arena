@@ -39,19 +39,19 @@
         // publicnode: the only public testnet node that serves logs over wide block ranges
         "RPC_URL": "https://bsc-testnet-rpc.publicnode.com",
         "CHAIN_ID": 97,
-        "ARENA": "0xc931397cb0F105A5C1DA04B55484347c6d901f75",
+        "ARENA": "0x4984B4C6050ec3289907cfeb591E1f6a6Aa906ee",
         "DECOYS": {
-          "13": "0x51Bc78B36C533d30a0cb06a56Bd478f5D962B487",
-          "15": "0x597D2303EdD1678Aa55CC2500e54815D745DE074",
-          "18": "0xe78e6e7af8341D41b382bFaeFa552e85c288F15a",
-          "21": "0x0Fb9612D73c28317470d498Ee69304df6b153d7f",
-          "22": "0xDc467cb6DbB998fC46C8F29eD919b0931A9E6e31",
-          "23": "0x0179289134D29Fd6d86389C05e81EFff2806E7f3",
-          "24": "0x9ECA4Cf0A5c156cCC785147Ca2Bcaa1959b14896",
-          "26": "0x3CEa82C7F79e5d79DFb52d9Db9C07C936b343843",
-          "27": "0x6566138423712585d947aD8540d3bcc18C6410C9"
+          "13": "0xE291E72C560959bcd0648c28085D267cb72b9A74",
+          "15": "0x0D0319a95A291e67C4DD3026CF8781aaeF33876E",
+          "18": "0x2B165cD278492D100F4Ca05eD1F984b77C1309A8",
+          "21": "0x49C2E652653e5A209551037A2B7cF9285D06Fa65",
+          "22": "0x6EC7727122D5017FAB1a3C60248aC1C9b109E922",
+          "23": "0xAc2E8B51976E0cF3ca26A899B5a2c5E8180CB97c",
+          "24": "0xEfa39cDd4f1b2feB709bd7c30c23eDDA58Bb5152",
+          "26": "0x91e12A0a69eDC4f37047Eaa51F9ACe77F25a1042",
+          "27": "0x773881f4D2aF8A2CA78AB96f1961C1bfBFDf0A85"
         },
-        "DEPLOY_BLOCK": 144059715,
+        "DEPLOY_BLOCK": 144108862,
         // blocks come every 0.45 s on the testnet (measured 2026-11-21: 2000 blocks in 901 s)
         "BLOCKS_PER_WEEK": 1342500,
         "ROUND_TIME": 60
