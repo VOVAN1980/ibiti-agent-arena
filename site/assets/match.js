@@ -12,7 +12,7 @@ import { CFG, emptyState, refresh, bouts, verdict, clockOf, fightName, fightOf, 
 const foulsOf = (j) => (j.empty ? '—' : j.fouls);
 import { $, esc, keep, tName, header, footer, avatar, shareButtons, mmss, siteUrl, agentUrl, matchUrl, t, applyI18n } from './ui.js';
 import { forFight, loadTheme, loadAll, themeName, themeText, themesKnown } from './themes.js';
-import { gong, beep, ding, thud, cheer, boo, ooh, crowdLevel, setMusic, soundOn, setSound } from './sound.js';
+import { gong, beep, ding, thud, cheer, boo, ooh, crowdLevel, setMusic, soundOn, soundRunning, setSound } from './sound.js';
 import { createScene as createFlatScene } from './scene.js';
 
 $('#head').innerHTML = header('match');
@@ -21,7 +21,27 @@ applyI18n();
 const params = new URLSearchParams(location.search);
 const wantAgent = (params.get('a') || '').toLowerCase();
 const wantNumber = Number(params.get('n') || 0);
-let autoReplay = params.get('replay') === '1';
+// how fast a replay runs: 'fast' (a round in a few seconds), 'twice' (twice the fight's speed) or
+// 'real' (as it was fought); the viewer's choice is remembered, and a link can ask for one
+const SPEEDS = ['fast', 'twice', 'real'];
+let autoReplay = params.get('replay') === '1' || SPEEDS.includes(params.get('replay'));
+{
+  let saved = null;
+  try {
+    saved = localStorage.getItem('arenaReplaySpeed');
+  } catch {
+    // nothing remembered
+  }
+  const box = $('#replaySpeed');
+  box.value = SPEEDS.includes(params.get('replay')) ? params.get('replay') : SPEEDS.includes(saved) ? saved : 'fast';
+  box.addEventListener('change', () => {
+    try {
+      localStorage.setItem('arenaReplaySpeed', box.value);
+    } catch {
+      // not remembered, still works now
+    }
+  });
+}
 const RT = CFG.roundTime ?? 60;
 const s = emptyState();
 /** The 3D arena where the browser can draw it; the flat one otherwise. */
@@ -101,7 +121,7 @@ function renderIdle() {
     idleSig = sig;
     ringSig = '';
     $('#ring').innerHTML = '';
-    $('#watchReplay').style.display = 'none';
+    $('#replayBox').style.display = 'none';
     const head = kind === 'next' ? `${esc(t('ringNextDraw'))} <span id="idleClock" translate="no">${clock}</span>` : esc(title);
     const text = kind === 'closed' ? t('ringClosedText') : kind === 'free' ? `${t('boardFirst')}. ${t('ringIdleText')}` : t('ringIdleText');
     const last = done[0];
@@ -124,8 +144,11 @@ function soundButtons() {
   b.setAttribute('aria-pressed', String(soundOn()));
   const gate = $('#soundGate');
   gate.textContent = `🔊 ${t('arenaSound')}`;
-  gate.hidden = soundOn();
+  // the gate stays up until the sound really runs: a remembered "on" still needs one tap on the page
+  gate.hidden = soundOn() && soundRunning();
 }
+// that first tap anywhere starts a remembered sound: then the gate can go
+document.addEventListener('pointerdown', () => setTimeout(soundButtons, 400));
 function toggleSound(value) {
   setSound(value);
   soundButtons();
@@ -426,7 +449,7 @@ function renderRing(b) {
     if (ringSig === 'cancelled') return;
     ringSig = 'cancelled';
     $('#ring').innerHTML = `<div class="hudmsg"><b>${esc(t('cancelledTitle'))}</b><br><span class="tiny">${esc(t('cancelledText'))}</span></div>`;
-    $('#watchReplay').style.display = 'none';
+    $('#replayBox').style.display = 'none';
     scene.setBoard([t('cancelledTitle'), '—', `${fightName(s, red)}${blue ? ` · ${fightName(s, blue)}` : ''}`]);
     return;
   }
@@ -478,7 +501,7 @@ function renderRing(b) {
   cues(b, c, v, { red: vr, blue: vb });
   if (v) {
     renderRounds(b);
-    $('#watchReplay').style.display = '';
+    $('#replayBox').style.display = '';
     if (!shared) {
       shared = true;
       shareAndChallenge(b, v);
@@ -599,7 +622,9 @@ async function playReplay(b) {
       at[side] = a && !a.late ? a.secs : null;
     }
     const end = sides.every((side) => at[side] != null) ? Math.max(...sides.map((side) => at[side])) : RT;
-    const dur = 600 + (end / RT) * 2200;
+    // as long as the viewer chose: a few seconds, half the real time, or the real time
+    const speed = $('#replaySpeed').value;
+    const dur = speed === 'real' ? Math.max(1500, end * 1000) : speed === 'twice' ? Math.max(1200, end * 500) : 600 + (end / RT) * 2200;
     const t0 = performance.now();
     const done = {};
     for (;;) {

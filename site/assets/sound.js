@@ -52,6 +52,8 @@ document.addEventListener('pointerdown', () => {
 }, { once: true });
 
 export const soundOn = () => on;
+/** Whether the browser is really letting the arena sound now (a remembered "on" still needs one tap). */
+export const soundRunning = () => !!ctx && ctx.state === 'running';
 export function setSound(value) {
   on = value;
   try {

@@ -26,7 +26,16 @@
 </section>
 <div class="wrap">
   <div class="arenabar">
-    <button class="btn small" type="button" id="watchReplay" style="display:none" data-i18n="watchReplay"></button>
+    <span class="replaybox" id="replayBox" style="display:none">
+      <label class="speed"><span data-i18n="replaySpeed"></span>
+        <select class="field" id="replaySpeed">
+          <option value="fast" data-i18n="speedFast"></option>
+          <option value="twice" data-i18n="speedTwice"></option>
+          <option value="real" data-i18n="speedReal"></option>
+        </select>
+      </label>
+      <button class="btn small" type="button" id="watchReplay" data-i18n="watchReplay"></button>
+    </span>
     <button class="btn small" type="button" id="sound" aria-pressed="false"></button>
   </div>
   <section class="panel" id="sharePanel" style="margin-top:16px;display:none">

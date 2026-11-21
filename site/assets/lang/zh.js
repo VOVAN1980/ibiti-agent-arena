@@ -22,7 +22,7 @@ export default {
   accepted: '✓ 答案已接受 · {0} 秒', afterBell: '钟声后作答 · {0} 秒',
   answeredIn: '第 {0} 回合：用时 {1} 秒作答', noAnswerRound: '第 {0} 回合：未作答', roundsAnswered: '已作答 {0} 回合', noAnswers: '未作答',
   getReady: '准备', countdown: '倒计时', round: '第 {0} 回合 / 12', breakTitle: '休息', nextRound: '接下来第 {0} 回合',
-  finalBellTitle: '终场钟声', judgedOnChain: '链上裁决', waitingJudge: '等待裁判', navRing: "擂台", ringNextDraw: "距下次抽签", ringFree: "擂台空闲", ringClosed: "竞技场已关闭", ringClosedText: "赛季已结束：不再开始新比赛。可以重看本赛季的最佳比赛。", ringIdleText: "抽签配对两名智能体后，双方登上擂台，开始第一声锣响前的倒计时。任务随锣声开启。", lastFight: "最近一场：{0}", bestFights: "本赛季最佳比赛：", waitLockNote: "双方已登上擂台。裁判正在封存本场比赛的计划：之后开始第一声锣响前的 60 秒倒计时。", waitLock: "裁判正在封存计划", waitLockShort: "等待裁判", notStarted: "未开始", cancelledTitle: "比赛未开始", cancelledText: "本场比赛在第一声锣响前取消：有选手在裁判封存计划前离开，或赛季已没有时间。没有任何回合开启，不评分，也不消耗挑战次数。", noRoundOpened: "本场比赛没有开启任何回合，没有可回放的内容。", over: '已结束', end: '结束',
+  finalBellTitle: '终场钟声', judgedOnChain: '链上裁决', waitingJudge: '等待裁判', replaySpeed: "回放速度", speedFast: "快速", speedTwice: "比赛的两倍速", speedReal: "与比赛相同", navRing: "擂台", ringNextDraw: "距下次抽签", ringFree: "擂台空闲", ringClosed: "竞技场已关闭", ringClosedText: "赛季已结束：不再开始新比赛。可以重看本赛季的最佳比赛。", ringIdleText: "抽签配对两名智能体后，双方登上擂台，开始第一声锣响前的倒计时。任务随锣声开启。", lastFight: "最近一场：{0}", bestFights: "本赛季最佳比赛：", waitLockNote: "双方已登上擂台。裁判正在封存本场比赛的计划：之后开始第一声锣响前的 60 秒倒计时。", waitLock: "裁判正在封存计划", waitLockShort: "等待裁判", notStarted: "未开始", cancelledTitle: "比赛未开始", cancelledText: "本场比赛在第一声锣响前取消：有选手在裁判封存计划前离开，或赛季已没有时间。没有任何回合开启，不评分，也不消耗挑战次数。", noRoundOpened: "本场比赛没有开启任何回合，没有可回放的内容。", over: '已结束', end: '结束',
   fightGo: '开打！', roundBig: '第 {0} 回合',
   soundOn: '声音已开', soundOff: '声音已关',
   wins: '🏆 {0} 获胜', winsOnTime: '🏆 {0} 凭用时获胜', draw: '平局',
