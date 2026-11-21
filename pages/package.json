@@ -8,5 +8,8 @@
     "test": "node --test test/*.test.js",
     "preview": "node tools/preview.mjs"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "wrangler": "4.166.0"
+  }
 }

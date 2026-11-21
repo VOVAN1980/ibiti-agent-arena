@@ -9,3 +9,7 @@ codebook/
 
 pages/preview/
 deployments/local-*.json
+
+# Cloudflare local runs: settings and secrets stay out of git
+.dev.vars*
+.wrangler/

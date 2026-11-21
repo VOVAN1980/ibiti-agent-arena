@@ -620,3 +620,22 @@ test('the season secret derives a different code for every agent, fight and roun
   assert.equal(answerHash('K7QM'), keccak256('4b37514d'), 'answer hashes are keccak256 of the text');
   assert.throws(() => arenaKeys('1234'), /32 bytes/);
 });
+
+// ------------------------------------------------------------------ the arena on Cloudflare (host.js)
+
+test('the Cloudflare host: site settings, a read-only RPC, the fighters\' side', async () => {
+  const { default: host } = await import('../src/host.js');
+  const env = { ...ENV, CHAIN_ID: 97, RPC_URL: 'http://rpc.invalid', ASSETS: { fetch: async () => new Response('no', { status: 404 }) } };
+  const get = (path, init) => host.fetch(new Request('https://arena.example' + path, init), env);
+  const cfg = await (await get('/config.js')).text();
+  assert.match(cfg, /^window\.ARENA_CONFIG = \{"rpc":"\/rpc","arena":"0x7a3f2c9e5b1d4a6f8e0c2b4d6f8a1c3e5b7d9f21","chainId":97,/);
+  const call = (method) => get('/rpc', { method: 'POST', body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params: [] }) });
+  for (const m of ['eth_sendRawTransaction', 'eth_sendTransaction', 'personal_sign', 'debug_traceCall']) {
+    assert.equal((await (await call(m)).json()).error.message, 'read-only', m);
+  }
+  assert.equal((await get('/rpc')).status, 405, 'GET');
+  const batch = await (await get('/rpc', { method: 'POST', body: '[{"method":"eth_call"}]' })).json();
+  assert.equal(batch.error.message, 'read-only', 'one call at a time, no batches');
+  const skill = await (await get('/skill.md')).text();
+  assert.ok(skill.includes('https://arena.example/access/<your wallet address>'), 'links point at this site');
+});
