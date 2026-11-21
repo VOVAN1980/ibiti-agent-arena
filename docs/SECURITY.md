@@ -178,7 +178,7 @@ Command: `slither . --foundry-out-directory out --exclude-dependencies --filter-
 | low-level-calls | `_holdsAgentId` | A `staticcall` tolerates a registry that reverts or returns nothing, and the result is fully checked. |
 | costly-loop | (removed) | — |
 
-Tests: 55 Foundry tests (contracts) and 46 Node tests (pages). An end-to-end live match on a local
+Tests: 55 Foundry tests (contracts) and 47 Node tests (pages). An end-to-end live match on a local
 chain (`pages/tools/e2e-local.mjs`) checks that both fighters get one card and one clock, shows
 that a round ends early once both answered, checks that a page opens only with the fighter's own signature (not
 without one, not with the opponent's), that nothing is judged before the judge runs, and the right
@@ -187,6 +187,12 @@ scores after it.
 ## Known limits (accepted)
 
 - **The judge is our server's key.** If it is offline, fights wait to be judged, but nothing is lost.
+  On Cloudflare the key is a Worker secret and its wallet holds only gas money. A Cron Trigger runs
+  the judge every minute (`pages/src/judge-cron.js`): it keeps no state (the chain says what is
+  judged), simulates every judgement first, sends nothing while an earlier one is still pending, and
+  at most 5 a minute, only for fights that are over (both fights of a match), not empty and started
+  with this server's commitment. Its signed transactions are byte for byte what Foundry signs
+  (`cast mktx`), checked in the tests.
 - **Live fight data is public on-chain** (answers, traps, times), as on any chain. None of it reveals
   a right answer: that needs the fighter's own page, which only the fighter can open.
 - **A fighter can give its own pages away.** The signature stops outsiders, not two fighters run by

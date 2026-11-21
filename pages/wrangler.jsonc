@@ -1,5 +1,5 @@
-// The arena on Cloudflare (src/host.js). Public settings are vars; the season secret is a Worker
-// secret (`wrangler secret put SECRET --env <name>`), never written here.
+// The arena on Cloudflare (src/host.js). Public settings are vars; the season secret and the judge's
+// key are Worker secrets (`wrangler secret put SECRET` / `JUDGE_KEY --env <name>`), never written here.
 // Local run against a local node: `wrangler dev --env-file <file>` with RPC_URL, CHAIN_ID, ARENA,
 // DECOYS and SECRET in that file (kept outside the project).
 {
@@ -16,6 +16,8 @@
     "run_worker_first": ["/", "/*.html"]
   },
   "observability": { "enabled": true },
+  // the judge: every minute it scores the fights that are over (src/judge-cron.js)
+  "triggers": { "crons": ["* * * * *"] },
   "vars": {
     "ROUND_TIME": 60,
     "DEPLOY_BLOCK": 0,

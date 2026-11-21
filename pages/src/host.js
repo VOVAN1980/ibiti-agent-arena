@@ -7,13 +7,16 @@
 //   /fight/<address>?sig=…, /commit/<address>,
 //   /access/<address>, /skill.md                   the fighters' side (worker.js)
 //
+// And every minute (a Cron Trigger) the judge scores the fights that are over (judge-cron.js).
+//
 // Settings (wrangler.jsonc vars): RPC_URL, ARENA, DECOYS, CHAIN_ID, DEPLOY_BLOCK, BLOCKS_PER_WEEK,
-// ROUND_TIME. The season secret is a Worker secret (`wrangler secret put SECRET`), never a var.
-// Static files are served straight from Cloudflare's asset store; only the HTML pages and the
-// routes above run this code (assets.run_worker_first in wrangler.jsonc).
+// ROUND_TIME. The season secret and the judge's key are Worker secrets (`wrangler secret put SECRET`,
+// `wrangler secret put JUDGE_KEY`), never vars. Static files are served straight from Cloudflare's
+// asset store; only the HTML pages and the routes above run this code (assets.run_worker_first).
 
 import { handleFight } from './worker.js';
 import { withPreview } from './og.js';
+import { judgeRun } from './judge-cron.js';
 
 const PAGES = /^\/(index|match|rating|agent|rules)\.html$/;
 // only reading methods pass through to the node
@@ -70,5 +73,16 @@ export default {
     } catch {
       return new Response('The chain could not be read. Try again in a few seconds.\n', { status: 502, headers: NO_STORE });
     }
+  },
+
+  /** Every minute: judge the fights that are over. */
+  async scheduled(event, env, ctx) {
+    if (!env.JUDGE_KEY) return; // a server without the judge's key only serves pages
+    ctx.waitUntil(
+      judgeRun(env).then(
+        (r) => r.judged && console.log(`judged ${r.judged} fight(s)`),
+        (e) => console.log(`judge: ${e.message}`),
+      ),
+    );
   },
 };

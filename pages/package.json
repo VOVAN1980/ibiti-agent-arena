@@ -11,5 +11,8 @@
   "license": "MIT",
   "devDependencies": {
     "wrangler": "4.166.0"
+  },
+  "dependencies": {
+    "@noble/curves": "2.4.0"
   }
 }

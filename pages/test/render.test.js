@@ -668,3 +668,20 @@ test('the Cloudflare host: site settings, a read-only RPC, the fighters\' side',
   const skill = await (await get('/skill.md')).text();
   assert.ok(skill.includes('https://arena.example/access/<your wallet address>'), 'links point at this site');
 });
+
+// ------------------------------------------------------------------ the judge on Cloudflare (judge-cron.js)
+
+test('the Cloudflare judge signs exactly what Foundry signs', async () => {
+  const { signTx, addressOf, judgeCalldata } = await import('../src/judge-cron.js');
+  const key = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'; // anvil key #0
+  assert.equal(addressOf(key), '0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266');
+  // `cast mktx --legacy --nonce 5 --gas-price 100000000 --gas-limit 250000 --chain 56 <key> <to> 0x1234`
+  assert.equal(
+    signTx({ nonce: 5n, gasPrice: 100000000n, gas: 250000n, to: ARENA, data: '0x1234', chainId: 56 }, key),
+    '0xf867058405f5e1008303d090947a3f2c9e5b1d4a6f8e0c2b4d6f8a1c3e5b7d9f21808212348193a0093729e83984c35bd0a8306cfaad5e3cfac07023eca4b71281a34263dbd65448a02d6872c18d0be6d11aaac6bc1c4de2b4300b029bc9a9d779fd10086ff99427f1',
+  );
+  // judgeFight(address,uint32,bytes32[12],bytes32): selector of `cast sig`, then 15 static words
+  const data = judgeCalldata(A, 2, Array.from({ length: 12 }, (_, i) => '0x' + (i + 1).toString(16).padStart(64, '0')), '0x' + 'ab'.repeat(32));
+  assert.ok(data.startsWith('0x617f72ee'));
+  assert.equal((data.length - 10) / 64, 15);
+});
