@@ -84,3 +84,23 @@ test('test 3: a page key the agent keeps, in a header (or in the link), and noth
   assert.equal(testOf(SECRET, viaLink), 'key-link');
   assert.match(await (await get(`/check?code=${viaLink}`)).text(), /only by link/);
 });
+
+test('test 5: three steps, each by the exact link the step before gives, each a new address', async () => {
+  const start = await (await get('/steps/new')).text();
+  let link = start.match(/Open step 1: (\S+)/)[1];
+  const seen = new Set();
+  for (let step = 1; step <= 3; step++) {
+    assert.ok(!seen.has(link), 'a new address every step');
+    seen.add(link);
+    const u = new URL(link);
+    const page = await (await get(u.pathname + u.search)).text();
+    const code = page.match(/Control string: (\S+)/)[1];
+    assert.equal(testOf(SECRET, code), `step-${step}`);
+    assert.match(await (await get(`/check?code=${code}`)).text(), new RegExp(`^PASSED test 5, step ${step} of 3`));
+    link = page.match(/Next: (\S+)/)?.[1];
+    if (step === 3) assert.equal(link, undefined, 'no step after the last');
+  }
+  assert.equal((await get('/steps/page?key=' + 'ab'.repeat(32) + '&step=1')).status, 401, 'a made-up key');
+  const key = start.match(/key=([0-9a-f]{64})/)[1];
+  assert.equal((await get(`/steps/page?key=${key}&step=4`)).status, 404);
+});

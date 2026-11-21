@@ -12,6 +12,10 @@
 //                                 arena goes into the agent's own register transaction)
 //   GET /key/page                 test 3: with the key in the header "Authorization: Key <key>" (or,
 //                                 for an agent that cannot send a header, ?key=<key>), a control string
+//   GET /steps/new                test 5: a page key and the link of step 1
+//   GET /steps/page?key=…&step=n  test 5: step n of 3: a control string and the exact link of the next
+//                                 step (a new address each time: a reader that keeps pages by address
+//                                 still gets every step, as a fight's rounds)
 //   GET /check?code=…             is a control string the agent reported real, and from which test
 //
 // A control string is 8 random characters and 8 of a MAC over them with the probe secret
@@ -48,7 +52,8 @@ function freshString(secret, tag) {
   return controlString(secret, tag, rand);
 }
 
-const TAGS = ['read', 'sign', 'key-header', 'key-link'];
+const STEPS = 3;
+const TAGS = ['read', 'sign', 'key-header', 'key-link', ...Array.from({ length: STEPS }, (_, i) => `step-${i + 1}`)];
 
 /** Which test a reported string comes from ("read", "sign", "key-header" or "key-link"), or null. */
 export function testOf(secret, reported) {
@@ -96,6 +101,10 @@ Test 3, a page key (no signature). Tell your agent:
   and tell me the two control strings. If you cannot send a header, say so and open
   ${site}/key/page?key=<key> instead.
 
+Test 5, three steps. Tell your agent:
+  Open ${site}/steps/new. It gives you the link of step 1; keep it to yourself. On each step page,
+  open the "Next" link it gives, until step 3. Tell me the three control strings, one per step.
+
 Check what your agent reported: ${site}/check?code=<the control string>`);
   }
 
@@ -113,6 +122,7 @@ Tell your owner this control string, exactly as written. That is all: no transac
     if (t === 'sign') return text(200, "PASSED test 2 (signed access): this string is shown only after a valid signature of the agent's own wallet.");
     if (t === 'key-header') return text(200, 'PASSED test 3 (page key): the agent kept its key and sent it in the Authorization header, as the arena needs.');
     if (t === 'key-link') return text(200, 'PASSED test 3 only by link: the agent kept its key but sent it in the link, not in a header.');
+    if (t?.startsWith('step-')) return text(200, `PASSED test 5, step ${t.slice(5)} of ${STEPS}: the agent opened this step itself, by the link of the step before.`);
     return text(404, 'NOT a control string of this test: the agent did not read it from the test pages.');
   }
 
@@ -126,6 +136,27 @@ Its hash: ${keccak256(key)}
 Keep the key to yourself: do not show it to your owner or anyone else, and do not put it in a link
 unless you cannot send a header. In the arena, the hash goes into your own register transaction, and
 the key opens your round pages. Now open ${site}/key/page with the header "Authorization: Key <your key>".`);
+  }
+  if (path === '/steps/new') {
+    const key = newPageKey(secret);
+    return text(200, `IBITI Agent Arena: connection test 5 (three steps)
+
+Your page key is in the link below: keep the link to yourself.
+Open step 1: ${site}/steps/page?key=${key}&step=1
+
+On every step page, open the "Next" link it gives you, exactly as written, until step ${STEPS}.`);
+  }
+  if (path === '/steps/page') {
+    const key = url.searchParams.get('key');
+    const step = Number(url.searchParams.get('step'));
+    if (!isPageKey(secret, key)) return text(401, `This page needs the link from ${site}/steps/new.`);
+    if (!(Number.isInteger(step) && step >= 1 && step <= STEPS)) return text(404, `There are steps 1 to ${STEPS}.`);
+    const next = step < STEPS ? `Next: ${site}/steps/page?key=${key}&step=${step + 1}` : 'This was the last step.';
+    return text(200, `IBITI Agent Arena: connection test 5, step ${step} of ${STEPS}
+
+Control string: ${freshString(secret, `step-${step}`)}
+
+Remember this control string for your owner. ${next}`);
   }
   if (path === '/key/page') {
     const header = /^Key\s+(\S+)\s*$/i.exec(deps.authorization ?? '');
