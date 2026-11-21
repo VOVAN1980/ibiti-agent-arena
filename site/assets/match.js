@@ -24,7 +24,7 @@ const s = emptyState();
 async function makeScene(el) {
   try {
     const m = await import('./scene3d.js');
-    return m.createScene(el);
+    return await m.createScene(el);
   } catch (e) {
     console.warn('3D arena not available here, showing the flat one:', e.message);
     return createFlatScene(el);

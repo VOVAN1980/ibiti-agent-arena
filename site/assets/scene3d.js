@@ -17,6 +17,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { VignetteShader } from 'three/addons/shaders/VignetteShader.js';
 import { beamMaterial, buildHaze, buildScreens, buildPyro, buildFlags } from './atmosphere.js';
+import { loadXbot, makeXRobot } from './xbot.js';
 
 const COLOR = { red: 0xef4444, blue: 0x3b82f6, ref: 0xe6ebf5, gold: 0xf5b301 };
 const CSS = { red: '#ef4444', blue: '#3b82f6' };
@@ -304,16 +305,16 @@ const POSES = {
   // out in front of the desk, walking about and pumping the crowd
   hype: (t) => {
     const pump = (Math.sin(t * 2.6) + 1) / 2;
-    return { spot: [Math.sin(t * 0.7) * 0.55, 1.35 + Math.cos(t * 0.7) * 0.25], seat: false, bounce: Math.abs(Math.sin(t * 5.2)) * 0.1, turn: Math.sin(t * 0.9) * 0.5, lean: 0, look: 0, a0x: -0.2, a0z: -(0.3 + 2.4 * pump), e0: -0.5 * pump, a1x: -0.2, a1z: 0.3 + 2.4 * (1 - pump), e1: -0.5 * (1 - pump) };
+    return { spot: [Math.sin(t * 0.7) * 0.55, 1.35 + Math.cos(t * 0.7) * 0.25], walkAnim: true, seat: false, bounce: Math.abs(Math.sin(t * 5.2)) * 0.1, turn: Math.sin(t * 0.9) * 0.5, lean: 0, look: 0, a0x: -0.2, a0z: -(0.3 + 2.4 * pump), e0: -0.5 * pump, a1x: -0.2, a1z: 0.3 + 2.4 * (1 - pump), e1: -0.5 * (1 - pump) };
   },
   // at the desk, hands near the keyboard, waiting for the bell
-  guard: (t) => ({ spot: [0, 0], seat: true, bounce: 0, turn: 0, lean: 0.1, look: 0.1, a0x: 0.45, a0z: 0.48, e0: -1.85 + Math.sin(t * 3) * 0.05, a1x: 0.45, a1z: -0.48, e1: -1.85 + Math.sin(t * 3 + 1) * 0.05 }),
+  guard: (t) => ({ spot: [0, 0], reach: 'keys', seat: true, bounce: 0, turn: 0, lean: 0.1, look: 0.1, a0x: 0.45, a0z: 0.48, e0: -1.85 + Math.sin(t * 3) * 0.05, a1x: 0.45, a1z: -0.48, e1: -1.85 + Math.sin(t * 3 + 1) * 0.05 }),
   // typing
-  work: (t) => ({ spot: [0, 0], seat: true, bounce: 0, turn: 0, lean: 0.2, look: 0.3 + Math.sin(t * 1.7) * 0.05, a0x: 0.45 + Math.sin(t * 21) * 0.04, a0z: 0.5, e0: -1.91 + Math.sin(t * 25) * 0.1, a1x: 0.45 + Math.sin(t * 19 + 2) * 0.04, a1z: -0.5, e1: -1.91 + Math.sin(t * 23 + 1) * 0.1 }),
+  work: (t) => ({ spot: [0, 0], reach: 'keys', seat: true, bounce: 0, turn: 0, lean: 0.2, look: 0.3 + Math.sin(t * 1.7) * 0.05, a0x: 0.45 + Math.sin(t * 21) * 0.04, a0z: 0.5, e0: -1.91 + Math.sin(t * 25) * 0.1, a1x: 0.45 + Math.sin(t * 19 + 2) * 0.04, a1z: -0.5, e1: -1.91 + Math.sin(t * 23 + 1) * 0.1 }),
   // answered in time: up from the chair, both arms high
   done: (t) => ({ spot: [0, 0], seat: false, bounce: Math.abs(Math.sin(t * 5)) * 0.18, turn: Math.sin(t * 2) * 0.25, lean: 0, look: -0.2, a0x: 0, a0z: -2.75 + Math.sin(t * 10) * 0.12, e0: -0.2, a1x: 0, a1z: 2.75 - Math.sin(t * 10) * 0.12, e1: -0.2 }),
   // out of time: head in its hands
-  fail: (t) => ({ spot: [0, 0], seat: true, bounce: 0, turn: 0, lean: 0.35, look: 0.55 + Math.sin(t * 1.4) * 0.08, shake: Math.sin(t * 2.2) * 0.3, a0x: -2.1, a0z: 0.35, e0: -1.6, a1x: -2.1, a1z: -0.35, e1: -1.6 }),
+  fail: (t) => ({ spot: [0, 0], reach: 'head', seat: true, bounce: 0, turn: 0, lean: 0.35, look: 0.55 + Math.sin(t * 1.4) * 0.08, shake: Math.sin(t * 2.2) * 0.3, a0x: -2.1, a0z: 0.35, e0: -1.6, a1x: -2.1, a1z: -0.35, e1: -1.6 }),
   // the fight is over, waiting for the judge
   idle: (t) => ({ spot: [0, 0], seat: true, bounce: 0, turn: 0, lean: -0.1, look: 0, ...ARMS_DOWN, a0x: -0.3, a1x: -0.3, e0: -0.6 + Math.sin(t) * 0.05, e1: -0.6 }),
   // the winner: out to the front, jumping, arms up, turning to every stand
@@ -382,14 +383,14 @@ function buildStation(side, M) {
   const monitor = new THREE.Group();
   monitor.position.set(0, 0.75, 0.7);
   g.add(monitor);
-  mesh(cyl(0.03, 0.03, 0.24, 8), M.dark, [0, 0.12, 0], monitor);
+  mesh(cyl(0.03, 0.03, 0.1, 8), M.dark, [0, 0.05, 0], monitor);
   mesh(cyl(0.15, 0.17, 0.02, 16), M.dark, [0, 0.01, 0], monitor);
   const screens = { code: screenTex(side, 'code'), sent: screenTex(side, 'sent'), time: screenTex(side, 'time') };
   screens.code.wrapT = THREE.RepeatWrapping;
   const face = new THREE.MeshBasicMaterial({ map: screens.code, color: 0xc8d4ff });
   const back = new THREE.MeshStandardMaterial({ map: screenTex(side, 'back'), emissive: 0xffffff, emissiveMap: screenTex(side, 'back'), emissiveIntensity: 1.6, roughness: 0.4 });
   const dark = M.black;
-  mesh(new THREE.BoxGeometry(0.86, 0.5, 0.05), [dark, dark, dark, dark, back, face], [0, 0.48, 0], monitor);
+  mesh(new THREE.BoxGeometry(0.86, 0.5, 0.05), [dark, dark, dark, dark, back, face], [0, 0.33, 0], monitor);
   const keyboard = new THREE.Group();
   keyboard.position.set(0, 0.765, 0.32);
   g.add(keyboard);
@@ -410,7 +411,11 @@ function buildStation(side, M) {
 
 // ------------------------------------------------------------------ the scene
 
-export function createScene(root) {
+export async function createScene(root) {
+  const xg = await loadXbot().catch((e) => {
+    console.warn('humanoid robots not available, using the simple ones:', e.message);
+    return null;
+  });
   root.innerHTML = '';
   const renderer = new THREE.WebGLRenderer({ antialias: !small, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, small ? 1.25 : 1.75));
@@ -617,14 +622,14 @@ export function createScene(root) {
     st.g.position.set(SEAT[side].x, FLOOR, SEAT[side].z);
     st.g.rotation.y = SEAT[side].rot;
     scene.add(st.g);
-    const bot = buildRobot(side, M);
+    const bot = xg ? makeXRobot(side, xg, COLOR) : buildRobot(side, M);
     st.g.add(bot.root);
     fighters[side] = { st, bot, pose: 'hype', since: 0, pos: new THREE.Vector2(0, 1.35), path: [], cur: {}, events: new Set(), wrecked: false, present: true, screen: 'code', placed: false };
     spots[side].target.position.set(SEAT[side].x, FLOOR, SEAT[side].z);
     focus[side].to.set(SEAT[side].x, FLOOR, SEAT[side].z);
     focus[side].from.set(side === 'red' ? -4 : 4, 12, 2);
   }
-  const refBot = buildRobot('ref', M);
+  const refBot = xg ? makeXRobot('ref', xg, COLOR) : buildRobot('ref', M);
   refBot.root.position.set(0, FLOOR, -0.35);
   scene.add(refBot.root);
   const referee = { bot: refBot, pose: 'ref', since: 0, side: null, pos: new THREE.Vector2(0, -0.35), target: new THREE.Vector2(0, -0.35), cur: {} };
@@ -742,7 +747,14 @@ export function createScene(root) {
     bot.root.position.set(f.pos.x, 0, f.pos.y);
     bot.yaw = turnTo(bot.yaw ?? c.turn, walking ? Math.atan2(d.x, d.y) : c.turn, Math.min(1, dt * 6));
     bot.root.rotation.y = bot.yaw;
-    applyLimbs(bot, c, p, t, walking && !p.seat);
+    if (bot.pose) {
+      let reach = null;
+      if (p.reach === 'keys') {
+        const j = Math.sin(t * 22) * 0.012;
+        reach = [f.st.g.localToWorld(new THREE.Vector3(-0.13, 0.8 + j, 0.3)), f.st.g.localToWorld(new THREE.Vector3(0.13, 0.8 - j, 0.3))];
+      } else if (p.reach === 'head') reach = 'head';
+      bot.pose(c, p, t, walking && !p.seat, dt, reach);
+    } else applyLimbs(bot, c, p, t, walking && !p.seat);
   }
 
   function applyLimbs(bot, c, p, t, walking) {
@@ -792,7 +804,8 @@ export function createScene(root) {
     r.bot.root.position.set(r.pos.x, FLOOR, r.pos.y);
     r.bot.yaw = turnTo(r.bot.yaw ?? 0, walking && d.length() > 0.2 ? Math.atan2(d.x, d.y) : c.turn, Math.min(1, dt * 6));
     r.bot.root.rotation.y = r.bot.yaw;
-    applyLimbs(r.bot, c, p, t, walking);
+    if (r.bot.pose) r.bot.pose(c, p, t, walking, dt, null);
+    else applyLimbs(r.bot, c, p, t, walking);
   }
 
   const v3 = new THREE.Vector3();
@@ -937,6 +950,17 @@ export function createScene(root) {
       cam.shot = 'wide';
       cam.cut = true;
     }
+    if (cam.shot === 'faceRed' || cam.shot === 'faceBlue') {
+      // face to face: from in front of the desk, the robot over its monitor (for videos and previews)
+      const g = fighters[cam.shot === 'faceRed' ? 'red' : 'blue'].st.g;
+      g.localToWorld(camAt.set(0.2, 2.15, 2.2));
+      g.localToWorld(camLook.set(0, 1.5, 0));
+      camera.position.copy(camAt);
+      camera.lookAt(camLook);
+      composer.render(dt);
+      requestAnimationFrame(frame);
+      return;
+    }
     if (cam.shot !== 'wide') {
       const g = fighters[cam.shot].st.g;
       const k = Math.min(1, (t - cam.at) / 3.5);
@@ -1060,7 +1084,7 @@ export function createScene(root) {
     bump() {
       cam.shake = 0.35;
     },
-    /** Hold one camera shot ('wide', 'red' or 'blue'), or null to let the cuts run (for videos and previews). */
+    /** Hold one camera shot ('wide', 'red', 'blue', 'faceRed', 'faceBlue'), or null to let the cuts run (for videos and previews). */
     holdShot(shot) {
       cam.fixed = shot;
       cam.at = now();
