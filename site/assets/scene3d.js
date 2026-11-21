@@ -40,11 +40,20 @@ function canvasTex(w, h, draw, { repeat = null, srgb = true } = {}) {
     t.wrapT = THREE.RepeatWrapping;
     t.repeat.set(...repeat);
   }
-  t.anisotropy = 4;
+  t.anisotropy = 8;
   t.userData.canvas = c;
   t.userData.draw = draw;
+  DRAWN.push(t);
   return t;
 }
+const DRAWN = [];
+document.fonts?.load('800 40px Unbounded').then(() => {
+  for (const t of DRAWN) {
+    const c = t.userData.canvas;
+    t.userData.draw(c.getContext('2d'), c.width, c.height);
+    t.needsUpdate = true;
+  }
+}).catch(() => {});
 
 // the BNB mark (24x24), drawn on the ring floor and on the backs of the monitors
 const BNB = new Path2D('M16.624 13.9202l2.7175 2.7154-7.353 7.353-7.353-7.352 2.7175-2.7164 4.6355 4.6595 4.6356-4.6595zm4.6366-4.6366L24 12l-2.7154 2.7164L18.5682 12l2.6924-2.7164zm-9.272.001l2.7163 2.6914-2.7164 2.7174v-.001L9.2721 12l2.7164-2.7154zm-9.2722-.001L5.4088 12l-2.6914 2.6924L0 12l2.7164-2.7164zM11.9885.0115l7.353 7.329-2.7174 2.7154-4.6356-4.6356-4.6355 4.6595-2.7174-2.7154 7.353-7.353z');
@@ -115,7 +124,7 @@ function tickerTex() {
     g.fillStyle = 'rgba(245,179,1,.35)';
     g.fillRect(0, 4, w, 2);
     g.fillRect(0, h - 6, w, 2);
-    g.font = '700 30px Orbitron, Inter, sans-serif';
+    g.font = '700 30px Unbounded, Inter, sans-serif';
     g.textBaseline = 'middle';
     g.textAlign = 'center';
     const third = w / 3;
@@ -155,26 +164,37 @@ function screenTex(side, kind) {
       g.textAlign = 'center';
       g.textBaseline = 'middle';
       g.fillText(kind === 'sent' ? '✓' : '✗', w / 2, h / 2 - 20);
-      g.font = '800 26px Orbitron, Inter, sans-serif';
+      g.font = '800 26px Unbounded, Inter, sans-serif';
       g.fillText(kind === 'sent' ? 'SENT' : 'TIME', w / 2, h / 2 + 36);
     }
   });
 }
 
 function boardTex() {
-  return canvasTex(512, 256, (g, w, h) => {
+  return canvasTex(1024, 512, (g, w, h) => {
     const lines = g.__lines ?? ['IBITI AGENT ARENA'];
-    g.fillStyle = '#03050a';
+    const bg = g.createLinearGradient(0, 0, 0, h);
+    bg.addColorStop(0, '#0a0f1e');
+    bg.addColorStop(1, '#02040a');
+    g.fillStyle = bg;
     g.fillRect(0, 0, w, h);
     g.strokeStyle = '#f5b301';
-    g.lineWidth = 6;
-    g.strokeRect(6, 6, w - 12, h - 12);
+    g.lineWidth = 10;
+    g.strokeRect(10, 10, w - 20, h - 20);
     g.textAlign = 'center';
     g.textBaseline = 'middle';
     lines.slice(0, 3).forEach((line, i) => {
-      g.fillStyle = i === 1 ? '#ffffff' : i === 0 ? '#f5b301' : '#9fb6ff';
-      g.font = `800 ${i === 1 ? 74 : 34}px Orbitron, Inter, sans-serif`;
-      g.fillText(String(line).slice(0, 26), w / 2, [62, 140, 212][i]);
+      const text = String(line);
+      g.fillStyle = i === 1 ? '#ffffff' : i === 0 ? '#ffc21a' : '#c7d6ff';
+      // as large as the line allows: a long line is fitted to the board, never cut
+      let px = i === 1 ? 170 : 84;
+      g.font = `800 ${px}px Unbounded, Inter, sans-serif`;
+      const wide = g.measureText(text).width;
+      if (wide > w - 90) {
+        px = Math.max(34, Math.floor((px * (w - 90)) / wide));
+        g.font = `800 ${px}px Unbounded, Inter, sans-serif`;
+      }
+      g.fillText(text, w / 2, [112, 268, 418][i]);
     });
   });
 }
@@ -439,7 +459,7 @@ export async function createScene(root) {
   const renderer = new THREE.WebGLRenderer({ antialias: !small, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, small ? 1.25 : 1.75));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 0.85;
+  renderer.toneMappingExposure = 0.98;
   renderer.shadowMap.enabled = !small;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.domElement.className = 'gl';
@@ -453,8 +473,8 @@ export async function createScene(root) {
   const M = materials();
 
   // lights
-  scene.add(new THREE.HemisphereLight(0x8fa6ff, 0x120c18, 0.32));
-  const key = new THREE.DirectionalLight(0xffffff, 0.7);
+  scene.add(new THREE.HemisphereLight(0x8fa6ff, 0x120c18, 0.2));
+  const key = new THREE.DirectionalLight(0xffffff, 0.95);
   key.position.set(3, 12, 7);
   key.castShadow = !small;
   key.shadow.mapSize.set(1024, 1024);
@@ -582,17 +602,21 @@ export async function createScene(root) {
     p.h = 0.9 + Math.random() * 0.2;
     p.q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.atan2(-p.x, -p.z) + (Math.random() - 0.5) * 0.4, 0));
     p.shirt = Math.random() < 0.18 ? pick(shirt.plain) : pick(shirt[p.side]);
+    // a night crowd: the ring is the light of the hall, so the rows near it catch some of it and the
+    // rows above fall into the dark (the glow sticks and the phone lights do the rest)
+    const deep = Math.min(1, (p.base - 0.15) / (0.52 * Math.max(1, rings - 1)));
+    p.shade = (0.58 - 0.42 * deep) * (0.85 + Math.random() * 0.3);
     const w = 0.9 + Math.random() * 0.2;
     mtx.compose(pos.set(p.x, p.base, p.z), p.q, scl.set(w, p.h, w));
     crowd.setMatrixAt(i, mtx);
     heads.setMatrixAt(i, mtx);
-    crowd.setColorAt(i, c.setHex(p.shirt));
-    heads.setColorAt(i, c.setHex(pick(skin)));
+    crowd.setColorAt(i, c.setHex(p.shirt).multiplyScalar(p.shade));
+    heads.setColorAt(i, c.setHex(pick(skin)).multiplyScalar(p.shade * 0.9));
     const cap = Math.random() < 0.22;
     caps.setMatrixAt(i, cap ? mtx : mtx.clone().scale(scl.set(0, 0, 0)));
-    caps.setColorAt(i, c.setHex(p.side === 'red' ? 0xef4444 : 0x3b82f6));
+    caps.setColorAt(i, c.setHex(p.side === 'red' ? 0xef4444 : 0x3b82f6).multiplyScalar(p.shade));
   });
-  armed.forEach((p, i) => arms.setColorAt(i, c.setHex(p.shirt)));
+  armed.forEach((p, i) => arms.setColorAt(i, c.setHex(p.shirt).multiplyScalar(p.shade)));
   // glow sticks: a third of those who raise their arms hold one up in their team's colour
   const stickers = armed.filter(() => Math.random() < 0.35);
   const sticks = new THREE.InstancedMesh(new THREE.CapsuleGeometry(0.03, 0.26, 2, 6).translate(0.43, 1.32, 0.04), new THREE.MeshBasicMaterial({ color: new THREE.Color(2.6, 2.6, 2.6) }), stickers.length);
@@ -714,7 +738,7 @@ export async function createScene(root) {
   const camUp = new THREE.Vector3();
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
-  const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), small ? 0.5 : 0.55, 0.45, 0.92);
+  const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), small ? 0.55 : 0.72, 0.5, 0.9);
   composer.addPass(bloom);
   const vignette = new ShaderPass(VignetteShader);
   vignette.uniforms.offset.value = 1.05;
@@ -1054,7 +1078,9 @@ export async function createScene(root) {
   const now = () => performance.now() / 1000;
   return {
     kind: '3d',
-    setFighters({ blue }) {
+    setFighters({ red = true, blue }) {
+      fighters.red.present = !!red;
+      fighters.red.st.g.visible = !!red;
       fighters.blue.present = !!blue;
       fighters.blue.st.g.visible = !!blue;
     },

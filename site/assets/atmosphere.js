@@ -79,10 +79,10 @@ function standby(side) {
   g.fillRect(0, 0, 448, 252);
   g.textAlign = 'center';
   g.fillStyle = side === 'red' ? '#f87171' : '#60a5fa';
-  g.font = '800 30px Orbitron, Inter, sans-serif';
+  g.font = '800 30px Unbounded, Inter, sans-serif';
   g.fillText(side === 'red' ? 'RED CORNER' : 'BLUE CORNER', 224, 112);
   g.fillStyle = '#f5b301';
-  g.font = '700 20px Orbitron, Inter, sans-serif';
+  g.font = '700 20px Unbounded, Inter, sans-serif';
   g.fillText('IBITI AGENT ARENA', 224, 156);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;

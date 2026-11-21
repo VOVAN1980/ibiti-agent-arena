@@ -22,7 +22,7 @@ export default {
   accepted: '✓ 回答受理 · {0}秒', afterBell: 'ゴング後の回答 · {0}秒',
   answeredIn: '第{0}ラウンド：{1}秒で回答', noAnswerRound: '第{0}ラウンド：回答なし', roundsAnswered: '{0}ラウンド回答', noAnswers: '回答なし',
   getReady: 'スタンバイ', countdown: 'カウントダウン', round: 'ラウンド {0} / 12', breakTitle: '休憩', nextRound: '次は第{0}ラウンド',
-  finalBellTitle: '試合終了', judgedOnChain: 'オンチェーンで判定済み', waitingJudge: 'ジャッジ待ち', waitLock: "審判がプランを封印中", waitLockShort: "審判待ち", notStarted: "未開始", cancelledTitle: "試合不成立", cancelledText: "この試合は最初のゴングの前に中止されました。審判がプランを封印する前に選手が退出したか、シーズンに時間が残っていませんでした。ラウンドは一つも開かれず、採点はなく、挑戦回数も消費されません。", noRoundOpened: "この試合ではラウンドが一つも開かれていないため、リプレイはありません。", over: '終了', end: '終了',
+  finalBellTitle: '試合終了', judgedOnChain: 'オンチェーンで判定済み', waitingJudge: 'ジャッジ待ち', navRing: "リング", ringNextDraw: "次の抽選まで", ringFree: "リングは空いています", ringClosed: "アリーナは閉場しました", ringClosedText: "シーズンは終了しました。新しい試合は始まりません。シーズンのベストバウトはもう一度観戦できます。", ringIdleText: "抽選で2体のエージェントが組まれると、両者がリングに上がり、最初のゴングまでのカウントダウンが始まります。課題はゴングと同時に開きます。", lastFight: "直近の試合：{0}", bestFights: "シーズンのベストバウト：", waitLockNote: "両者がリングに上がりました。審判がこの試合のプランを封印しています。その後、最初のゴングまで60秒のカウントダウンが始まります。", waitLock: "審判がプランを封印中", waitLockShort: "審判待ち", notStarted: "未開始", cancelledTitle: "試合不成立", cancelledText: "この試合は最初のゴングの前に中止されました。審判がプランを封印する前に選手が退出したか、シーズンに時間が残っていませんでした。ラウンドは一つも開かれず、採点はなく、挑戦回数も消費されません。", noRoundOpened: "この試合ではラウンドが一つも開かれていないため、リプレイはありません。", over: '終了', end: '終了',
   fightGo: 'ファイト！', roundBig: 'ラウンド {0}',
   soundOn: 'サウンド オン', soundOff: 'サウンド オフ',
   wins: '🏆 {0} の勝利', winsOnTime: '🏆 {0} がタイム差で勝利', draw: '引き分け',

@@ -36,7 +36,7 @@ export function header(active) {
   const ring = active === 'match';
   setTimeout(() => music(ring), 0); // the arena's theme, never in the ring
   return `<header class="top"><a class="brand" href="index.html">${LOGO}<span><b translate="no" class="notranslate">IBITI AGENT ARENA</b><small>${t('tagline')}</small></span></a>
-  <nav class="links">${a('arena', 'index.html', 'navArena')}${a('rating', 'rating.html', 'navRating')}</nav>
+  <nav class="links">${a('arena', 'index.html', 'navArena')}${a('match', 'match.html', 'navRing')}${a('rating', 'rating.html', 'navRating')}</nav>
   <div class="gear"><button type="button" class="gearbtn" aria-haspopup="true" aria-expanded="false" aria-label="${esc(t('settings'))}" title="${esc(t('settings'))}">${GEAR}</button>
   <div class="gearmenu" role="menu" hidden>
     <div class="grow">${NOTE}<span>${esc(t('music'))}</span><button type="button" class="switch" role="switch" aria-checked="${musicOn()}" aria-label="${esc(t('music'))}" data-music></button></div>

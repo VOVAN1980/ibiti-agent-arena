@@ -6,7 +6,7 @@
 // right answers or traps appears before the judge's verdict.
 // The scoreboard is rebuilt only when something changes; between reads of the chain only the clock
 // and the bars move, in place (so a page translator has nothing to redo every second).
-import { CFG, emptyState, refresh, bouts, verdict, clockOf, fightName, fightOf, openedRounds, rounds, trapName, ROUNDS } from './arena.js';
+import { CFG, emptyState, refresh, bouts, verdict, clockOf, fightName, fightOf, openedRounds, rounds, trapName, isLive, rating, arenaSetting, ROUNDS } from './arena.js';
 
 /** Fouls as the judge counted them; a silent fight is never judged, so its fouls are not known. */
 const foulsOf = (j) => (j.empty ? '—' : j.fouls);
@@ -46,8 +46,61 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const frame = () => new Promise((r) => requestAnimationFrame(r));
 const other = (side) => (side === 'red' ? 'blue' : 'red');
 
+/** The bout on this ring: the one the address names; or, with none named, the match live now, kept
+ *  on the ring to its verdict once the ring has taken it. */
+let taken = null;
 function findBout() {
-  return bouts(s).find((b) => (b.red.agent === wantAgent && b.red.number === wantNumber) || (b.blue && b.blue.agent === wantAgent && b.blue.number === wantNumber));
+  const all = bouts(s);
+  const named = (a, n) => all.find((b) => (b.red.agent === a && b.red.number === n) || (b.blue && b.blue.agent === a && b.blue.number === n));
+  if (wantAgent) return named(wantAgent, wantNumber);
+  if (!taken) {
+    const live = all.find((b) => !b.cancelled && (isLive(s, b.red) || (b.blue && isLive(s, b.blue))));
+    if (live) taken = { a: live.red.agent, n: live.red.number };
+  }
+  return taken ? named(taken.a, taken.n) : undefined;
+}
+
+// ------------------------------------------------------------------ the ring with no fight on it
+
+let seasonEnd = 0;
+arenaSetting('seasonEnd').then((v) => (seasonEnd = v)).catch(() => {});
+let idleSig = '';
+/** The arena now, when nobody is in the ring: the next draw, the draw itself, or the closed arena. */
+function renderIdle() {
+  const waiting = s.hallCount ?? s.hall.length;
+  const left = s.nextDrawAt ? s.nextDrawAt - s.now : null;
+  const fightTime = 60 + ROUNDS * RT + (ROUNDS - 1) * 10;
+  let kind = 'free';
+  if (seasonEnd && s.now + fightTime > seasonEnd) kind = 'closed';
+  else if (waiting >= 2 && (s.pendingCutoff || (left !== null && left <= 0))) kind = 'drawing';
+  else if (waiting >= 2 && left !== null) kind = 'next';
+  const clock = kind === 'next' ? mmss(left) : kind === 'drawing' ? '…' : '—';
+  const title = kind === 'closed' ? t('ringClosed') : kind === 'drawing' ? t('boardDrawing') : kind === 'next' ? t('ringNextDraw') : t('ringFree');
+  scene.setFighters({ red: false, blue: false });
+  scene.setLights('sweep');
+  scene.setBoard([title, clock, kind === 'closed' ? 'IBITI AGENT ARENA' : t('boardHall', waiting)]);
+  scene.setTicker('IBITI AGENT ARENA   ◆   ' + title);
+  document.title = `${title} — IBITI Agent Arena`;
+  const done = bouts(s).filter((b) => verdict(b));
+  const best = rating(s).slice(0, 3);
+  const sig = JSON.stringify([kind, waiting, done[0] && [done[0].red.agent, done[0].red.number], best.map((r) => [r.agent, r.number, r.points])]);
+  if (sig !== idleSig) {
+    idleSig = sig;
+    ringSig = '';
+    $('#ring').innerHTML = '';
+    $('#watchReplay').style.display = 'none';
+    const head = kind === 'next' ? `${esc(t('ringNextDraw'))} <span id="idleClock" translate="no">${clock}</span>` : esc(title);
+    const text = kind === 'closed' ? t('ringClosedText') : kind === 'free' ? `${t('boardFirst')}. ${t('ringIdleText')}` : t('ringIdleText');
+    const last = done[0];
+    const links = [
+      last ? `<a class="btn small" href="${matchUrl(last.red.agent, last.red.number)}&replay=1">⟲ ${keep(t('lastFight', `${fightName(s, last.red)} — ${fightName(s, last.blue ?? last.red)}`))}</a>` : '',
+      ...best.map((r, i) => `<a class="btn small" href="${matchUrl(r.agent, r.number)}&replay=1"><span translate="no">${['🥇', '🥈', '🥉'][i]}</span> ${keep(r.name)} · <span translate="no">${r.points}</span></a>`),
+    ].join('');
+    banner('html', 0, `<div class="bwin bidle"><div class="crown">${head}</div><div class="tiny">${esc(text)}</div>${links ? `<div class="idlelinks">${best.length ? `<span class="tiny">${esc(t('bestFights'))}</span>` : ''}${links}</div>` : ''}</div>`);
+  } else if (kind === 'next') {
+    const el = document.getElementById('idleClock');
+    if (el && el.textContent !== clock) el.textContent = clock;
+  }
 }
 
 // ------------------------------------------------------------------ sound switches and the big words
@@ -324,6 +377,11 @@ function stage(b, c, v, views) {
     setMusic('hype');
     crowdLevel(0.55);
     banner('text', 0, t('bannerNext', c.round)); // the next round's theme stays secret until its bell
+  } else if (c.phase === 'waiting') {
+    scene.setLights('sweep');
+    setMusic('hype');
+    crowdLevel(0.6);
+    banner('text', 0, t('waitLockNote'));
   } else {
     scene.setLights('focus');
     setMusic(null);
@@ -590,9 +648,11 @@ async function loop() {
     await refresh(s);
     const b = findBout();
     if (b) {
+      idleSig = '';
       forFight(b.red.agent, b.red.number);
       if (!replaying) renderRing(b);
-    } else $('#ring').innerHTML = `<div class="hudmsg">${t('notOnChain')}</div>`;
+    } else if (!wantAgent) renderIdle();
+    else $('#ring').innerHTML = `<div class="hudmsg">${t('notOnChain')}</div>`;
   } catch (e) {
     console.error(e);
   }
@@ -602,5 +662,6 @@ setInterval(() => {
   s.now += 1;
   const b = findBout();
   if (b && !verdict(b) && !replaying) renderRing(b);
+  else if (!b && !wantAgent && s.latestBlock) renderIdle();
 }, 1000);
 loop();

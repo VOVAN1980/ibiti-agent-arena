@@ -336,7 +336,7 @@ export function createScene(root) {
     ctx.fillStyle = band;
     ctx.fillRect(x0, 528, x1 - x0, 2);
     ctx.fillRect(x0, 556, x1 - x0, 2);
-    ctx.font = '700 17px Orbitron, Inter, sans-serif';
+    ctx.font = '700 17px Unbounded, Inter, sans-serif';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = '#f5b301';
     const text = `${state.ticker}   ◆   `;
@@ -409,7 +409,9 @@ export function createScene(root) {
 
   return {
     /** Who stands in the ring; a solo fight leaves the blue corner empty. */
-    setFighters({ blue }) {
+    setFighters({ red = true, blue }) {
+      bots.red.present = !!red;
+      bots.red.wrap.style.display = red ? '' : 'none';
       bots.blue.present = !!blue;
       bots.blue.wrap.style.display = blue ? '' : 'none';
     },
