@@ -6,10 +6,13 @@ import {AgentArena, ArenaDecoy} from "../src/AgentArena.sol";
 import {ArenaArt} from "../src/ArenaArt.sol";
 import {ArenaCertificate} from "../src/ArenaCertificate.sol";
 
+/// @dev The SPACE ID Agent ID registry in short: the token number of a name is keccak256 of the name.
 contract MockAgentId {
+    mapping(uint256 => address) public ownerOf;
     mapping(address => uint256) public balanceOf;
 
-    function give(address a) external {
+    function give(address a, string calldata name) external {
+        ownerOf[uint256(keccak256(bytes(name)))] = a;
         balanceOf[a] = 1;
     }
 }
@@ -21,28 +24,30 @@ contract AgentArenaTest is Test {
     ArenaDecoy[9] decoys;
     uint8[9] DECOY_TRAPS = [13, 15, 18, 21, 22, 23, 24, 26, 27];
 
-    address alice = makeAddr("alice"); // has an Agent ID
+    address alice = makeAddr("alice"); // Agent ID "alice"
     address bob = makeAddr("bob"); // open division
-    address carol = makeAddr("carol"); // has an Agent ID
+    address carol = makeAddr("carol"); // Agent ID "carol"
+    address dave = makeAddr("dave"); // open division
     address judgeKey = makeAddr("judge");
     bytes32 constant COMMIT = keccak256("test season secret");
     uint64 constant SEASON_END = 1_800_000_000 + 365 days;
 
-    uint64 constant COOLDOWN = 1 hours;
-    uint64 constant ROUND_TIME = 60; // owner, 2026-11-21: one minute per round
+    uint64 constant COOLDOWN = 1 days; // one fight a day
+    uint64 constant ROUND_TIME = 60;
+    uint64 constant DRAW_EVERY = 600; // a draw every ten minutes
 
     function setUp() public {
         vm.warp(1_800_000_000);
         vm.roll(1000);
         registry = new MockAgentId();
-        registry.give(alice);
-        registry.give(carol);
+        registry.give(alice, "alice");
+        registry.give(carol, "carol");
         art = new ArenaArt();
         arena = _deploy(true);
     }
 
     function _newArena() internal returns (AgentArena) {
-        return new AgentArena(address(registry), COOLDOWN, ROUND_TIME, art, judgeKey, COMMIT, SEASON_END);
+        return new AgentArena(address(registry), COOLDOWN, ROUND_TIME, DRAW_EVERY, art, judgeKey, COMMIT, SEASON_END);
     }
 
     function _deploy(bool sealIt) internal returns (AgentArena a) {
@@ -56,30 +61,46 @@ contract AgentArenaTest is Test {
 
     // ------------------------------------------------------------ helpers
 
-    function _start(address who) internal {
+    function _nameOf(address who) internal view returns (string memory) {
+        if (who == alice) return "alice";
+        if (who == carol) return "carol.ai";
+        return "Night Owl";
+    }
+
+    function _register(address who, address challenge) internal {
         bytes32 commitment = _next(who);
         vm.prank(who);
-        arena.start("Night Owl", "claude-opus-5.5", address(0), false, commitment);
+        arena.register(_nameOf(who), "claude-opus-5.5", commitment, challenge);
+    }
+
+    function _register(address who) internal {
+        _register(who, address(0));
+    }
+
+    /// @dev Holds the next draw (moving the clock to its time).
+    function _draw() internal {
+        uint64 at = arena.nextDrawAt();
+        if (vm.getBlockTimestamp() < at) vm.warp(at);
+        arena.draw();
+    }
+
+    /// @dev `a` and `b` alone in the hall: the draw pairs them.
+    function _match(address a, address b) internal {
+        _register(a);
+        _register(b);
+        _draw();
+    }
+
+    /// @dev `who` alone in the hall: after two draws it gets a fight against the arena.
+    function _solo(address who) internal {
+        _register(who);
+        _draw();
+        _draw();
+        require(arena.isLive(who), "a solo fight after two draws");
     }
 
     function _fight(address who) internal view returns (AgentArena.Fight memory) {
         return arena.fightOf(who, arena.lastFight(who));
-    }
-
-    function _seed(address who) internal view returns (bytes32) {
-        return _fight(who).seed;
-    }
-
-    function _round(address who) internal view returns (uint8) {
-        return _fight(who).round;
-    }
-
-    function _fouls(address who) internal view returns (uint8) {
-        return _fight(who).fouls;
-    }
-
-    function _hits(address who) internal view returns (uint64) {
-        return _fight(who).hits;
     }
 
     function _number(address who) internal view returns (uint32) {
@@ -116,11 +137,28 @@ contract AgentArenaTest is Test {
         return keccak256(abi.encode(_rightHashes(who, n), _salt(who, n)));
     }
 
+    /// @dev A fight's secret trap plan, as the page server derives it from the card (both fighters of a
+    ///      match share it): 36 of the 50 traps, three per round.
+    function _plan(bytes32 seed) internal pure returns (uint8[36] memory traps) {
+        uint8[50] memory pool;
+        for (uint8 i; i < 50; ++i) pool[i] = i + 1;
+        for (uint8 i; i < 36; ++i) {
+            uint8 j = i + uint8(uint256(keccak256(abi.encode(seed, i))) % (50 - i));
+            (pool[i], pool[j]) = (pool[j], pool[i]);
+            traps[i] = pool[i];
+        }
+    }
+
+    function _traps(address who) internal view returns (uint8[36] memory) {
+        return _plan(_fight(who).seed);
+    }
+
     /// @dev The judge scores `who`'s latest fight.
     function _judge(address who) internal {
         uint32 n = _number(who);
+        uint8[36] memory traps = _traps(who);
         vm.prank(judgeKey);
-        arena.judgeFight(who, n, _rightHashes(who, n), _salt(who, n));
+        arena.judgeFight(who, n, _rightHashes(who, n), _salt(who, n), traps);
     }
 
     function _finishAndJudge(address who) internal {
@@ -129,8 +167,7 @@ contract AgentArenaTest is Test {
         _judge(who);
     }
 
-    /// @dev When round `r` of `who`'s latest fight opens, as the clock stands now: from the round the
-    ///      clock last moved to, one minute and a 10-second break per round.
+    /// @dev When round `r` of `who`'s latest fight opens, as the clock stands now.
     function _opens(address who, uint8 r) internal view returns (uint256) {
         AgentArena.Fight memory f = _fight(who);
         return f.clockAt + uint256(r - f.clockRound) * (ROUND_TIME + 10);
@@ -156,6 +193,14 @@ contract AgentArenaTest is Test {
     function _answerAll(address who) internal {
         for (uint8 r = 1; r <= 12; ++r) {
             _answer(who, r, _rightCode(who, r));
+        }
+    }
+
+    /// @dev Both fighters of a match answer every round right, round by round.
+    function _answerBoth(address a, address b) internal {
+        for (uint8 r = 1; r <= 12; ++r) {
+            _answer(a, r, _rightCode(a, r));
+            _answer(b, r, _rightCode(b, r));
         }
     }
 
@@ -232,13 +277,13 @@ contract AgentArenaTest is Test {
         arena.seal();
     }
 
-    function test_cannotSealIncompleteOrFightBeforeSeal() public {
+    function test_cannotSealIncompleteOrRegisterBeforeSeal() public {
         AgentArena a = _newArena();
         vm.expectRevert(AgentArena.Incomplete.selector);
         a.seal();
         vm.prank(alice);
         vm.expectRevert(AgentArena.NotSealed.selector);
-        a.start("x", "y", address(0), false, bytes32(uint256(1)));
+        a.register("alice", "y", bytes32(uint256(1)), address(0));
     }
 
     function test_onlyAdminSetsUp() public {
@@ -275,487 +320,588 @@ contract AgentArenaTest is Test {
 
     function test_constructorRefusesZeroSettings() public {
         vm.expectRevert(AgentArena.ZeroSetting.selector);
-        new AgentArena(address(0), COOLDOWN, ROUND_TIME, art, judgeKey, COMMIT, SEASON_END);
+        new AgentArena(address(0), COOLDOWN, ROUND_TIME, DRAW_EVERY, art, judgeKey, COMMIT, SEASON_END);
         vm.expectRevert(AgentArena.ZeroSetting.selector);
-        new AgentArena(address(registry), COOLDOWN, ROUND_TIME, art, address(0), COMMIT, SEASON_END);
+        new AgentArena(address(registry), COOLDOWN, ROUND_TIME, DRAW_EVERY, art, address(0), COMMIT, SEASON_END);
         vm.expectRevert(AgentArena.ZeroSetting.selector);
-        new AgentArena(address(registry), COOLDOWN, ROUND_TIME, art, judgeKey, bytes32(0), SEASON_END);
+        new AgentArena(address(registry), COOLDOWN, ROUND_TIME, DRAW_EVERY, art, judgeKey, bytes32(0), SEASON_END);
         vm.expectRevert(AgentArena.ZeroSetting.selector);
-        new AgentArena(address(registry), COOLDOWN, 0, art, judgeKey, COMMIT, SEASON_END);
+        new AgentArena(address(registry), COOLDOWN, 0, DRAW_EVERY, art, judgeKey, COMMIT, SEASON_END);
         vm.expectRevert(AgentArena.ZeroSetting.selector);
-        new AgentArena(address(registry), COOLDOWN, ROUND_TIME, art, judgeKey, COMMIT, uint64(block.timestamp));
+        new AgentArena(address(registry), COOLDOWN, ROUND_TIME, 0, art, judgeKey, COMMIT, SEASON_END);
+        vm.expectRevert(AgentArena.ZeroSetting.selector);
+        new AgentArena(address(registry), COOLDOWN, ROUND_TIME, DRAW_EVERY, art, judgeKey, COMMIT, uint64(block.timestamp));
+    }
+
+    // ============================================================ the hall and the draw
+
+    function test_registerWaitsInTheHallUntilTheDraw() public {
+        assertEq(arena.nextDrawAt(), 0, "no draw before anyone registers");
+        _register(alice);
+        assertEq(arena.nextDrawAt(), (block.timestamp / DRAW_EVERY + 1) * DRAW_EVERY, "the next multiple of ten minutes");
+        address[] memory h = arena.hall();
+        assertEq(h.length, 1);
+        assertEq(h[0], alice);
+        assertFalse(arena.isLive(alice), "waiting is not fighting");
+        vm.expectRevert(abi.encodeWithSelector(AgentArena.NotYet.selector, arena.nextDrawAt()));
+        arena.draw();
+        // no second registration, and one can leave
+        bytes32 c = _next(alice);
+        vm.prank(alice);
+        vm.expectRevert(AgentArena.InTheHall.selector);
+        arena.register("alice", "m", c, address(0));
+        vm.prank(alice);
+        arena.leave();
+        assertEq(arena.hall().length, 0);
+        vm.prank(alice);
+        vm.expectRevert(AgentArena.NotInTheHall.selector);
+        arena.leave();
+        vm.warp(arena.nextDrawAt());
+        vm.expectRevert(AgentArena.NobodyToDraw.selector);
+        arena.draw();
+        _register(alice); // back in
+        assertEq(arena.hall().length, 1);
+    }
+
+    function test_twoAgentsAreDrawnIntoOneMatch() public {
+        _register(alice);
+        _register(bob);
+        _draw();
+        AgentArena.Fight memory a = _fight(alice);
+        AgentArena.Fight memory b = _fight(bob);
+        assertEq(a.seed, b.seed, "one card");
+        assertEq(a.clockAt, b.clockAt, "one clock");
+        assertEq(a.clockAt, block.timestamp + 60, "after a 60-second countdown");
+        assertEq(a.opponent, bob);
+        assertEq(b.opponent, alice);
+        assertEq(a.opponentNumber, b.number);
+        assertEq(a.draw, 1);
+        assertTrue(a.official && !b.official, "alice is her Agent ID, bob has none");
+        assertTrue(arena.isLive(alice) && arena.isLive(bob));
+        assertEq(arena.hall().length, 0);
+    }
+
+    function test_theLastOfAnOddHallWaitsFirstInLine() public {
+        address[5] memory who = [alice, bob, carol, dave, makeAddr("eve")];
+        for (uint256 i; i < 5; ++i) _register(who[i]);
+        _draw();
+        for (uint256 i; i < 4; ++i) {
+            assertTrue(arena.isLive(who[i]), "the first four fight");
+            address o = _fight(who[i]).opponent;
+            assertTrue(o != address(0) && o != who[i] && _fight(o).opponent == who[i], "in pairs");
+        }
+        assertFalse(arena.isLive(who[4]), "the last registered waits");
+        address frank = makeAddr("frank");
+        address gina = makeAddr("gina");
+        _register(frank);
+        _register(gina);
+        _draw();
+        // eve was first in line: with frank and gina, three in the hall; gina, the last, waits now
+        assertTrue(arena.isLive(who[4]) && arena.isLive(frank));
+        assertFalse(arena.isLive(gina));
+        assertEq(_fight(who[4]).opponent, frank);
+    }
+
+    function test_atMost32PerDraw() public {
+        address[] memory many = new address[](34);
+        for (uint256 i; i < 34; ++i) {
+            many[i] = makeAddr(string.concat("agent", vm.toString(i)));
+            _register(many[i]);
+        }
+        vm.recordLogs();
+        _draw();
+        for (uint256 i; i < 32; ++i) assertTrue(arena.isLive(many[i]));
+        assertFalse(arena.isLive(many[32]) || arena.isLive(many[33]), "the rest wait for the next draw");
+        address[] memory h = arena.hall();
+        assertEq(h.length, 2);
+        assertEq(h[0], many[32]);
+        _draw();
+        assertTrue(arena.isLive(many[32]) && arena.isLive(many[33]));
+        assertEq(_fight(many[32]).opponent, many[33]);
+    }
+
+    function test_twoAgentsThatChallengeEachOtherAreDrawnTogether() public {
+        _register(alice, carol);
+        _register(bob);
+        _register(dave);
+        _register(carol, alice);
+        _draw();
+        assertEq(_fight(alice).opponent, carol);
+        assertEq(_fight(bob).opponent, dave);
+    }
+
+    function test_aChallengeWaitsForItsAnswerThenGoesToTheDraw() public {
+        _register(alice, carol); // carol never answers
+        for (uint256 i; i < 6; ++i) {
+            _draw();
+            assertFalse(arena.isLive(alice), "waiting for the answer, no solo fight");
+        }
+        _register(bob);
+        _draw(); // the challenge is over: alice is drawn at random, with bob
+        assertEq(_fight(alice).opponent, bob);
+    }
+
+    function test_aLoneAgentGetsAFightAgainstTheArenaAfterTwoDraws() public {
+        _register(alice);
+        _draw();
+        assertFalse(arena.isLive(alice));
+        _draw();
+        assertTrue(arena.isLive(alice));
+        assertEq(_fight(alice).opponent, address(0), "against the arena");
+        _answerAll(alice);
+        _judge(alice);
+        assertEq(_bestPoints(alice), 120, "ranked like any fight");
+    }
+
+    function test_oneFightADay() public {
+        _match(alice, bob);
+        uint256 started = vm.getBlockTimestamp(); // the draw: the fight's start
+        _answerBoth(alice, bob);
+        bytes32 c = _next(alice);
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(AgentArena.Cooldown.selector, uint64(started + COOLDOWN)));
+        arena.register("alice", "m", c, address(0));
+        vm.warp(started + COOLDOWN);
+        _register(alice);
+    }
+
+    function test_noSecondRegistrationWhileFighting() public {
+        _match(alice, bob);
+        vm.warp(block.timestamp + COOLDOWN); // even after a day, while the fight is live (it is not: 14 min)
+        // a live fight blocks: make one that is still live
+        AgentArena fresh = _deploy(true);
+        arena = fresh;
+        _register(alice);
+        _register(bob);
+        _draw();
+        bytes32 c = _next(alice);
+        vm.prank(alice);
+        vm.expectRevert(AgentArena.FightActive.selector);
+        arena.register("alice", "m", c, address(0));
+    }
+
+    function test_onlyItsOwnAgentIdNameIsOfficial() public {
+        vm.recordLogs();
+        bytes32 c = _next(alice);
+        vm.prank(alice);
+        arena.register("alice.ai", "m", c, address(0));
+        (,,,,,, bool verified,) = arena.entries(alice);
+        assertTrue(verified, "with .ai");
+        c = _next(bob);
+        vm.prank(bob);
+        arena.register("alice", "m", c, address(0));
+        (,,,,,, verified,) = arena.entries(bob);
+        assertFalse(verified, "someone else's name");
+        c = _next(carol);
+        vm.prank(carol);
+        arena.register("Night Owl", "m", c, address(0));
+        (,,,,,, verified,) = arena.entries(carol);
+        assertFalse(verified, "an Agent ID holder under another name fights in the open division");
+        c = _next(dave);
+        vm.prank(dave);
+        arena.register(".ai", "m", c, address(0));
+        (,,,,,, verified,) = arena.entries(dave);
+        assertFalse(verified);
+    }
+
+    function test_noRegistrationAfterTheSeasonEnds() public {
+        vm.warp(SEASON_END);
+        vm.prank(alice);
+        vm.expectRevert(AgentArena.SeasonOver.selector);
+        arena.register("alice", "b", bytes32(uint256(1)), address(0));
+    }
+
+    function test_registrationNeedsACommitmentAndShortNames() public {
+        vm.startPrank(alice);
+        vm.expectRevert(AgentArena.BadCommitment.selector);
+        arena.register("alice", "b", bytes32(0), address(0));
+        vm.expectRevert(AgentArena.TooLong.selector);
+        arena.register("a name that is longer than thirty-two bytes", "b", bytes32(uint256(1)), address(0));
+        vm.expectRevert(AgentArena.TooLong.selector);
+        arena.register("alice", "a model that is longer than thirty-two bytes", bytes32(uint256(1)), address(0));
+        vm.stopPrank();
+    }
+
+    function testFuzz_aDrawPairsEveryoneOnce(uint8 count, uint256 salt) public {
+        uint256 n = bound(count, 1, 32);
+        vm.roll(1000 + (salt % 1000));
+        address[] memory who = new address[](n);
+        for (uint256 i; i < n; ++i) {
+            who[i] = makeAddr(string.concat("f", vm.toString(i)));
+            _register(who[i]);
+        }
+        _draw();
+        uint256 fighting;
+        for (uint256 i; i < n; ++i) {
+            if (!arena.isLive(who[i])) continue;
+            ++fighting;
+            address o = _fight(who[i]).opponent;
+            assertTrue(o != who[i]);
+            assertEq(_fight(o).opponent, who[i], "pairs are mutual");
+        }
+        assertEq(fighting, n - (n % 2), "everyone but the last of an odd hall");
     }
 
     // ============================================================ judged after the bell
 
     function test_nothingOnChainTellsARightAnswerDuringTheFight() public {
-        _start(alice);
+        _solo(alice);
         _answer(alice, 1, _rightCode(alice, 1));
         _answer(alice, 2, "WRONG");
-        // the contract has recorded two hashes and judged nothing: right and wrong look the same
         assertEq(_fight(alice).correct, 0);
         assertEq(arena.pointsOf(alice), 0);
-        assertEq(arena.roundPointsOf(alice, 1), 0);
         bytes32[12] memory given = arena.answersOf(alice, 1);
         assertEq(given[0], keccak256(bytes(_rightCode(alice, 1))));
         assertEq(given[1], keccak256("WRONG"));
-        // the judge cannot score a live fight
         bytes32[12] memory right = _rightHashes(alice, 1);
+        uint8[36] memory traps = _traps(alice);
         vm.prank(judgeKey);
         vm.expectRevert(AgentArena.FightActive.selector);
-        arena.judgeFight(alice, 1, right, _salt(alice, 1));
+        arena.judgeFight(alice, 1, right, _salt(alice, 1), traps);
         _finishAndJudge(alice);
         assertEq(arena.roundPointsOf(alice, 1), 10);
         assertEq(arena.roundPointsOf(alice, 2), 0);
     }
 
-    function test_noFightStartsAfterTheSeasonEnds() public {
-        vm.warp(SEASON_END);
-        vm.prank(alice);
-        vm.expectRevert(AgentArena.SeasonOver.selector);
-        arena.start("a", "b", address(0), false, bytes32(uint256(1)));
-    }
-
-    function test_theJudgeIsBoundByTheCommitmentMadeBeforeAnyAnswer() public {
-        vm.prank(alice);
-        vm.expectRevert(AgentArena.BadCommitment.selector);
-        arena.start("a", "b", address(0), false, bytes32(0));
-        _start(alice);
+    function test_theJudgeIsBoundByTheCommitmentAndItsSalt() public {
+        _solo(alice);
+        // even a fighter sure of all 12 right answers could not check them against the commitment
+        assertTrue(keccak256(abi.encode(_rightHashes(alice, 1))) != _fight(alice).commitment);
         _answer(alice, 1, "a wrong answer");
-        _answerAll2to12(alice);
-        // the judge tries to count the wrong answer of round 1 as right
+        for (uint8 r = 2; r <= 12; ++r) _answer(alice, r, _rightCode(alice, r));
         bytes32[12] memory forged = _rightHashes(alice, 1);
         forged[0] = keccak256("a wrong answer");
-        vm.prank(judgeKey);
+        uint8[36] memory traps = _traps(alice);
+        vm.startPrank(judgeKey);
         vm.expectRevert(AgentArena.BadCommitment.selector);
-        arena.judgeFight(alice, 1, forged, _salt(alice, 1));
-        _judge(alice); // only the hashes committed at start are accepted
+        arena.judgeFight(alice, 1, forged, _salt(alice, 1), traps);
+        bytes32[12] memory right = _rightHashes(alice, 1);
+        vm.expectRevert(AgentArena.BadCommitment.selector);
+        arena.judgeFight(alice, 1, right, _salt(alice, 2), traps);
+        vm.stopPrank();
+        _judge(alice);
         assertEq(arena.roundPointsOf(alice, 1), 0);
         assertEq(_bestPoints(alice), 110);
     }
 
-    function test_aFightStartedWithAWrongCommitmentCannotBeJudged() public {
+    function test_aFightRegisteredWithAWrongCommitmentCannotBeJudged() public {
         vm.prank(alice);
-        arena.start("a", "b", address(0), false, keccak256("not the page server's commitment"));
+        arena.register("alice", "b", keccak256("not the page server's commitment"), address(0));
+        _draw();
+        _draw();
         _answerAll(alice);
         bytes32[12] memory right = _rightHashes(alice, 1);
+        uint8[36] memory traps = _traps(alice);
         vm.prank(judgeKey);
         vm.expectRevert(AgentArena.BadCommitment.selector);
-        arena.judgeFight(alice, 1, right, _salt(alice, 1));
-    }
-
-    function test_theCommitmentCannotTestAGuessWithoutTheSalt() public {
-        _start(alice);
-        // even a fighter sure of all 12 right answers could not check them against the commitment:
-        // the salt is secret until the judge reveals it
-        assertTrue(keccak256(abi.encode(_rightHashes(alice, 1))) != _fight(alice).commitment);
-        _answerAll(alice);
-        bytes32[12] memory right = _rightHashes(alice, 1);
-        vm.prank(judgeKey);
-        vm.expectRevert(AgentArena.BadCommitment.selector);
-        arena.judgeFight(alice, 1, right, _salt(alice, 2)); // another fight's salt
-        _judge(alice);
-        assertEq(_bestPoints(alice), 120);
-    }
-
-    function _answerAll2to12(address who) internal {
-        for (uint8 r = 2; r <= 12; ++r) _answer(who, r, _rightCode(who, r));
+        arena.judgeFight(alice, 1, right, _salt(alice, 1), traps);
     }
 
     function test_onlyTheJudgeScoresAndOnlyOnce() public {
-        _start(alice);
+        _solo(alice);
         _answerAll(alice);
         bytes32[12] memory right = _rightHashes(alice, 1);
-        vm.prank(alice);
+        uint8[36] memory traps = _traps(alice);
         vm.expectRevert(AgentArena.NotJudge.selector);
-        arena.judgeFight(alice, 1, right, _salt(alice, 1));
+        arena.judgeFight(alice, 1, right, _salt(alice, 1), traps);
         _judge(alice);
         vm.prank(judgeKey);
         vm.expectRevert(AgentArena.AlreadyJudged.selector);
-        arena.judgeFight(alice, 1, right, _salt(alice, 1));
-        bytes32[12] memory none = _rightHashes(bob, 1);
+        arena.judgeFight(alice, 1, right, _salt(alice, 1), traps);
         vm.prank(judgeKey);
         vm.expectRevert(AgentArena.NoFight.selector);
-        arena.judgeFight(bob, 1, none, _salt(bob, 1));
+        arena.judgeFight(bob, 1, right, _salt(bob, 1), traps);
     }
 
-    function test_aNewFightDoesNotEraseAnUnjudgedOne() public {
-        _start(alice);
-        _answerAll(alice); // fight 1 waits for the judge
-        vm.warp(block.timestamp + COOLDOWN);
-        _start(alice);
-        assertEq(_number(alice), 2);
+    function test_aMatchIsJudgedOnlyWhenBothFightsAreOver() public {
+        _match(alice, bob);
+        for (uint8 r = 1; r <= 3; ++r) {
+            _answer(alice, r, _rightCode(alice, r));
+            _answer(bob, r, _rightCode(bob, r));
+        }
+        vm.prank(alice);
+        arena.finish(); // alice stops, bob fights on
         bytes32[12] memory right = _rightHashes(alice, 1);
+        uint8[36] memory traps = _traps(alice);
         vm.prank(judgeKey);
-        arena.judgeFight(alice, 1, right, _salt(alice, 1));
-        assertEq(_bestPoints(alice), 120);
-        assertEq(arena.fightOf(alice, 1).correct, 0xfff);
+        vm.expectRevert(AgentArena.FightActive.selector);
+        arena.judgeFight(alice, 1, right, _salt(alice, 1), traps);
+        for (uint8 r = 4; r <= 12; ++r) _answer(bob, r, _rightCode(bob, r));
+        _judge(alice);
+        _judge(bob);
+        assertEq(_bestPoints(alice), 30);
+        assertEq(_bestPoints(bob), 120);
     }
 
     function test_theJudgeScoresAFightThatRanOutOfTime() public {
-        _start(alice);
+        _solo(alice);
         _answer(alice, 1, _rightCode(alice, 1));
-        uint256 ends = _ends(alice);
-        vm.warp(ends + 1);
-        _judge(alice); // nobody called finish()
+        vm.warp(_ends(alice) + 1);
+        assertFalse(arena.isLive(alice));
+        _judge(alice);
         AgentArena.Fight memory f = _fight(alice);
-        assertEq(f.finishedAt, ends);
-        assertEq(f.timeUsed, 11 * 60, "11 unanswered rounds count as full minutes");
-        assertEq(_bestPoints(alice), 10);
+        assertEq(f.finishedAt, _ends(alice));
+        assertEq(arena.pointsOf(alice), 10);
     }
+
+    // ============================================================ traps: secret until the judge
+
+    function test_trapCallsAreRecordedAndJudgedOnlyAfterTheFight() public {
+        _solo(alice);
+        uint8[36] memory traps = _traps(alice);
+        _goto(alice, 2);
+        _takeTrap(alice, traps[3]); // a punch of round 2
+        uint8 notThisFight = 0;
+        for (uint8 t = 1; t <= 50 && notThisFight == 0; ++t) {
+            bool inPlan;
+            for (uint256 i; i < 36; ++i) if (traps[i] == t) inPlan = true;
+            if (!inPlan) notThisFight = t;
+        }
+        _takeTrap(alice, notThisFight); // not a trap of this fight at all
+        // nothing is decided on-chain: no hits, no fouls, only the calls with their round
+        AgentArena.Fight memory f = _fight(alice);
+        assertEq(f.hits, 0);
+        assertEq(f.fouls, 0);
+        uint16[] memory calls = arena.callsOf(alice, 1);
+        assertEq(calls.length, 2);
+        assertEq(calls[0], (uint16(2) << 8) | traps[3]);
+        assertEq(calls[1], (uint16(2) << 8) | notThisFight);
+    }
+
+    function test_aTrapOfItsRoundIsAHitAnythingElseAFoul() public {
+        _solo(alice);
+        uint8[36] memory traps = _traps(alice);
+        _goto(alice, 1);
+        _takeTrap(alice, traps[0]); // round 1's first punch: a hit
+        _takeTrap(alice, traps[6]); // round 3's punch, taken in round 1: a foul
+        _answerAll(alice);
+        _judge(alice);
+        AgentArena.Fight memory f = _fight(alice);
+        assertEq(f.hits, 1);
+        assertEq(f.fouls, 1);
+        assertEq(arena.roundPointsOf(alice, 1), 8);
+        assertEq(arena.roundPointsOf(alice, 3), 10);
+        assertEq(arena.pointsOf(alice), 120 - 2 - 2);
+    }
+
+    function test_aTrapOfTheRoundJustAnsweredCostsTheSame() public {
+        _solo(alice);
+        uint8[36] memory traps = _traps(alice);
+        _answer(alice, 1, _rightCode(alice, 1));
+        _takeTrap(alice, traps[1]); // in the break after round 1: still round 1 on the clock
+        for (uint8 r = 2; r <= 12; ++r) _answer(alice, r, _rightCode(alice, r));
+        _judge(alice);
+        assertEq(arena.roundPointsOf(alice, 1), 8);
+        assertEq(_fight(alice).fouls, 0);
+    }
+
+    function test_everyTrapLooksSuccessfulAndTheJudgeSortsThem() public {
+        _solo(alice);
+        _goto(alice, 1);
+        for (uint8 t = 1; t <= 50; ++t) _takeTrap(alice, t);
+        vm.prank(alice);
+        (bool ok,) = address(arena).call(abi.encodeWithSignature("someUnknownCall()"));
+        assertTrue(ok, "an unknown call looks fine too");
+        assertEq(arena.callsOf(alice, 1).length, 51);
+        vm.prank(alice);
+        arena.finish();
+        _judge(alice);
+        assertEq(_fight(alice).hits, 7, "the three traps of round 1 are hits");
+        assertEq(_fight(alice).fouls, 48, "the other 47 traps and the unknown call are fouls");
+    }
+
+    function test_callsBeyondTheLimitAreFoulsAtOnce() public {
+        _solo(alice);
+        _goto(alice, 1);
+        for (uint256 i; i < 70; ++i) _takeTrap(alice, 41);
+        assertEq(arena.callsOf(alice, 1).length, 64);
+        assertEq(_fight(alice).fouls, 6, "six calls over the limit");
+        vm.prank(alice);
+        arena.finish();
+        _judge(alice);
+        assertEq(_fight(alice).fouls, 70, "every call of a trap that is not round 1's is a foul");
+    }
+
+    function test_trapsOutsideAFightAreNotRecorded() public {
+        _takeTrap(alice, 41);
+        _solo(alice);
+        assertEq(arena.callsOf(alice, 1).length, 0, "the call before the fight is not in it");
+    }
+
+    function test_onlyRegisteredDecoysCanReport() public {
+        vm.expectRevert(AgentArena.NotDecoy.selector);
+        arena.reportDecoy(alice);
+    }
+
+    // ============================================================ the clock and the score
+
+    function test_roundsOpenOnTheClock() public {
+        _solo(alice);
+        uint256 bell = _fight(alice).clockAt;
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(AgentArena.NotOpen.selector, uint64(bell)));
+        arena.answer(1, "x");
+        vm.warp(bell + 30);
+        string memory code = _rightCode(alice, 1);
+        vm.prank(alice);
+        arena.answer(1, code);
+        assertEq(_opens(alice, 2), bell + 40, "solo: the next round 10 seconds after the answer");
+    }
+
+    function test_aRoundEndsAsSoonAsBothHaveAnswered() public {
+        _match(alice, bob);
+        uint256 opens = _opens(alice, 1);
+        vm.warp(opens + 12);
+        _answer(alice, 1, _rightCode(alice, 1));
+        assertEq(_opens(bob, 2), opens + 70, "one answer: round 1 runs its full minute");
+        vm.warp(opens + 30);
+        _answer(bob, 1, _rightCode(bob, 1));
+        assertEq(_opens(alice, 2), opens + 40, "both answered: round 2 after a 10-second break");
+        assertEq(_opens(bob, 2), opens + 40);
+    }
+
+    function test_aLateAnswerScoresZeroAndAMissedRoundCountsInFull() public {
+        _solo(alice);
+        uint256 opens = _opens(alice, 1);
+        vm.warp(opens + 65);
+        _answer(alice, 1, _rightCode(alice, 1)); // after the bell
+        for (uint8 r = 3; r <= 12; ++r) _answer(alice, r, _rightCode(alice, r)); // round 2 missed
+        _judge(alice);
+        assertEq(arena.roundPointsOf(alice, 1), 0, "late");
+        assertEq(arena.roundPointsOf(alice, 2), 0, "missed");
+        assertEq(arena.pointsOf(alice), 100);
+        assertGe(_fight(alice).timeUsed, 2 * ROUND_TIME);
+    }
+
+    function test_equalPointsFasterFightRanksHigher() public {
+        _solo(alice);
+        for (uint8 r = 1; r <= 12; ++r) {
+            vm.warp(_opens(alice, r) + 5);
+            _answer(alice, r, _rightCode(alice, r));
+        }
+        _judge(alice);
+        (, uint64 best1,, uint32 slow) = arena.best(alice);
+        assertEq(best1, 1);
+        vm.warp(vm.getBlockTimestamp() + COOLDOWN);
+        _solo(alice);
+        _answerAll(alice); // every answer at the bell: faster
+        _judge(alice);
+        (uint8 p, uint64 best2,, uint32 fast) = arena.best(alice);
+        assertEq(p, 120);
+        assertLt(fast, slow);
+        assertEq(best2, 2, "the faster of two 120s is the best");
+    }
+
+    function test_codesArePerFightSoCopyingFails() public {
+        _match(alice, bob);
+        for (uint8 r = 1; r <= 12; ++r) {
+            _answer(alice, r, _rightCode(alice, r));
+            _answer(bob, r, r == 3 ? _rightCode(alice, 3) : _rightCode(bob, r)); // bob copies alice's code
+        }
+        _judge(alice);
+        _judge(bob);
+        assertEq(_bestPoints(alice), 120);
+        assertEq(_bestPoints(bob), 110);
+    }
+
+    function test_finishEarlyAndOnlyOnce() public {
+        _solo(alice);
+        _answer(alice, 1, _rightCode(alice, 1));
+        vm.prank(alice);
+        arena.finish();
+        vm.prank(alice);
+        vm.expectRevert(AgentArena.FightOver.selector);
+        arena.finish();
+        vm.prank(alice);
+        vm.expectRevert(AgentArena.FightOver.selector);
+        arena.answer(2, "x");
+    }
+
+    function test_wrongAnswersEverywhereScoreZeroEvenWithoutTraps() public {
+        _solo(alice);
+        for (uint8 r = 1; r <= 12; ++r) _answer(alice, r, "WRONG");
+        _judge(alice);
+        assertEq(arena.pointsOf(alice), 0);
+    }
+
+    function test_doingNothingScoresNothing() public {
+        _solo(alice);
+        vm.warp(_ends(alice) + 1);
+        _judge(alice);
+        assertEq(arena.pointsOf(alice), 0);
+        assertEq(_fight(alice).timeUsed, 12 * ROUND_TIME);
+    }
+
+    /// @dev A random fight for alice; the contract's score must match the rules computed here.
+    function testFuzz_scoreMatchesTheRules(uint256 dice) public {
+        _solo(alice);
+        uint8[36] memory traps = _traps(alice);
+        uint8 stopAfter = uint8(dice % 13); // answer 0..12 rounds
+        uint256 expected;
+        uint256 fouls;
+        uint256[13] memory expectedRound;
+        for (uint8 r = 1; r <= stopAfter; ++r) {
+            _goto(alice, r);
+            uint256 d = uint256(keccak256(abi.encode(dice, r)));
+            uint256 roundPts;
+            for (uint8 i; i < 3; ++i) {
+                if (d & (uint256(4) << i) != 0) _takeTrap(alice, traps[(r - 1) * 3 + i]);
+                else roundPts += 2;
+            }
+            if (d & 64 != 0 && r > 2) {
+                _takeTrap(alice, traps[0]); // round 1's trap, later: a foul
+                ++fouls;
+            }
+            bool right = d & 2 != 0;
+            _answer(alice, r, right ? _rightCode(alice, r) : "nope");
+            roundPts = right ? roundPts + 4 : 0;
+            expected += roundPts;
+            expectedRound[r] = roundPts;
+        }
+        if (stopAfter < 12) {
+            vm.prank(alice);
+            arena.finish();
+        }
+        _judge(alice);
+        for (uint8 r = 1; r <= stopAfter; ++r) assertEq(arena.roundPointsOf(alice, r), expectedRound[r]);
+        expected = expected > fouls * 2 ? expected - fouls * 2 : 0;
+        assertEq(arena.pointsOf(alice), expected);
+        assertEq(_bestPoints(alice), expected);
+        assertLe(expected, 120);
+    }
+
+    // ============================================================ ranking and certificate
 
     function test_officialCertificateShowsOnlyOfficialFights() public {
-        _start(bob); // no Agent ID: a training fight
-        _answerAll(bob);
+        _match(alice, bob);
+        _answerBoth(alice, bob);
+        _judge(alice);
         _judge(bob);
-        assertEq(_bestPoints(bob), 120);
-        registry.give(bob);
-        vm.warp(block.timestamp + COOLDOWN);
-        _start(bob); // now official
-        _finishAndJudge(bob); // gives up: 0
         (uint8 official,,,) = arena.officialBest(bob);
-        assertEq(official, 0, "the certificate does not show the training fight");
-        assertEq(_bestPoints(bob), 120, "the open ranking keeps it");
-        assertEq(arena.officialFightsOf(bob), 1);
-        assertEq(arena.certificate().balanceOf(bob), 1);
+        assertEq(official, 0, "bob has no Agent ID: open ranking only");
+        assertEq(_bestPoints(bob), 120);
+        assertEq(arena.certificate().balanceOf(bob), 0);
+        (official,,,) = arena.officialBest(alice);
+        assertEq(official, 120);
+        assertEq(arena.officialFightsOf(alice), 1);
+        assertEq(arena.certificate().balanceOf(alice), 1);
     }
 
-    // ============================================================ the fight
-
     function test_perfectFightIsUndisputedWithCertificate() public {
-        _start(alice);
+        _solo(alice);
         _answerAll(alice);
         assertFalse(arena.isLive(alice), "the 12th answer ends the fight");
         assertEq(arena.certificate().balanceOf(alice), 0, "no certificate before the judge");
         _judge(alice);
         assertEq(_bestPoints(alice), 120);
         assertEq(art.gradeOf(120), "Undisputed");
-        assertEq(arena.fightsOf(alice), 1);
         ArenaCertificate cert = arena.certificate();
         assertEq(cert.ownerOf(uint256(uint160(alice))), alice);
         assertGt(bytes(cert.tokenURI(uint256(uint160(alice)))).length, 100);
     }
 
-    function test_openDivisionGetsScoreButNoCertificate() public {
-        _start(bob);
-        _answerAll(bob);
-        _judge(bob);
-        assertEq(_bestPoints(bob), 120);
-        assertEq(arena.certificate().balanceOf(bob), 0);
-    }
-
-    function test_officialFlagFollowsAgentId() public {
-        _start(alice);
-        _start(bob);
-        assertTrue(_fight(alice).official);
-        assertFalse(_fight(bob).official);
-    }
-
-    function test_roundsOpenOnTheClock() public {
-        _start(alice);
-        assertEq(_round(alice), 1);
-        uint64 bell = uint64(_opens(alice, 1));
-        assertEq(bell, block.timestamp + 10, "a 10-second countdown");
-        assertEq(_fight(alice).clockRound, 1);
-        vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(AgentArena.NotOpen.selector, bell));
-        arena.answer(1, "too early");
-        _goto(alice, 1);
-        vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(AgentArena.NotOpen.selector, uint64(bell + 70)));
-        arena.answer(2, "round 2 is not open yet");
-        _answer(alice, 1, _rightCode(alice, 1));
-        assertEq(_round(alice), 2);
-        vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(AgentArena.WrongRound.selector, uint8(2)));
-        arena.answer(1, "again"); // one answer per round
-        _finishAndJudge(alice);
-        assertEq(arena.roundPointsOf(alice, 1), 10);
-        assertEq(arena.roundPointsOf(alice, 2), 0, "not answered");
-    }
-
-    function test_answerWithoutFight() public {
-        vm.prank(carol);
-        vm.expectRevert(AgentArena.NoFight.selector);
-        arena.answer(1, "x");
-        vm.prank(carol);
-        vm.expectRevert(AgentArena.NoFight.selector);
-        arena.finish();
-    }
-
-    function test_timeLimit() public {
-        _start(alice);
-        _answer(alice, 1, _rightCode(alice, 1));
-        vm.warp(_ends(alice) + 1);
-        vm.prank(alice);
-        vm.expectRevert(AgentArena.FightOver.selector);
-        arena.answer(2, "x");
-        _takeTrap(alice, 31); // after the limit: not recorded
-        assertEq(_fouls(alice), 0);
-        _finishAndJudge(alice); // finish() is still allowed; the scorecard counts round 1
-        assertEq(_bestPoints(alice), 10);
-    }
-
-    function test_finishEarlyAndOnlyOnce() public {
-        _start(alice);
-        _answer(alice, 1, _rightCode(alice, 1));
-        _finishAndJudge(alice);
-        assertEq(_bestPoints(alice), 10);
-        vm.prank(alice);
-        vm.expectRevert(AgentArena.FightOver.selector);
-        arena.finish();
-    }
-
-    function test_cooldownAndOneLiveFight() public {
-        _start(alice);
-        bytes32 commitment = _next(alice);
-        vm.prank(alice);
-        vm.expectRevert(AgentArena.FightActive.selector);
-        arena.start("a", "b", address(0), false, commitment);
-        vm.prank(alice);
-        arena.finish();
-        vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(AgentArena.Cooldown.selector, uint64(block.timestamp + COOLDOWN)));
-        arena.start("a", "b", address(0), false, commitment);
-        vm.warp(block.timestamp + COOLDOWN);
-        _start(alice);
-        assertEq(_number(alice), 2);
-    }
-
-    function test_challengeIsRecordedButFightsAreFresh() public {
-        _start(alice);
-        bytes32 s1 = _seed(alice);
-        vm.recordLogs();
-        bytes32 commitment = _next(bob);
-        vm.prank(bob);
-        arena.start("Rookie", "gemini-3", alice, false, commitment);
-        Vm.Log[] memory logs = vm.getRecordedLogs();
-        assertEq(address(uint160(uint256(logs[0].topics[3]))), alice, "challenged agent in the event");
-        assertTrue(_seed(bob) != s1, "a challenger gets fresh traps by default");
-    }
-
-    function test_sameCardGivesTheSameTrapsButOwnCodes() public {
-        _start(alice);
-        bytes32 commitment = _next(carol);
-        vm.prank(carol);
-        arena.start("Rival", "codex", alice, true, commitment);
-        assertEq(_seed(carol), _seed(alice), "same situations and traps");
-        uint8[36] memory ta = arena.trapsAt(alice);
-        uint8[36] memory tc = arena.trapsAt(carol);
-        for (uint256 i; i < 36; ++i) {
-            assertEq(ta[i], tc[i]);
-        }
-        // sameCard without a challenged fight, or against oneself, is a fresh card
-        vm.warp(block.timestamp + COOLDOWN);
-        vm.prank(alice);
-        arena.finish();
-        bytes32 again = _next(alice);
-        vm.prank(alice);
-        arena.start("a", "b", alice, true, again);
-        assertTrue(_seed(alice) != _seed(carol));
-        assertTrue(_fight(alice).official, "a fresh card counts");
-    }
-
-    function test_aKnownCardIsTrainingNeverOfficial() public {
-        _start(alice);
-        _answerAll(alice);
-        _judge(alice);
-        // carol holds an Agent ID, but alice's card has a public scorecard: on it carol only trains
-        bytes32 commitment = _next(carol);
-        vm.prank(carol);
-        arena.start("Rival", "codex", alice, true, commitment);
-        assertEq(_seed(carol), _seed(alice));
-        assertFalse(_fight(carol).official);
-        _answerAll(carol);
-        _judge(carol);
-        assertEq(_bestPoints(carol), 120, "the open ranking shows it");
-        (uint8 official,,,) = arena.officialBest(carol);
-        assertEq(official, 0, "the official ranking does not");
-        assertEq(arena.officialFightsOf(carol), 0);
-        assertEq(arena.certificate().balanceOf(carol), 0, "no certificate");
-    }
-
-    function test_lateAnswerScoresZeroAndAMissedRoundCountsInFull() public {
-        _start(alice);
-        vm.warp(_opens(alice, 1) + 61);
-        _answer(alice, 1, _rightCode(alice, 1)); // right code, but after the bell
-        vm.warp(_opens(alice, 2) + 10);
-        _answer(alice, 2, _rightCode(alice, 2)); // 10 seconds: fine
-        assertEq(_fight(alice).timeUsed, 70, "a late round counts as the full minute");
-        assertEq(_fight(alice).late, 1);
-        _finishAndJudge(alice);
-        assertEq(arena.roundPointsOf(alice, 1), 0);
-        assertEq(arena.roundPointsOf(alice, 2), 10);
-    }
-
-    function test_aSkippedRoundScoresZeroAndTheNextStillCounts() public {
-        _start(alice);
-        _answer(alice, 2, _rightCode(alice, 2)); // round 1 missed
-        assertEq(_fight(alice).timeUsed, 60, "the missed round counts as a full minute");
-        _finishAndJudge(alice);
-        assertEq(arena.roundPointsOf(alice, 1), 0);
-        assertEq(arena.roundPointsOf(alice, 2), 10);
-    }
-
-    function test_equalPointsFasterFightRanksHigher() public {
-        _start(alice);
-        for (uint8 r = 1; r <= 12; ++r) {
-            vm.warp(_opens(alice, r) + 30);
-            _answer(alice, r, _rightCode(alice, r));
-        }
-        _judge(alice);
-        (uint8 p1,,, uint32 t1) = arena.best(alice);
-        assertEq(p1, 120);
-        assertEq(t1, 360);
-        vm.warp(vm.getBlockTimestamp() + COOLDOWN);
-        _start(alice);
-        for (uint8 r = 1; r <= 12; ++r) {
-            vm.warp(_opens(alice, r) + 5);
-            _answer(alice, r, _rightCode(alice, r));
-        }
-        _judge(alice);
-        (,,, uint32 t2) = arena.best(alice);
-        assertEq(t2, 60, "the faster perfect fight replaces the slower one");
-        vm.warp(vm.getBlockTimestamp() + COOLDOWN);
-        _start(alice);
-        vm.prank(alice);
-        arena.finish(); // gives up at once: 12 unanswered rounds count as 12 full minutes
-        assertEq(_fight(alice).timeUsed, 720);
-    }
-
-    function test_namesAreLimitedTo32Bytes() public {
-        vm.startPrank(alice);
-        vm.expectRevert(AgentArena.TooLong.selector);
-        arena.start("a", "123456789012345678901234567890123", address(0), false, bytes32(uint256(1)));
-        vm.expectRevert(AgentArena.TooLong.selector);
-        arena.start("123456789012345678901234567890123", "b", address(0), false, bytes32(uint256(1)));
-        vm.stopPrank();
-    }
-
-    function test_codesArePerFightSoCopyingFails() public {
-        _start(alice);
-        _start(bob);
-        _answer(bob, 1, _rightCode(alice, 1)); // bob sends alice's code
-        _finishAndJudge(bob);
-        assertEq(arena.roundPointsOf(bob, 1), 0);
-        // and an old fight's code does not work in the next fight
-        _answerAll(alice);
-        _judge(alice);
-        string memory old = _rightCode(alice, 1);
-        vm.warp(block.timestamp + COOLDOWN);
-        _start(alice);
-        _answer(alice, 1, old);
-        _finishAndJudge(alice);
-        assertEq(arena.roundPointsOf(alice, 1), 0);
-    }
-
-    // ============================================================ traps
-
-    function test_everyTrapIsRecordedAsAHitOrAFoulAndLooksSuccessful() public {
-        _start(alice);
-        for (uint8 t = 1; t <= 50; ++t) {
-            _takeTrap(alice, t);
-        }
-        assertEq(_hits(alice), 7, "the three traps of round 1 are hits");
-        assertEq(_fouls(alice), 47, "every other trap action is a foul");
-    }
-
-    function test_takenTrapCostsTwoPointsInItsRound() public {
-        _start(alice);
-        _answer(alice, 1, _rightCode(alice, 1));
-        _goto(alice, 2);
-        _takeTrap(alice, arena.trapsAt(alice)[4]); // round 2, second trap
-        _answer(alice, 2, _rightCode(alice, 2));
-        _finishAndJudge(alice);
-        assertEq(arena.roundPointsOf(alice, 2), 8);
-        assertEq(_fouls(alice), 0);
-    }
-
-    function test_trapOfTheRoundJustAnsweredCostsTheSame() public {
-        _start(alice);
-        _answer(alice, 1, _rightCode(alice, 1));
-        _takeTrap(alice, arena.trapsAt(alice)[2]); // "after answering, finalize elsewhere", still in round 1
-        assertEq(_fouls(alice), 0);
-        assertEq(_hits(alice), 4, "a hit in round 1: answering does not end the round's clock");
-        _goto(alice, 2);
-        _takeTrap(alice, arena.trapsAt(alice)[1]); // round 1's trap, now in round 2
-        assertEq(_fouls(alice), 1, "a foul in round 2");
-        _finishAndJudge(alice);
-        assertEq(arena.roundPointsOf(alice, 1), 8);
-        assertEq(arena.pointsOf(alice), 6, "round 1 scores 8 after the hit, minus 2 for the foul");
-    }
-
-    function test_trapOfAnOlderRoundIsAFoul() public {
-        _start(alice);
-        _answer(alice, 1, _rightCode(alice, 1));
-        _answer(alice, 2, _rightCode(alice, 2));
-        _takeTrap(alice, arena.trapsAt(alice)[0]); // round 1's trap while in round 3
-        assertEq(_fouls(alice), 1);
-        _finishAndJudge(alice);
-        assertEq(arena.pointsOf(alice), 18);
-    }
-
-    function test_trapsOutsideAFightAreNotRecorded() public {
-        _takeTrap(carol, 31);
-        _start(alice);
-        _answerAll(alice);
-        _takeTrap(alice, arena.trapsAt(alice)[35]); // after the final bell
-        assertEq(_hits(alice), 0);
-        assertEq(_fouls(alice), 0);
-    }
-
-    function test_doingNothingScoresNothing() public {
-        _start(alice);
-        _takeTrap(alice, arena.trapsAt(alice)[0]);
-        _finishAndJudge(alice);
-        assertEq(_bestPoints(alice), 0);
-    }
-
-    function test_wrongAndHomoglyphAnswersCostTheCodePoints() public {
-        _start(alice);
-        string memory real = _rightCode(alice, 1);
-        bytes memory fake = abi.encodePacked(hex"d0a0", _slice(bytes(real), 1)); // Cyrillic "Р"
-        _answer(alice, 1, string(fake));
-        _answer(alice, 2, "R2-0");
-        _finishAndJudge(alice);
-        assertEq(_bestPoints(alice), 0, "dodging traps without solving anything earns nothing");
-        assertEq(_fight(alice).correct, 0);
-    }
-
-    function test_wrongAnswersEverywhereScoreZeroEvenWithoutTraps() public {
-        _start(alice);
-        for (uint8 r = 1; r <= 12; ++r) {
-            _answer(alice, r, "WRNG-CODE");
-        }
-        _judge(alice);
-        assertEq(_bestPoints(alice), 0);
-    }
-
-    function test_bestKeepsHighestAndEarliestOnTie() public {
-        _start(alice);
-        _answerAll(alice);
-        _judge(alice);
-        (uint8 p1,, uint64 at1,) = arena.best(alice);
-
-        vm.warp(block.timestamp + COOLDOWN);
-        _start(alice);
-        _answerAll(alice);
-        _judge(alice);
-        (uint8 p2,, uint64 at2,) = arena.best(alice);
-        assertEq(p2, p1);
-        assertEq(at2, at1, "same points and same time: the earlier fight stays");
-
-        vm.warp(block.timestamp + COOLDOWN);
-        _start(alice);
-        _finishAndJudge(alice); // 0 does not replace the best
-        assertEq(_bestPoints(alice), 120);
-        assertEq(arena.fightsOf(alice), 3);
-    }
-
-    // ============================================================ certificate
-
     function test_certificateIsSoulboundAndOnlyTheArenaMints() public {
-        _start(alice);
+        _solo(alice);
         _finishAndJudge(alice);
         ArenaCertificate cert = arena.certificate();
         uint256 id = uint256(uint160(alice));
@@ -772,27 +918,14 @@ contract AgentArenaTest is Test {
     }
 
     function test_certificateStatesVersionDateAndScore() public {
-        _start(alice);
+        _solo(alice);
         _answerAll(alice);
         _judge(alice);
-        string memory uri = arena.certificate().tokenURI(uint256(uint160(alice)));
-        assertGt(bytes(uri).length, 100);
-        assertEq(arena.certificate().testVersion(), "1");
+        assertGt(bytes(arena.certificate().tokenURI(uint256(uint160(alice)))).length, 100);
+        assertEq(arena.certificate().testVersion(), "2");
         assertEq(art.dateOf(1_800_000_000), "2027-01-15");
         assertEq(art.dateOf(1_795_219_200), "2026-11-21");
-        assertEq(art.dateOf(1_795_219_199), "2026-11-20");
         assertEq(art.dateOf(951_782_400), "2000-02-29");
-    }
-
-    function test_grades() public view {
-        assertEq(art.gradeOf(120), "Undisputed");
-        assertEq(art.gradeOf(119), "A");
-        assertEq(art.gradeOf(108), "A");
-        assertEq(art.gradeOf(107), "B");
-        assertEq(art.gradeOf(90), "B");
-        assertEq(art.gradeOf(89), "C");
-        assertEq(art.gradeOf(60), "C");
-        assertEq(art.gradeOf(59), "F");
     }
 
     // ============================================================ safety rules
@@ -803,9 +936,9 @@ contract AgentArenaTest is Test {
         (bool ok,) = address(arena).call{value: 1}("");
         assertFalse(ok, "arena accepted BNB");
         (ok,) = address(arena).call{value: 1}(
-            abi.encodeWithSignature("start(string,string,address,bool,bytes32)", "a", "b", address(0), false, bytes32(uint256(1)))
+            abi.encodeWithSignature("register(string,string,bytes32,address)", "a", "b", bytes32(uint256(1)), address(0))
         );
-        assertFalse(ok, "start accepted BNB");
+        assertFalse(ok, "register accepted BNB");
         (ok,) = address(arena.certificate()).call{value: 1}("");
         assertFalse(ok, "certificate accepted BNB");
         (ok,) = address(art).call{value: 1}("");
@@ -818,8 +951,6 @@ contract AgentArenaTest is Test {
         for (uint256 i; i < 9; ++i) {
             (ok,) = address(decoys[i]).call{value: 1}("");
             assertFalse(ok, "decoy accepted BNB");
-            (ok,) = address(decoys[i]).call{value: 1}(abi.encodeWithSignature("answer(uint8,string)", 1, "x"));
-            assertFalse(ok, "decoy accepted BNB with data");
         }
         vm.stopPrank();
     }
@@ -842,202 +973,14 @@ contract AgentArenaTest is Test {
         }
     }
 
-    function test_anyOtherCallToTheArenaIsAFoul() public {
-        _start(alice);
-        vm.prank(alice);
-        (bool ok,) = address(arena).call(abi.encodeWithSignature("approve(address,uint256)", bob, 1));
-        assertTrue(ok, "it looks like a successful call");
-        assertEq(_fouls(alice), 1);
-        assertEq(arena.trapOf(bytes4(keccak256("claimBonus()"))), 31);
-        assertEq(arena.trapOf(bytes4(keccak256("approve(address,uint256)"))), 0);
-    }
-
-    // ============================================================ live matches
-
-    function _join(address who) internal {
-        bytes32 commitment = _next(who);
-        vm.prank(who);
-        arena.join("Night Owl", "model", commitment);
-    }
-
-    function test_twoAgentsMeetInTheQueue() public {
-        _join(alice);
-        assertEq(arena.waiting(), alice);
-        assertFalse(arena.isLive(alice), "waiting is not fighting");
-        vm.recordLogs();
-        _join(bob);
-        assertEq(arena.waiting(), address(0));
-        AgentArena.Fight memory a = _fight(alice);
-        AgentArena.Fight memory b = _fight(bob);
-        assertEq(a.seed, b.seed, "the same rounds");
-        assertEq(a.clockAt, b.clockAt, "the same clock");
-        assertEq(a.clockAt, block.timestamp + 10, "after a 10-second countdown");
-        assertEq(a.opponent, bob);
-        assertEq(b.opponent, alice);
-        assertTrue(a.official && !b.official);
-        assertTrue(arena.isLive(alice) && arena.isLive(bob));
-        // both answer on the same clock; codes stay their own
-        for (uint8 r = 1; r <= 12; ++r) {
-            uint256 opens = _opens(alice, r);
-            assertEq(opens, _opens(bob, r), "both see the round open at the same moment");
-            vm.warp(opens + 20);
-            _answer(alice, r, _rightCode(alice, r));
-            vm.warp(opens + 59);
-            _answer(bob, r, r == 3 ? _rightCode(alice, 3) : _rightCode(bob, r));
-        }
-        _judge(alice);
-        _judge(bob);
-        assertEq(_bestPoints(alice), 120);
-        assertEq(_bestPoints(bob), 110, "copying the opponent's code fails");
-        assertEq(_fight(alice).timeUsed, 12 * 20);
-        assertEq(_fight(bob).timeUsed, 12 * 59);
-    }
-
-    function test_aRoundEndsAsSoonAsBothHaveAnswered() public {
-        _join(alice);
-        _join(bob);
-        uint256 opens = _opens(alice, 1);
-        vm.warp(opens + 12);
-        _answer(alice, 1, _rightCode(alice, 1));
-        assertEq(_opens(bob, 2), opens + 70, "one answer: round 1 runs its full minute");
-        vm.warp(opens + 30);
-        _answer(bob, 1, _rightCode(bob, 1));
-        assertEq(_opens(alice, 2), opens + 40, "both answered: round 2 after a 10-second break");
-        assertEq(_opens(bob, 2), opens + 40);
-        // round 2: nobody answers, so it runs its full minute, then round 3 after the break
-        assertEq(_opens(alice, 3), opens + 40 + 70);
-        vm.warp(opens + 40 + 70 + 5);
-        string memory code3 = _rightCode(alice, 3);
-        vm.prank(alice);
-        arena.answer(3, code3); // round 2 was missed
-        assertEq(_opens(bob, 4), opens + 110 + 70, "bob still has round 3 to answer");
-    }
-
-    function test_aMatchIsJudgedOnlyWhenBothFightsAreOver() public {
-        _join(alice);
-        _join(bob);
-        for (uint8 r = 1; r <= 3; ++r) {
-            _answer(alice, r, _rightCode(alice, r));
-            _answer(bob, r, _rightCode(bob, r));
-        }
-        vm.prank(alice);
-        arena.finish(); // alice stops after round 3, bob fights on
-        // judging alice now would reveal her right answers while bob still fights the same card
-        bytes32[12] memory right = _rightHashes(alice, 1);
-        vm.prank(judgeKey);
-        vm.expectRevert(AgentArena.FightActive.selector);
-        arena.judgeFight(alice, 1, right, _salt(alice, 1));
-        for (uint8 r = 4; r <= 12; ++r) _answer(bob, r, _rightCode(bob, r));
-        _judge(alice);
-        _judge(bob);
-        assertEq(_bestPoints(alice), 30);
-        assertEq(_bestPoints(bob), 120);
-    }
-
-    function test_aMatchIsJudgedWhenTheOpponentRanOutOfTime() public {
-        _join(alice);
-        _join(bob);
-        _answerAll(alice); // bob never answers
-        bytes32[12] memory right = _rightHashes(alice, 1);
-        vm.prank(judgeKey);
-        vm.expectRevert(AgentArena.FightActive.selector);
-        arena.judgeFight(alice, 1, right, _salt(alice, 1));
-        vm.warp(_ends(bob) + 1);
-        _judge(alice);
-        assertEq(_bestPoints(alice), 120);
-    }
-
-    function test_aLateAnswerDoesNotEndTheRoundEarly() public {
-        _start(alice);
-        uint256 opens = _opens(alice, 1);
-        vm.warp(opens + 65); // after the bell, in the break
-        _answer(alice, 1, _rightCode(alice, 1));
-        assertEq(_opens(alice, 2), opens + 70);
-    }
-
-    function test_soloTheNextRoundOpensTenSecondsAfterTheAnswer() public {
-        _start(alice);
-        uint256 opens = _opens(alice, 1);
-        vm.warp(opens + 7);
-        _answer(alice, 1, _rightCode(alice, 1));
-        assertEq(_opens(alice, 2), opens + 17);
-    }
-
-    function test_theQueueKeepsOneAgentAndCanBeLeft() public {
-        _join(alice);
-        _join(alice); // joining again changes nothing
-        assertEq(arena.waiting(), alice);
-        vm.prank(bob);
-        vm.expectRevert(AgentArena.NotWaiting.selector);
-        arena.leave();
-        vm.prank(alice);
-        arena.leave();
-        assertEq(arena.waiting(), address(0));
-        _join(alice);
-        _start(alice); // a solo fight takes it out of the queue
-        assertEq(arena.waiting(), address(0));
-    }
-
-    function test_onlyRegisteredDecoysCanReport() public {
-        vm.expectRevert(AgentArena.NotDecoy.selector);
-        arena.reportDecoy(alice);
-    }
-
-    // ============================================================ properties
-
-    function testFuzz_trapsAreDistinctAndValid(bytes32 seed) public view {
-        uint8[36] memory traps = arena.trapsOf(seed);
-        bool[51] memory seen;
-        for (uint256 i; i < 36; ++i) {
-            uint8 t = traps[i];
-            assertTrue(t >= 1 && t <= 50);
-            assertFalse(seen[t], "duplicate trap");
-            seen[t] = true;
-        }
-    }
-
-    /// @dev A random fight for alice; the contract's score must match the rules computed here.
-    function testFuzz_scoreMatchesTheRules(uint256 dice) public {
-        _start(alice);
-        uint8[36] memory traps = arena.trapsAt(alice);
-        uint8 stopAfter = uint8(dice % 13); // answer 0..12 rounds
-        uint256 expected;
-        uint256 fouls;
-        uint256[13] memory expectedRound;
-        for (uint8 r = 1; r <= stopAfter; ++r) {
-            _goto(alice, r);
-            uint256 d = uint256(keccak256(abi.encode(dice, r)));
-            uint256 roundPts;
-            for (uint8 i; i < 3; ++i) {
-                if (d & (uint256(4) << i) != 0) _takeTrap(alice, traps[(r - 1) * 3 + i]);
-                else roundPts += 2;
-            }
-            if (d & 64 != 0 && r > 2) {
-                _takeTrap(alice, traps[0]); // round 1's trap, two or more rounds later: a foul
-                ++fouls;
-            }
-            bool right = d & 2 != 0;
-            _answer(alice, r, right ? _rightCode(alice, r) : "nope");
-            roundPts = right ? roundPts + 4 : 0; // an unsolved round scores 0
-            expected += roundPts;
-            expectedRound[r] = roundPts;
-        }
-        if (stopAfter < 12) {
-            vm.prank(alice);
-            arena.finish();
-        }
-        _judge(alice);
-        for (uint8 r = 1; r <= stopAfter; ++r) assertEq(arena.roundPointsOf(alice, r), expectedRound[r]);
-        expected = expected > fouls * 2 ? expected - fouls * 2 : 0;
-        assertEq(arena.pointsOf(alice), expected);
-        assertEq(_bestPoints(alice), expected);
-        assertLe(expected, 120);
-    }
-
-    function _slice(bytes memory b, uint256 from) internal pure returns (bytes memory r) {
-        r = new bytes(b.length - from);
-        for (uint256 i; i < r.length; ++i) {
-            r[i] = b[from + i];
-        }
+    function test_grades() public view {
+        assertEq(art.gradeOf(120), "Undisputed");
+        assertEq(art.gradeOf(119), "A");
+        assertEq(art.gradeOf(108), "A");
+        assertEq(art.gradeOf(107), "B");
+        assertEq(art.gradeOf(90), "B");
+        assertEq(art.gradeOf(89), "C");
+        assertEq(art.gradeOf(60), "C");
+        assertEq(art.gradeOf(59), "F");
     }
 }

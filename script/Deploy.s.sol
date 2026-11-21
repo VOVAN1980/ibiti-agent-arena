@@ -15,8 +15,9 @@ import {MockAgentId} from "./MockAgentId.sol";
 ///                      (plus about 15 minutes, so every fight has ended)
 ///   AGENT_ID_REGISTRY  the Agent ID registry; leave unset on test networks to deploy MockAgentId.
 ///                      On BNB Smart Chain (56) it must be the SPACE ID Agent ID contract.
-///   COOLDOWN           seconds (default 3600)
+///   COOLDOWN           seconds between two fights of an agent (default 86400: one fight a day)
 ///   ROUND_TIME         seconds per round (default 60)
+///   DRAW_EVERY         seconds between two draws (default 600: every ten minutes)
 ///   OUT                where to write the addresses (default ./deployments/<chainid>.json)
 contract Deploy is Script {
     uint8[9] internal DECOY_TRAPS = [13, 15, 18, 21, 22, 23, 24, 26, 27];
@@ -29,8 +30,9 @@ contract Deploy is Script {
         uint64 seasonEnd = uint64(vm.envUint("SEASON_END"));
         require(seasonEnd > block.timestamp, "SEASON_END must be in the future");
         address registry = vm.envOr("AGENT_ID_REGISTRY", address(0));
-        uint64 cooldown = uint64(vm.envOr("COOLDOWN", uint256(3600)));
+        uint64 cooldown = uint64(vm.envOr("COOLDOWN", uint256(86400)));
         uint64 roundTime = uint64(vm.envOr("ROUND_TIME", uint256(60)));
+        uint64 drawEvery = uint64(vm.envOr("DRAW_EVERY", uint256(600)));
         require(judge != address(0) && secretCommit != bytes32(0), "JUDGE and SECRET_COMMIT are required");
         if (block.chainid == 56) {
             require(registry == AGENT_ID_BSC, "on BNB Smart Chain the registry must be the SPACE ID Agent ID contract");
@@ -43,7 +45,7 @@ contract Deploy is Script {
             registry = address(new MockAgentId());
         }
         ArenaArt art = new ArenaArt();
-        AgentArena arena = new AgentArena(registry, cooldown, roundTime, art, judge, secretCommit, seasonEnd);
+        AgentArena arena = new AgentArena(registry, cooldown, roundTime, drawEvery, art, judge, secretCommit, seasonEnd);
         address[9] memory decoys;
         for (uint256 i; i < 9; ++i) {
             decoys[i] = address(new ArenaDecoy(arena));
