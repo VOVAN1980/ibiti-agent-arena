@@ -76,8 +76,8 @@ function gong(c, judged, waitingJudge) {
 function renderRing(b) {
   const red = b.red;
   const blue = b.blue;
-  const bell = b.bellAt || red.clock?.bellAt || 0;
-  const c = bell ? clockOf(bell, s.now) : { phase: 'over' };
+  const clock = red.clock?.clockAt ? red.clock : blue?.clock;
+  const c = clock?.clockAt ? clockOf(clock, s.now) : { phase: 'over' };
   const ended = (red.ended || red.judged || c.phase === 'over') && (!blue || blue.ended || blue.judged || c.phase === 'over');
   const c2 = ended ? { phase: 'over' } : c;
   const v = verdict(b);

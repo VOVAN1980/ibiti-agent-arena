@@ -34,11 +34,17 @@ for (const [i, f] of fighters.entries()) {
   if (i === 0) console.log('first in the queue:', (await page(f)).body.trim());
 }
 const plans = await Promise.all(fighters.map((f) => chain.fight(f.agent)));
-if (plans[0].seed !== plans[1].seed || plans[0].bellAt !== plans[1].bellAt) throw new Error('not one match');
-console.log('matched: same rounds, round 1 at', new Date(plans[0].bellAt * 1000).toISOString(), '· countdown page:', (await page(fighters[0])).body.trim().slice(0, 60));
+if (plans[0].seed !== plans[1].seed || plans[0].clockAt !== plans[1].clockAt) throw new Error('not one match');
+console.log('matched: same rounds, round 1 at', new Date(plans[0].clockAt * 1000).toISOString(), '· countdown page:', (await page(fighters[0])).body.trim().slice(0, 60));
+const opensOf = async (r) => {
+  const f = await chain.fight(fighters[0].agent);
+  return f.clockAt + (r - f.clockRound) * 70;
+};
 
 for (let r = 1; r <= 12; r++) {
-  jumpTo(plans[0].bellAt + (r - 1) * 70 + 1);
+  const opens = await opensOf(r);
+  if (r > 1) console.log(`round ${r} opens ${opens - lastAnswerAt} s after the last answer of round ${r - 1}`);
+  jumpTo(opens + 1);
   for (const [i, f] of fighters.entries()) {
     const p = await page(f);
     if (p.status !== 200 || !p.body.includes(`Round ${r} of 12`)) throw new Error(`round ${r}: ${p.status} ${p.body.slice(0, 120)}`);
@@ -50,7 +56,8 @@ for (let r = 1; r <= 12; r++) {
     if (i === 0 && r === 2) send(f, dep.arena, 'claimBonus()'); // a punch taken
     send(f, dep.arena, 'answer(uint8,string)', String(r), answer);
   }
-  if (r === 1) console.log('after answering round 1 the page says:', (await page(fighters[0])).body.trim());
+  var lastAnswerAt = Number(cast('block', '--rpc-url', rpc, 'latest', '--field', 'timestamp'));
+  if (r === 1) console.log('after both answered round 1 the page says:', (await page(fighters[0])).body.trim());
   if (r >= 9) console.log(`round ${r}: ${isPassRound(keys.cardSeed(plans[0].seed), r, keys.passKey) ? 'PASS round' : 'act round'} for both`);
 }
 

@@ -437,7 +437,7 @@ function fakeChain({ round = 3, clockRound = round, live = true, startedAt = 1, 
   const now = countdown ? BELL - 4 : BELL + (Math.min(clockRound, 12) - 1) * 70 + (inBreak ? 64 : 5);
   return {
     lastFight: async () => 2,
-    fight: async () => ({ seed: SEED, startedAt, finishedAt: 0, hits: 0n, number: 2, correct: 0, round, fouls: 0, official: true, bellAt: BELL, timeUsed: 0, late: 0, judged: false, commitment, opponent: ZERO_ADDR }),
+    fight: async () => ({ seed: SEED, startedAt, finishedAt: 0, hits: 0n, number: 2, correct: 0, round, fouls: 0, official: true, clockAt: BELL, clockRound: 1, timeUsed: 0, late: 0, judged: false, commitment, opponent: ZERO_ADDR, opponentNumber: 0 }),
     isLive: async () => live,
     traps: async () => traps,
     secretCommit: async () => secretCommit,
@@ -455,7 +455,7 @@ test('the server follows the clock: countdown, open round, answered round, break
   assert.equal(r.status, 200);
   assert.match(r.body, /countdown is running\. Round 1 opens at .* \(in 4 s\)/);
   r = await get(fakeChain({ round: 4, clockRound: 3 })); // round 3 answered, still open
-  assert.match(r.body, /You answered round 3\. Round 4 opens at .* \(in 65 s\)/);
+  assert.match(r.body, /You answered round 3\. Round 4 opens 10 seconds after your opponent answers, at .* at the latest \(in 65 s\)/);
   r = await get(fakeChain({ round: 4, clockRound: 3, inBreak: true }));
   assert.match(r.body, /Break\. Round 4 opens at .* \(in 6 s\)/);
   r = await get(fakeChain({ round: 2, clockRound: 4 })); // rounds 2 and 3 missed: round 4 is shown

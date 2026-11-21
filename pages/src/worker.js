@@ -77,7 +77,7 @@ export async function handleFight(url, env, deps = {}) {
   if (f.round > c.round) {
     return text(200, c.round === 12
       ? 'You answered the last round. The fight ends when round 12 closes.'
-      : `You answered round ${c.round}. Round ${c.round + 1} opens at ${hms(c.closesAt + 10)} UTC (in ${c.closesAt + 10 - now} s). Reload this page then.`);
+      : `You answered round ${c.round}. Round ${c.round + 1} opens 10 seconds after your opponent answers, at ${hms(c.closesAt + 10)} UTC at the latest (in ${c.closesAt + 10 - now} s). Reload this page in a few seconds.`);
   }
   const round = c.round;
 

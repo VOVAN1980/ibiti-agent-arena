@@ -47,8 +47,9 @@ async function judgeAll() {
       continue;
     }
     const finishedAt = Number(BigInt('0x' + w[2]));
-    const bellAt = Number(BigInt('0x' + w[9]));
-    const endsAt = bellAt + 11 * (roundTime + BREAK) + roundTime;
+    const clockAt = Number(BigInt('0x' + w[9]));
+    const clockRound = Number(BigInt('0x' + w[15]));
+    const endsAt = clockAt + (12 - clockRound) * (roundTime + BREAK) + roundTime;
     if (finishedAt === 0 && now <= endsAt) continue; // still fighting
     const hashes = Array.from({ length: 12 }, (_, i) => answerHash(keys.code(dep.arena, agent, number, i + 1)));
     try {

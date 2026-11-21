@@ -41,8 +41,8 @@ function boutRow(b) {
   const v = verdict(b);
   const live = isLive(s, red) || (blue && isLive(s, blue));
   let mid = 'VS';
-  if (live && red.clock?.bellAt) {
-    const c = clockOf(red.clock.bellAt, s.now);
+  if (live && red.clock?.clockAt) {
+    const c = clockOf(red.clock, s.now);
     mid = c.phase === 'countdown' ? `starts ${c.left}s` : c.phase === 'open' ? `R${c.round} · ${mmss(c.left)}` : c.phase === 'break' ? `break · R${c.round}` : 'final bell';
   } else if (v) {
     mid = blue ? `${red.judged.points} : ${blue.judged.points}` : `${red.judged.points} / 120`;

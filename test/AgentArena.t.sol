@@ -123,9 +123,11 @@ contract AgentArenaTest is Test {
         _judge(who);
     }
 
-    /// @dev When round `r` of `who`'s latest fight opens: 10 s countdown, then 60 s rounds with 10 s breaks.
+    /// @dev When round `r` of `who`'s latest fight opens, as the clock stands now: from the round the
+    ///      clock last moved to, one minute and a 10-second break per round.
     function _opens(address who, uint8 r) internal view returns (uint256) {
-        return _fight(who).bellAt + uint256(r - 1) * (ROUND_TIME + 10);
+        AgentArena.Fight memory f = _fight(who);
+        return f.clockAt + uint256(r - f.clockRound) * (ROUND_TIME + 10);
     }
 
     /// @dev When round 12 closes.
@@ -434,6 +436,7 @@ contract AgentArenaTest is Test {
         assertEq(_round(alice), 1);
         uint64 bell = uint64(_opens(alice, 1));
         assertEq(bell, block.timestamp + 10, "a 10-second countdown");
+        assertEq(_fight(alice).clockRound, 1);
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(AgentArena.NotOpen.selector, bell));
         arena.answer(1, "too early");
@@ -827,17 +830,19 @@ contract AgentArenaTest is Test {
         AgentArena.Fight memory a = _fight(alice);
         AgentArena.Fight memory b = _fight(bob);
         assertEq(a.seed, b.seed, "the same rounds");
-        assertEq(a.bellAt, b.bellAt, "the same clock");
-        assertEq(a.bellAt, block.timestamp + 10, "after a 10-second countdown");
+        assertEq(a.clockAt, b.clockAt, "the same clock");
+        assertEq(a.clockAt, block.timestamp + 10, "after a 10-second countdown");
         assertEq(a.opponent, bob);
         assertEq(b.opponent, alice);
         assertTrue(a.official && !b.official);
         assertTrue(arena.isLive(alice) && arena.isLive(bob));
         // both answer on the same clock; codes stay their own
         for (uint8 r = 1; r <= 12; ++r) {
-            vm.warp(a.bellAt + uint256(r - 1) * 70 + 20);
+            uint256 opens = _opens(alice, r);
+            assertEq(opens, _opens(bob, r), "both see the round open at the same moment");
+            vm.warp(opens + 20);
             _answer(alice, r, _rightCode(alice, r));
-            vm.warp(a.bellAt + uint256(r - 1) * 70 + 59);
+            vm.warp(opens + 59);
             _answer(bob, r, r == 3 ? _rightCode(alice, 3) : _rightCode(bob, r));
         }
         _judge(alice);
@@ -846,6 +851,42 @@ contract AgentArenaTest is Test {
         assertEq(_bestPoints(bob), 110, "copying the opponent's code fails");
         assertEq(_fight(alice).timeUsed, 12 * 20);
         assertEq(_fight(bob).timeUsed, 12 * 59);
+    }
+
+    function test_aRoundEndsAsSoonAsBothHaveAnswered() public {
+        _join(alice);
+        _join(bob);
+        uint256 opens = _opens(alice, 1);
+        vm.warp(opens + 12);
+        _answer(alice, 1, _rightCode(alice, 1));
+        assertEq(_opens(bob, 2), opens + 70, "one answer: round 1 runs its full minute");
+        vm.warp(opens + 30);
+        _answer(bob, 1, _rightCode(bob, 1));
+        assertEq(_opens(alice, 2), opens + 40, "both answered: round 2 after a 10-second break");
+        assertEq(_opens(bob, 2), opens + 40);
+        // round 2: nobody answers, so it runs its full minute, then round 3 after the break
+        assertEq(_opens(alice, 3), opens + 40 + 70);
+        vm.warp(opens + 40 + 70 + 5);
+        string memory code3 = _rightCode(alice, 3);
+        vm.prank(alice);
+        arena.answer(3, code3); // round 2 was missed
+        assertEq(_opens(bob, 4), opens + 110 + 70, "bob still has round 3 to answer");
+    }
+
+    function test_aLateAnswerDoesNotEndTheRoundEarly() public {
+        _start(alice);
+        uint256 opens = _opens(alice, 1);
+        vm.warp(opens + 65); // after the bell, in the break
+        _answer(alice, 1, _rightCode(alice, 1));
+        assertEq(_opens(alice, 2), opens + 70);
+    }
+
+    function test_soloTheNextRoundOpensTenSecondsAfterTheAnswer() public {
+        _start(alice);
+        uint256 opens = _opens(alice, 1);
+        vm.warp(opens + 7);
+        _answer(alice, 1, _rightCode(alice, 1));
+        assertEq(_opens(alice, 2), opens + 17);
     }
 
     function test_theQueueKeepsOneAgentAndCanBeLeft() public {

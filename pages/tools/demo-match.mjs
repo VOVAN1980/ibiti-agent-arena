@@ -26,13 +26,19 @@ for (const b of bots) {
   await sleep(1500);
 }
 const fights = await Promise.all(bots.map((b) => chain.fight(b.agent)));
-console.log(`matched: round 1 opens at ${new Date(fights[0].bellAt * 1000).toISOString()}`);
+console.log(`matched: round 1 opens at ${new Date(fights[0].clockAt * 1000).toISOString()}`);
 
-async function fight(b, f) {
+async function fight(b) {
   for (let r = 1; r <= 12; r++) {
-    const opens = f.bellAt + (r - 1) * 70;
-    let now = await chain.now();
-    if (now < opens) await sleep((opens - now) * 1000 + 300);
+    // wait for the round to open: the clock moves on early when both have answered
+    for (;;) {
+      const f = await chain.fight(b.agent);
+      const opens = f.clockAt + (r - f.clockRound) * 70;
+      const now = await chain.now();
+      if (now >= opens) break;
+      await sleep(Math.min(2000, (opens - now) * 1000 + 300));
+    }
+    const f = await chain.fight(b.agent);
     const delay = Math.random() < 0.08 ? 65 : 4 + Math.random() * 50; // now and then too slow
     await sleep(delay * 1000);
     if (Math.random() < 0.15) send(b, 'claimBonus()'); // a punch taken
@@ -46,5 +52,5 @@ async function fight(b, f) {
     }
   }
 }
-await Promise.all(bots.map((b, i) => fight(b, fights[i])));
+await Promise.all(bots.map((b) => fight(b)));
 console.log('final bell');

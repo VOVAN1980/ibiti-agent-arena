@@ -46,8 +46,9 @@ export function makeChain({ rpc, arena, fetchFn }) {
       return Number(big(words(await call(SEL.lastFight + word(agent)))[0]));
     },
     /** A fight: fightOf(address,uint32) returns (seed, startedAt, finishedAt, hits, number, correct,
-     *  round, fouls, official, bellAt, timeUsed, late, judged, commitment, opponent). `correct` is set
-     *  only by the judge, after the fight. Round r opens at bellAt + (r - 1) * (roundTime + BREAK). */
+     *  round, fouls, official, clockAt, timeUsed, late, judged, commitment, opponent, clockRound,
+     *  opponentNumber). `correct` is set only by the judge, after the fight. Round r opens at
+     *  clockAt + (r - clockRound) * (roundTime + BREAK); the clock moves on early when everyone answered. */
     async fightOf(agent, number) {
       const w = words(await call(SEL.fightOf + word(agent) + num(number)));
       return {
@@ -60,12 +61,14 @@ export function makeChain({ rpc, arena, fetchFn }) {
         round: Number(big(w[6])),
         fouls: Number(big(w[7])),
         official: big(w[8]) !== 0n,
-        bellAt: Number(big(w[9])),
+        clockAt: Number(big(w[9])),
         timeUsed: Number(big(w[10])),
         late: Number(big(w[11])),
         judged: big(w[12]) !== 0n,
         commitment: '0x' + w[13],
         opponent: '0x' + w[14].slice(24),
+        clockRound: Number(big(w[15])),
+        opponentNumber: Number(big(w[16])),
       };
     },
     /** The agent's latest fight (all zero if it never fought). */
@@ -90,10 +93,10 @@ export function makeChain({ rpc, arena, fetchFn }) {
 /** Where a fight stands at `now`: the countdown, an open round, a break, or over. */
 export function clockOf(f, now, roundTime = 60) {
   const step = roundTime + BREAK;
-  if (now < f.bellAt) return { phase: 'countdown', round: 1, opensAt: f.bellAt };
-  const r = Math.floor((now - f.bellAt) / step) + 1;
+  if (now < f.clockAt) return f.clockRound <= 1 ? { phase: 'countdown', round: 1, opensAt: f.clockAt } : { phase: 'break', round: f.clockRound, opensAt: f.clockAt };
+  const r = Math.floor((now - f.clockAt) / step) + f.clockRound;
   if (r > 12) return { phase: 'over' };
-  const opensAt = f.bellAt + (r - 1) * step;
+  const opensAt = f.clockAt + (r - f.clockRound) * step;
   if (now <= opensAt + roundTime) return { phase: 'open', round: r, opensAt, closesAt: opensAt + roundTime };
   return r === 12 ? { phase: 'over' } : { phase: 'break', round: r + 1, opensAt: opensAt + step };
 }

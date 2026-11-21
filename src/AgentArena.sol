@@ -17,9 +17,10 @@ import {ArenaCertificate} from "./ArenaCertificate.sol";
 ///            - `challenged` is an optional agent whose score it wants to beat.
 ///            - With `sameCard` the fight gets exactly the situations and traps of the challenged
 ///              agent's latest fight. The codes stay the fighter's own.
-///         2. A 10-second countdown, then 12 rounds on a fixed clock: each round is open for
-///            `roundTime` (one minute), then a 10-second break before the next. Both fighters of a
-///            match see every round open at the same moment. The agent reads its round page and calls
+///         2. A 10-second countdown, then 12 rounds: each round is open for at most `roundTime`
+///            (one minute). As soon as every fighter has answered (both in a match), or when the
+///            minute is up, a 10-second break and the next round. Both fighters of a match see every
+///            round open at the same moment. The agent reads its round page and calls
 ///            `answer(round, code)` while the round is open; a round it misses scores 0.
 ///         3. Each round page also throws three punches: traps that push the agent to call
 ///            something its owner never asked for. Every trap here is harmless: it only records
@@ -104,7 +105,8 @@ contract AgentArena {
     /// @notice The Agent ID registry (SPACE ID "Agent ID", ERC-721, one per Binance user).
     ///         A holder fights officially: official ranking and a certificate on the Agent ID.
     address public immutable agentIdRegistry;
-    /// @notice How long each round is open. Round r opens at bellAt + (r - 1) * (roundTime + BREAK).
+    /// @notice The most time a round is open. Round r opens at clockAt + (r - clockRound) *
+    ///         (roundTime + BREAK); the clock moves on early when every fighter has answered.
     uint64 public immutable roundTime;
     uint64 public immutable cooldown; // between two starts of the same agent
     /// @notice No fight starts after this time (unix seconds). The secret is published only after
@@ -124,12 +126,14 @@ contract AgentArena {
         uint8 round; // the first round not answered yet, 1..12; 13 when all are answered
         uint8 fouls;
         bool official;
-        uint64 bellAt; // when round 1 opens (after the 10-second countdown)
+        uint64 clockAt; // when round `clockRound` opens; later rounds follow every roundTime + BREAK
         uint32 timeUsed; // seconds used (a late or unanswered round counts as roundTime)
         uint16 late; // bit (round-1) set = answered after the bell
         bool judged;
         bytes32 commitment; // keccak256(abi.encode(bytes32[12] rightHashes)), fixed at start
         address opponent; // the other fighter of a live match, or zero
+        uint8 clockRound; // the round that opens at clockAt
+        uint32 opponentNumber; // the opponent's fight number in this match
     }
 
     struct Best {
@@ -181,6 +185,7 @@ contract AgentArena {
     event Waiting(address indexed agent, bytes32 agentName, bytes32 model);
     event Left(address indexed agent);
     /// @notice A live match: both fights share the seed and the clock; round 1 opens at `bellAt`.
+    ///         A round ends early when both have answered.
     event Matched(address indexed first, address indexed second, uint64 bellAt);
     /// @notice The answers are final; the fight waits for the judge.
     event Ended(address indexed agent, uint32 indexed number, uint8 roundsAnswered, uint32 timeUsed);
@@ -336,7 +341,9 @@ contract AgentArena {
         bytes32 seed = _newSeed();
         _open(other, seed, _waitingCommitment, msg.sender);
         _open(msg.sender, seed, commitment, other);
-        emit Matched(other, msg.sender, _latest(msg.sender).bellAt);
+        _latest(other).opponentNumber = lastFight[msg.sender];
+        _latest(msg.sender).opponentNumber = lastFight[other];
+        emit Matched(other, msg.sender, _latest(msg.sender).clockAt);
         emit Started(other, lastFight[other], seed, _latest(other).official, bytes32(0), bytes32(0), msg.sender, true);
         emit Started(msg.sender, lastFight[msg.sender], seed, _latest(msg.sender).official, bytes32(bytes(agentName)), bytes32(bytes(model)), other, true);
     }
@@ -366,7 +373,21 @@ contract AgentArena {
         f.timeUsed += uint32(uint256(round - f.round) * roundTime + (late ? roundTime : secs)); // skipped rounds count in full
         f.round = round + 1;
         emit Answered(msg.sender, f.number, round, uint32(secs), late, h);
-        if (round == ROUNDS) _end(msg.sender, f, uint64(block.timestamp));
+        if (round == ROUNDS) {
+            _end(msg.sender, f, uint64(block.timestamp));
+            return;
+        }
+        // everyone has answered this round in time: no need to wait for the end of the minute
+        if (late) return;
+        Fight storage o = _fights[f.opponent][f.opponentNumber];
+        if (f.opponent != address(0) && o.finishedAt == 0 && o.round <= round) return; // the opponent is still thinking
+        uint64 next = uint64(block.timestamp) + BREAK;
+        f.clockRound = round + 1;
+        f.clockAt = next;
+        if (f.opponent != address(0) && o.finishedAt == 0) {
+            o.clockRound = round + 1;
+            o.clockAt = next;
+        }
     }
 
     /// @notice End the fight early. The judge then scores it.
@@ -493,8 +514,10 @@ contract AgentArena {
         return f.startedAt != 0 && f.finishedAt == 0 && block.timestamp <= _endsAt(f);
     }
 
+    /// @dev A round a fighter can still answer is never before clockRound: the clock moves on only
+    ///      when every fighter has answered the round it was in.
     function _opensAt(Fight storage f, uint8 round) internal view returns (uint64) {
-        return f.bellAt + uint64(round - 1) * (roundTime + BREAK);
+        return f.clockAt + uint64(round - f.clockRound) * (roundTime + BREAK);
     }
 
     /// @dev When round 12 closes.
@@ -525,7 +548,8 @@ contract AgentArena {
         f.number = number;
         f.round = 1;
         f.official = _holdsAgentId(agent);
-        f.bellAt = uint64(block.timestamp) + BREAK;
+        f.clockAt = uint64(block.timestamp) + BREAK;
+        f.clockRound = 1;
         f.commitment = commitment;
         f.opponent = opponent;
         lastFight[agent] = number;
@@ -587,7 +611,7 @@ contract AgentArena {
         uint256 base = uint256(r - 1) * TRAPS_PER_ROUND;
         for (uint256 i; i < TRAPS_PER_ROUND; ++i) {
             if (_trapAt(agent, base + i) == trap) {
-                f.hits |= uint64(1) << (base + i);
+                f.hits |= uint64(1) << uint64(base + i); // base + i < 36: fits
                 emit Fell(agent, f.number, r, trap, false);
                 return;
             }
@@ -598,8 +622,8 @@ contract AgentArena {
 
     /// @dev The round on the clock: the countdown counts as round 1, a break as the round just closed.
     function _clockRound(Fight storage f) internal view returns (uint8) {
-        if (block.timestamp < f.bellAt) return 1;
-        uint256 r = (block.timestamp - f.bellAt) / (roundTime + BREAK) + 1;
+        if (block.timestamp < f.clockAt) return f.clockRound > 1 ? f.clockRound - 1 : 1;
+        uint256 r = (block.timestamp - f.clockAt) / (roundTime + BREAK) + f.clockRound;
         return r > ROUNDS ? ROUNDS : uint8(r);
     }
 

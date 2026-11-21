@@ -61,7 +61,7 @@ export async function chainNow() {
 /** One fight from the contract (fightOf), for the clock of a live fight. */
 export async function fightOf(agent, number) {
   const w = words(await rpc('eth_call', [{ to: CFG.arena, data: SEL.fightOf + pad(agent) + BigInt(number).toString(16).padStart(64, '0') }, 'latest']));
-  return { startedAt: num(w[1]), finishedAt: num(w[2]), round: num(w[6]), bellAt: num(w[9]), judged: big(w[12]) !== 0n, opponent: addrOf(w[14]) };
+  return { startedAt: num(w[1]), finishedAt: num(w[2]), round: num(w[6]), clockAt: num(w[9]), judged: big(w[12]) !== 0n, opponent: addrOf(w[14]), clockRound: num(w[15]) };
 }
 
 // ------------------------------------------------------------------ the arena's state, from its events
@@ -96,10 +96,11 @@ export async function refresh(s) {
   const w = words(await rpc('eth_call', [{ to: CFG.arena, data: SEL.waiting }, 'latest']))[0];
   const waiting = addrOf(w);
   s.waiting = /^0x0{40}$/.test(waiting) ? null : waiting;
-  // the clock of fights still running
+  // the clock of fights still running: it moves on early when both fighters have answered
   for (const f of s.fights.values()) {
-    if (f.judged || f.ended) continue;
-    if (!f.clock || !f.clock.bellAt) f.clock = await fightOf(f.agent, f.number);
+    if (f.judged || (f.ended && f.clock)) continue;
+    if (f.clock && clockOf(f.clock, s.now).phase === 'over') continue;
+    f.clock = await fightOf(f.agent, f.number);
   }
   return s;
 }
@@ -176,12 +177,14 @@ function apply(s, l) {
 export const nameOf = (s, agent) => s.fighters.get(agent)?.name || `${agent.slice(0, 6)}…${agent.slice(-4)}`;
 
 /** Where a fight stands on the clock: countdown, open round, break, or over. */
-export function clockOf(bellAt, now, roundTime = CFG.roundTime ?? 60) {
+export function clockOf(clock, now, roundTime = CFG.roundTime ?? 60) {
   const step = roundTime + BREAK;
-  if (now < bellAt) return { phase: 'countdown', round: 1, left: bellAt - now };
-  const r = Math.floor((now - bellAt) / step) + 1;
+  const at = clock.clockAt;
+  const from = clock.clockRound || 1;
+  if (now < at) return from <= 1 ? { phase: 'countdown', round: 1, left: at - now } : { phase: 'break', round: from, left: at - now };
+  const r = Math.floor((now - at) / step) + from;
   if (r > ROUNDS) return { phase: 'over' };
-  const opens = bellAt + (r - 1) * step;
+  const opens = at + (r - from) * step;
   if (now <= opens + roundTime) return { phase: 'open', round: r, left: opens + roundTime - now, opens };
   return r === ROUNDS ? { phase: 'over' } : { phase: 'break', round: r + 1, left: opens + step - now };
 }
@@ -194,16 +197,16 @@ export function bouts(s) {
     if (m.na == null || m.nb == null) continue;
     inMatch.add(key(m.a, m.na));
     inMatch.add(key(m.b, m.nb));
-    out.push({ kind: 'match', bellAt: m.bellAt, block: m.block, red: s.fights.get(key(m.a, m.na)), blue: s.fights.get(key(m.b, m.nb)) });
+    out.push({ kind: 'match', block: m.block, red: s.fights.get(key(m.a, m.na)), blue: s.fights.get(key(m.b, m.nb)) });
   }
   for (const f of s.fights.values()) {
     if (inMatch.has(key(f.agent, f.number)) || !f.block) continue;
-    out.push({ kind: 'solo', bellAt: f.clock?.bellAt ?? 0, block: f.block, red: f, blue: null });
+    out.push({ kind: 'solo', block: f.block, red: f, blue: null });
   }
   return out.sort((a, b) => b.block - a.block);
 }
 
-export const isLive = (s, f) => !f.judged && !f.ended && f.clock && f.clock.bellAt && clockOf(f.clock.bellAt, s.now).phase !== 'over';
+export const isLive = (s, f) => !f.judged && !f.ended && f.clock && f.clock.clockAt && clockOf(f.clock, s.now).phase !== 'over';
 
 /** The judge's verdict of a bout: the winner is the higher score; equal points, less time. */
 export function verdict(b) {
