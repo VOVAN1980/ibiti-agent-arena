@@ -279,7 +279,7 @@ function stage(b, c, v, views) {
   const names = `${nameOf(s, b.red.agent)}${b.blue ? ` · ${nameOf(s, b.blue.agent)}` : ''}`;
   if (v) {
     const wn = b.blue && v.winner !== 'draw' ? (v.winner === 'red' ? b.red : b.blue) : b.red;
-    scene.setBoard([nameOf(s, wn.agent), b.blue ? `${b.red.judged.points} : ${b.blue.judged.points}` : `${b.red.judged.points}`, t('judgedOnChain')]);
+    scene.setBoard([nameOf(s, wn.agent), b.blue ? `${b.red.judged.points} : ${b.blue.judged.points}` : `${b.red.judged.points}`, t('pointsOf120')]);
   } else if (c.phase === 'open') scene.setBoard([t('round', c.round), mmss(c.left), names]);
   else if (c.phase === 'countdown') scene.setBoard([t('getReady'), String(c.left), names]);
   else if (c.phase === 'break') scene.setBoard([t('breakTitle'), String(c.left), t('nextRound', c.round)]);
@@ -362,6 +362,7 @@ function renderRing(b) {
     const wn = v.winner === 'draw' ? null : v.winner === 'red' ? red : blue;
     top = `<div class="winner"><div class="crown">${wn ? tName(v.byTime ? 'winsOnTime' : 'wins', nameOf(s, wn.agent)) : t('draw')}</div>
       <div class="score" translate="no"><span class="red">${red.judged.points}</span> : <span class="blue">${blue.judged.points}</span></div>
+      <div class="pts-cap">${esc(t('pointsOf120'))}</div>
       <div class="tiny">${t('statLine', red.judged.solved, red.judged.fouls, red.judged.timeUsed)} &nbsp;|&nbsp; ${t('statLine', blue.judged.solved, blue.judged.fouls, blue.judged.timeUsed)}</div></div>`;
   } else if (v) {
     const onCard = red.challenged && !/^0x0{40}$/.test(red.challenged) ? ` · ${tName('onCard', nameOf(s, red.challenged))}` : '';

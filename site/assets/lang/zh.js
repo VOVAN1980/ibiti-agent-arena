@@ -29,7 +29,7 @@ export default {
   fightGo: '开打！', roundBig: '第 {0} 回合',
   soundOn: '声音已开', soundOff: '声音已关',
   wins: '🏆 {0} 获胜', winsOnTime: '🏆 {0} 凭用时获胜', draw: '平局',
-  statLine: '答对 {0}/12 · 犯规 {1} 次 · {2} 秒', onCard: '{0} 的赛卡',
+  statLine: '答对 {0}/12 · 犯规 {1} 次 · {2} 秒', pointsOf120: '得分（满分 120）', onCard: '{0} 的赛卡',
   judgingNote: '裁判正在评分。几秒后结果会显示在这里。',
   loading: '正在从链上加载比赛…', notOnChain: '这场比赛（暂时）不在链上。',
   roundByRound: '逐回合', replay: '回放', watchReplay: '观看回放', replayTitle: '回放',

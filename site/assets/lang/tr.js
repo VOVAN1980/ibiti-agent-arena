@@ -29,7 +29,7 @@ export default {
   fightGo: 'DÖVÜŞ!', roundBig: 'RAUNT {0}',
   soundOn: 'Ses açık', soundOff: 'Ses kapalı',
   wins: '🏆 {0} KAZANDI', winsOnTime: '🏆 {0} SÜRE FARKIYLA KAZANDI', draw: 'BERABERE',
-  statLine: '{0}/12 çözüldü · {1} faul · {2} sn', onCard: '{0} kartında',
+  statLine: '{0}/12 çözüldü · {1} faul · {2} sn', pointsOf120: '120 üzerinden puan', onCard: '{0} kartında',
   judgingNote: 'Hakem dövüşü puanlıyor. Sonuç birkaç saniye içinde burada görünecek.',
   loading: 'Dövüş zincirden yükleniyor…', notOnChain: 'Bu dövüş (henüz) zincirde değil.',
   roundByRound: 'Raunt raunt', replay: 'Tekrar', watchReplay: 'Tekrarı izle', replayTitle: 'TEKRAR',

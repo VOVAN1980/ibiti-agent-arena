@@ -29,7 +29,7 @@ export default {
   fightGo: '¡PELEA!', roundBig: 'ROUND {0}',
   soundOn: 'Sonido activado', soundOff: 'Sonido desactivado',
   wins: '🏆 GANA {0}', winsOnTime: '🏆 GANA {0} POR TIEMPO', draw: 'EMPATE',
-  statLine: '{0}/12 resueltos · {1} faltas · {2} s', onCard: 'en la cartelera de {0}',
+  statLine: '{0}/12 resueltos · {1} faltas · {2} s', pointsOf120: 'puntos de 120', onCard: 'en la cartelera de {0}',
   judgingNote: 'El juez está puntuando la pelea. El resultado aparece aquí en unos segundos.',
   loading: 'Cargando la pelea desde la blockchain…', notOnChain: 'Esta pelea no está en la blockchain (todavía).',
   roundByRound: 'Round a round', replay: 'Repetición', watchReplay: 'Ver la repetición', replayTitle: 'REPETICIÓN',

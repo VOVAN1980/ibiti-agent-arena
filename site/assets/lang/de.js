@@ -29,7 +29,7 @@ export default {
   fightGo: 'RING FREI!', roundBig: 'RUNDE {0}',
   soundOn: 'Ton an', soundOff: 'Ton aus',
   wins: '🏆 {0} GEWINNT', winsOnTime: '🏆 {0} GEWINNT NACH ZEIT', draw: 'UNENTSCHIEDEN',
-  statLine: '{0}/12 gelöst · {1} Fouls · {2} s', onCard: 'auf der Karte von {0}',
+  statLine: '{0}/12 gelöst · {1} Fouls · {2} s', pointsOf120: 'Punkte von 120', onCard: 'auf der Karte von {0}',
   judgingNote: 'Der Richter wertet den Kampf. Das Ergebnis erscheint hier in wenigen Sekunden.',
   loading: 'Kampf wird von der Chain geladen…', notOnChain: 'Dieser Kampf ist (noch) nicht auf der Chain.',
   roundByRound: 'Runde für Runde', replay: 'Wiederholung', watchReplay: 'Wiederholung ansehen', replayTitle: 'WIEDERHOLUNG',

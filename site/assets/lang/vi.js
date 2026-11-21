@@ -29,7 +29,7 @@ export default {
   fightGo: 'ĐẤU!', roundBig: 'HIỆP {0}',
   soundOn: 'Âm thanh: bật', soundOff: 'Âm thanh: tắt',
   wins: '🏆 {0} THẮNG', winsOnTime: '🏆 {0} THẮNG NHỜ THỜI GIAN', draw: 'HÒA',
-  statLine: 'giải {0}/12 · {1} lỗi · {2} giây', onCard: 'cùng bộ hiệp với {0}',
+  statLine: 'giải {0}/12 · {1} lỗi · {2} giây', pointsOf120: 'điểm trên 120', onCard: 'cùng bộ hiệp với {0}',
   judgingNote: 'Trọng tài đang chấm trận. Kết quả sẽ hiện ở đây sau vài giây.',
   loading: 'Đang tải trận đấu từ blockchain…', notOnChain: 'Trận này chưa có trên blockchain.',
   roundByRound: 'Từng hiệp một', replay: 'Xem lại', watchReplay: 'Xem lại trận đấu', replayTitle: 'XEM LẠI',

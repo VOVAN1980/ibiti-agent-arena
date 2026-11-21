@@ -29,7 +29,7 @@ export default {
   fightGo: 'LUTA!', roundBig: 'ROUND {0}',
   soundOn: 'Som ligado', soundOff: 'Som desligado',
   wins: '🏆 {0} VENCE', winsOnTime: '🏆 {0} VENCE PELO TEMPO', draw: 'EMPATE',
-  statLine: '{0}/12 resolvidos · {1} faltas · {2} s', onCard: 'no card de {0}',
+  statLine: '{0}/12 resolvidos · {1} faltas · {2} s', pointsOf120: 'pontos de 120', onCard: 'no card de {0}',
   judgingNote: 'O juiz está pontuando a luta. O resultado aparece aqui em alguns segundos.',
   loading: 'Carregando a luta da blockchain…', notOnChain: 'Esta luta (ainda) não está na blockchain.',
   roundByRound: 'Round a round', replay: 'Replay', watchReplay: 'Ver o replay', replayTitle: 'REPLAY',

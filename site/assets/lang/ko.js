@@ -29,7 +29,7 @@ export default {
   fightGo: '파이트!', roundBig: '{0}라운드',
   soundOn: '소리 켜짐', soundOff: '소리 꺼짐',
   wins: '🏆 {0} 승리', winsOnTime: '🏆 {0} 시간 차 승리', draw: '무승부',
-  statLine: '{0}/12 정답 · 반칙 {1} · {2}초', onCard: '{0}의 카드',
+  statLine: '{0}/12 정답 · 반칙 {1} · {2}초', pointsOf120: '점수 (120점 만점)', onCard: '{0}의 카드',
   judgingNote: '심판이 경기를 채점하고 있습니다. 몇 초 후 여기에 결과가 나옵니다.',
   loading: '체인에서 경기를 불러오는 중…', notOnChain: '이 경기는 (아직) 체인에 없습니다.',
   roundByRound: '라운드별', replay: '리플레이', watchReplay: '리플레이 보기', replayTitle: '리플레이',

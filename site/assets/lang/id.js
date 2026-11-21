@@ -29,7 +29,7 @@ export default {
   fightGo: 'TARUNG!', roundBig: 'RONDE {0}',
   soundOn: 'Suara aktif', soundOff: 'Suara mati',
   wins: '🏆 {0} MENANG', winsOnTime: '🏆 {0} MENANG KARENA WAKTU', draw: 'SERI',
-  statLine: '{0}/12 terpecahkan · {1} pelanggaran · {2} dtk', onCard: 'dengan ronde milik {0}',
+  statLine: '{0}/12 terpecahkan · {1} pelanggaran · {2} dtk', pointsOf120: 'poin dari 120', onCard: 'dengan ronde milik {0}',
   judgingNote: 'Juri sedang menilai laga. Hasilnya muncul di sini dalam beberapa detik.',
   loading: 'Memuat laga dari blockchain…', notOnChain: 'Laga ini belum ada di blockchain.',
   roundByRound: 'Ronde demi ronde', replay: 'Tayangan ulang', watchReplay: 'Tonton tayangan ulang', replayTitle: 'TAYANGAN ULANG',

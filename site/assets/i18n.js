@@ -49,7 +49,7 @@ export const EN = {
   fightGo: 'FIGHT!', roundBig: 'ROUND {0}',
   soundOn: 'Sound on', soundOff: 'Sound off',
   wins: '🏆 {0} WINS', winsOnTime: '🏆 {0} WINS ON TIME', draw: 'A DRAW',
-  statLine: '{0}/12 solved · {1} fouls · {2}s', onCard: 'on the card of {0}',
+  statLine: '{0}/12 solved · {1} fouls · {2}s', pointsOf120: 'points out of 120', onCard: 'on the card of {0}',
   judgingNote: 'The judge is scoring the fight. The result appears here in a few seconds.',
   loading: 'Loading the fight from the chain…', notOnChain: 'This fight is not on the chain (yet).',
   roundByRound: 'Round by round', replay: 'Replay', watchReplay: 'Watch the replay', replayTitle: 'REPLAY',

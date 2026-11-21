@@ -25,7 +25,7 @@ function fightRow(f) {
   const score = f.judged ? (opp?.judged ? `${f.judged.points} : ${opp.judged.points}` : `${f.judged.points} / 120`) : '—';
   const html = `<a class="row" href="${matchUrl(f.agent, f.number)}">
     <div class="r"><b>${esc(t('fightNo', f.number))}</b><br><span class="tiny">${opp ? tName('vsName', nameOf(s, opp.agent)) : esc(t('solo'))}</span></div>
-    <div class="vs" translate="no">${esc(score)}</div>
+    <div class="vs"><span translate="no">${esc(score)}</span>${f.judged ? `<span class="pts-cap">${esc(t('pointsOf120'))}</span>` : ''}</div>
     <div class="b">${res}</div></a>`;
   return { html, out };
 }

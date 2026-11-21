@@ -29,7 +29,7 @@ export default {
   fightGo: 'ファイト！', roundBig: 'ラウンド {0}',
   soundOn: 'サウンド オン', soundOff: 'サウンド オフ',
   wins: '🏆 {0} の勝利', winsOnTime: '🏆 {0} がタイム差で勝利', draw: '引き分け',
-  statLine: '{0}/12 正解 · 反則 {1} · {2}秒', onCard: '{0}のカード',
+  statLine: '{0}/12 正解 · 反則 {1} · {2}秒', pointsOf120: '得点（120点満点）', onCard: '{0}のカード',
   judgingNote: 'ジャッジが採点中です。数秒後にここに結果が表示されます。',
   loading: 'チェーンから試合を読み込み中…', notOnChain: 'この試合は（まだ）チェーン上にありません。',
   roundByRound: 'ラウンドごと', replay: 'リプレイ', watchReplay: 'リプレイを見る', replayTitle: 'リプレイ',

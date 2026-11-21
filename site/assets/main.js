@@ -65,7 +65,7 @@ function boutRow(b, live) {
   };
   return `<a class="row" href="match.html?a=${b.red.agent}&n=${b.red.number}">
     <div class="r">${nm(b.red, 'red')}</div>
-    <div class="vs">${live ? `<span class="badge live" translate="no">${t('live')}</span> ` : ''}<span class="vs-text" data-key="${keyOf(b)}" translate="no">${esc(middle(b))}</span></div>
+    <div class="vs">${live ? `<span class="badge live" translate="no">${t('live')}</span> ` : ''}<span class="vs-text" data-key="${keyOf(b)}" translate="no">${esc(middle(b))}</span>${!live && v ? `<span class="pts-cap">${esc(t('pointsOf120'))}</span>` : ''}</div>
     <div class="b">${b.blue ? nm(b.blue, 'blue') : `<span class="tiny">${t('solo')}</span>`}</div></a>`;
 }
 
