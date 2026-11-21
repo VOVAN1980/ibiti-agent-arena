@@ -33,9 +33,15 @@ function audio() {
       d[i] = (Math.random() * 2 - 1) * 0.6 + b * 2.4;
     }
   }
-  if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+  if (ctx.state === 'suspended' && !document.hidden) ctx.resume().catch(() => {});
   return ctx;
 }
+// the arena is heard only while its page is on screen: a tab in the background goes quiet
+document.addEventListener('visibilitychange', () => {
+  if (!ctx) return;
+  if (document.hidden) ctx.suspend().catch(() => {});
+  else if (on) ctx.resume().catch(() => {});
+});
 // a remembered "on" still needs one tap on the page before the browser lets it play
 document.addEventListener('pointerdown', () => {
   if (on) {
@@ -64,7 +70,7 @@ export function setSound(value) {
 
 // ------------------------------------------------------------------ building blocks
 
-const live = () => on && audio();
+const live = () => on && !document.hidden && audio();
 
 function env(g, at, peak, attack, decay) {
   g.gain.setValueAtTime(0.0001, at);
@@ -153,7 +159,7 @@ function crowdStart() {
   // a murmur that swells and falls a little, and follows how excited the hall is
   setInterval(() => {
     if (!ctx) return;
-    const level = (0.025 + crowdTarget * 0.07) * (0.8 + Math.random() * 0.4);
+    const level = (0.014 + crowdTarget * 0.045) * (0.8 + Math.random() * 0.4); // a murmur, not a roar
     crowd.g.gain.setTargetAtTime(level, ctx.currentTime, 0.4);
   }, 350);
 }
