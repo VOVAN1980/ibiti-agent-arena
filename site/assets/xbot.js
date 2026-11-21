@@ -70,11 +70,11 @@ export function makeXRobot(kind, gltf, colors) {
     if (kind === 'ref') m.color.setHex(joints ? 0xf2f4f8 : 0x2b303c);
     else if (joints) {
       m.color.setHex(colors[kind]);
-      m.emissive = new THREE.Color(colors[kind]).multiplyScalar(0.28);
-    } else m.color.setHex(0xe3e8f0);
-    m.metalness = joints ? 0.35 : 0.6;
-    m.roughness = joints ? 0.42 : 0.32;
-    m.envMapIntensity = 0.55;
+      m.emissive = new THREE.Color(colors[kind]).multiplyScalar(0.14);
+    } else m.color.setHex(0xc4cad5); // a satin grey-white: no mirror glare under the spotlights
+    m.metalness = joints ? 0.25 : 0.3;
+    m.roughness = joints ? 0.5 : 0.58;
+    m.envMapIntensity = 0.35;
     o.material = m;
   });
   const root = new THREE.Group(); // moved and turned by the scene

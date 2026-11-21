@@ -107,19 +107,25 @@ const stripeTex = () => canvasTex(64, 64, (g, w, h) => {
   g.fillRect(0, 0, w / 2, h);
 }, { repeat: [5, 1] });
 
-function tickerTex(text) {
+function tickerTex() {
+  // three boards side by side, each with room to breathe: the arena, the chain it runs on, the ID it serves
   return canvasTex(2048, 64, (g, w, h) => {
     g.fillStyle = '#05070d';
     g.fillRect(0, 0, w, h);
-    g.font = '700 38px Orbitron, Inter, sans-serif';
+    g.fillStyle = 'rgba(245,179,1,.35)';
+    g.fillRect(0, 4, w, 2);
+    g.fillRect(0, h - 6, w, 2);
+    g.font = '700 30px Orbitron, Inter, sans-serif';
     g.textBaseline = 'middle';
-    const item = `${g.__text ?? text}   ◆   `;
-    const iw = Math.max(1, g.measureText(item).width);
-    let i = 0;
-    for (let x = 0; x < w; x += iw, i++) {
-      g.fillStyle = i % 3 === 0 ? '#ef4444' : i % 3 === 1 ? '#f5b301' : '#3b82f6';
-      g.fillText(item, x, h / 2 + 2);
-    }
+    g.textAlign = 'center';
+    const third = w / 3;
+    g.fillStyle = '#f5b301';
+    g.fillText('IBITI AGENT ARENA', third * 0.5, h / 2 + 2);
+    g.fillStyle = '#f0b90b';
+    drawBnb(g, third * 1.5 - 180, h / 2, 34);
+    g.fillText('BUILT ON BNB CHAIN', third * 1.5 + 22, h / 2 + 2);
+    g.fillStyle = '#e6ebf5';
+    g.fillText('AGENT ID · BINANCE WALLET', third * 2.5, h / 2 + 2);
   }, { repeat: [3, 1] });
 }
 
@@ -304,21 +310,34 @@ const ARMS_DOWN = { a0x: 0, a0z: -0.1, e0: -0.15, a1x: 0, a1z: 0.1, e1: -0.15 };
 const POSES = {
   // out in front of the desk, walking about and pumping the crowd
   hype: (t) => {
-    const pump = (Math.sin(t * 2.6) + 1) / 2;
-    return { spot: [Math.sin(t * 0.7) * 0.55, 1.35 + Math.cos(t * 0.7) * 0.25], walkAnim: true, seat: false, bounce: Math.abs(Math.sin(t * 5.2)) * 0.1, turn: Math.sin(t * 0.9) * 0.5, lean: 0, look: 0, a0x: -0.2, a0z: -(0.3 + 2.4 * pump), e0: -0.5 * pump, a1x: -0.2, a1z: 0.3 + 2.4 * (1 - pump), e1: -0.5 * (1 - pump) };
+    // walking about, waving to the stands with one arm at a time
+    const right = Math.floor(t / 3) % 2 === 0;
+    const wave = Math.sin(t * 7);
+    const up = { x: -0.15, z: 2.5, e: -0.55 + wave * 0.35 };
+    const down = { x: 0.05, z: 0.12, e: -0.25 };
+    const r = right ? up : down;
+    const l = right ? down : up;
+    return { spot: [Math.sin(t * 0.7) * 0.55, 1.35 + Math.cos(t * 0.7) * 0.25], walkAnim: true, seat: false, bounce: Math.abs(Math.sin(t * 5.2)) * 0.06, turn: Math.sin(t * 0.9) * 0.5, lean: 0, look: -0.1, a0x: r.x, a0z: -r.z, e0: r.e, a1x: l.x, a1z: l.z, e1: l.e };
   },
   // at the desk, hands near the keyboard, waiting for the bell
   guard: (t) => ({ spot: [0, 0], reach: 'keys', seat: true, bounce: 0, turn: 0, lean: 0.1, look: 0.1, a0x: 0.45, a0z: 0.48, e0: -1.85 + Math.sin(t * 3) * 0.05, a1x: 0.45, a1z: -0.48, e1: -1.85 + Math.sin(t * 3 + 1) * 0.05 }),
   // typing
   work: (t) => ({ spot: [0, 0], reach: 'keys', seat: true, bounce: 0, turn: 0, lean: 0.2, look: 0.3 + Math.sin(t * 1.7) * 0.05, a0x: 0.45 + Math.sin(t * 21) * 0.04, a0z: 0.5, e0: -1.91 + Math.sin(t * 25) * 0.1, a1x: 0.45 + Math.sin(t * 19 + 2) * 0.04, a1z: -0.5, e1: -1.91 + Math.sin(t * 23 + 1) * 0.1 }),
   // answered in time: up from the chair, both arms high
-  done: (t) => ({ spot: [0, 0], seat: false, bounce: Math.abs(Math.sin(t * 5)) * 0.18, turn: Math.sin(t * 2) * 0.25, lean: 0, look: -0.2, a0x: 0, a0z: -2.75 + Math.sin(t * 10) * 0.12, e0: -0.2, a1x: 0, a1z: 2.75 - Math.sin(t * 10) * 0.12, e1: -0.2 }),
+  done: (t) => {
+    const pump = (Math.sin(t * 7) + 1) / 2;
+    return { spot: [0, 0], seat: false, bounce: Math.abs(Math.sin(t * 5)) * 0.12, turn: Math.sin(t * 2) * 0.2, lean: -0.05, look: 0, a0x: -0.3, a0z: -2.88, e0: -0.3 - 0.4 * pump, a1x: -0.3, a1z: 2.88, e1: -0.3 - 0.4 * (1 - pump) };
+  },
   // out of time: head in its hands
   fail: (t) => ({ spot: [0, 0], reach: 'head', seat: true, bounce: 0, turn: 0, lean: 0.35, look: 0.55 + Math.sin(t * 1.4) * 0.08, shake: Math.sin(t * 2.2) * 0.3, a0x: -2.1, a0z: 0.35, e0: -1.6, a1x: -2.1, a1z: -0.35, e1: -1.6 }),
   // the fight is over, waiting for the judge
   idle: (t) => ({ spot: [0, 0], seat: true, bounce: 0, turn: 0, lean: -0.1, look: 0, ...ARMS_DOWN, a0x: -0.3, a1x: -0.3, e0: -0.6 + Math.sin(t) * 0.05, e1: -0.6 }),
   // the winner: out to the front, jumping, arms up, turning to every stand
-  win: (t) => ({ spot: [Math.sin(t * 0.8) * 0.3, 1.5], seat: false, bounce: Math.abs(Math.sin(t * 6)) * 0.32, turn: Math.sin(t * 1.3) * 0.9, lean: 0, look: -0.25, a0x: 0, a0z: -2.6 - Math.sin(t * 12) * 0.25, e0: -0.3 + Math.sin(t * 12) * 0.2, a1x: 0, a1z: 2.6 + Math.sin(t * 12 + 1) * 0.25, e1: -0.3 + Math.sin(t * 12 + 1) * 0.2 }),
+  win: (t) => {
+    // the champion: jumping, both fists pumping above the head
+    const pump = (Math.sin(t * 8) + 1) / 2;
+    return { spot: [Math.sin(t * 0.8) * 0.3, 1.5], seat: false, bounce: Math.abs(Math.sin(t * 6)) * 0.26, turn: Math.sin(t * 1.3) * 0.6, lean: -0.05, look: 0.05, a0x: -0.28, a0z: -2.9, e0: -0.25 - 0.55 * pump, a1x: -0.28, a1z: 2.9, e1: -0.25 - 0.55 * (1 - pump) };
+  },
   // the loser: smashes everything, then sits on the floor
   lose: (t) => {
     if (t < 0.5) return { spot: [0, 0], seat: t < 0.25, bounce: 0, turn: 0, lean: 0, look: 0, ...ARMS_DOWN };
@@ -420,7 +439,7 @@ export async function createScene(root) {
   const renderer = new THREE.WebGLRenderer({ antialias: !small, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, small ? 1.25 : 1.75));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 0.92;
+  renderer.toneMappingExposure = 0.85;
   renderer.shadowMap.enabled = !small;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.domElement.className = 'gl';
@@ -435,7 +454,7 @@ export async function createScene(root) {
 
   // lights
   scene.add(new THREE.HemisphereLight(0x8fa6ff, 0x120c18, 0.32));
-  const key = new THREE.DirectionalLight(0xffffff, 0.85);
+  const key = new THREE.DirectionalLight(0xffffff, 0.7);
   key.position.set(3, 12, 7);
   key.castShadow = !small;
   key.shadow.mapSize.set(1024, 1024);
@@ -443,7 +462,7 @@ export async function createScene(root) {
   scene.add(key);
   const spots = {};
   for (const side of ['red', 'blue']) {
-    const s = new THREE.SpotLight(COLOR[side], 1.7, 0, 0.42, 0.6, 0);
+    const s = new THREE.SpotLight(COLOR[side], 1.15, 0, 0.42, 0.65, 0);
     s.position.set(side === 'red' ? -4 : 4, 9, 3);
     scene.add(s, s.target);
     spots[side] = s;
@@ -477,7 +496,7 @@ export async function createScene(root) {
   }
 
   // the LED boards around the ring and the scoreboard cube above it
-  const ticker = tickerTex('IBITI AGENT ARENA');
+  const ticker = tickerTex();
   const tickerIn = ticker.clone();
   tickerIn.repeat.set(-3, 1); // seen from inside the circle, the text must not read backwards
   const boardGeo = new THREE.CylinderGeometry(RING + 1.6, RING + 1.6, 0.7, 96, 1, true);
@@ -690,6 +709,9 @@ export async function createScene(root) {
   const SHOTS = ['wide', 'red', 'wide', 'blue'];
   const camAt = new THREE.Vector3();
   const camLook = new THREE.Vector3();
+  const camQ = new THREE.Quaternion();
+  const camFront = new THREE.Vector3();
+  const camUp = new THREE.Vector3();
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
   const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), small ? 0.5 : 0.55, 0.45, 0.92);
@@ -914,12 +936,12 @@ export async function createScene(root) {
       winSpot.target.position.copy(v3);
     }
     crown.m.visible = state.lights === 'winner';
-    winSpot.intensity = state.lights === 'winner' ? 1.3 : 0;
+    winSpot.intensity = state.lights === 'winner' ? 0.9 : 0;
     haze.update(t);
     flags.update(t, state.exc);
     pyro.update(t, dt);
     screens.update();
-    ticker.offset.x = reduced ? 0 : (t * 0.02) % 1;
+    ticker.offset.x = reduced ? 0 : (t * 0.004) % 1; // a slow drift
     tickerIn.offset.x = -ticker.offset.x;
 
     // the camera: the whole ring, both corners, the referee and the scoreboard cube, with a slow
@@ -946,9 +968,30 @@ export async function createScene(root) {
         cam.at = t;
         cam.cut = true;
       }
+    } else if (state.lights === 'winner' && state.winner && !reduced) {
+      // at the end, now and then the winner up close
+      if (t - cam.at > (cam.shot === 'wide' ? 6 : 4.2)) {
+        cam.shot = cam.shot === 'wide' ? 'winClose' : 'wide';
+        cam.at = t;
+        cam.cut = true;
+      }
     } else if (cam.shot !== 'wide') {
       cam.shot = 'wide';
       cam.cut = true;
+    }
+    if (cam.shot === 'winClose' && state.winner) {
+      const f = fighters[state.winner];
+      f.bot.root.getWorldPosition(v3);
+      f.st.g.getWorldQuaternion(camQ);
+      camFront.set(0, 0, 1).applyQuaternion(camQ);
+      const k = Math.min(1, (t - cam.at) / 4.2);
+      camera.position.copy(v3).addScaledVector(camFront, 2.9 - k * 0.4).add(camUp.set(0.35, 1.85, 0));
+      camLook.copy(v3).add(camUp.set(0, 1.4, 0));
+      camera.lookAt(camLook);
+      for (const b of beams) b.m.visible = false;
+      composer.render(dt);
+      requestAnimationFrame(frame);
+      return;
     }
     if (cam.shot === 'faceRed' || cam.shot === 'faceBlue') {
       // face to face: from in front of the desk, the robot over its monitor (for videos and previews)
@@ -1069,11 +1112,7 @@ export async function createScene(root) {
         }
       }, 1300);
     },
-    setTicker(text) {
-      if (ticker.userData.text === text) return;
-      ticker.userData.text = text;
-      redraw(ticker, (g) => (g.__text = text));
-    },
+    setTicker() {}, // the boards show the arena's name; the round is on the scoreboard
     /** The scoreboard cube over the ring: up to three lines. */
     setBoard(lines) {
       const key = lines.join('|');
