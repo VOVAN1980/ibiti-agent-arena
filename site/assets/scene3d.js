@@ -80,11 +80,8 @@ const floorTex = () => canvasTex(1024, 1024, (g, w, h) => {
     g.stroke();
   }
   // the BNB mark in the centre; the floor's texture lies turned a quarter, so the mark is turned back
-  g.fillStyle = '#f0b90b';
-  g.shadowColor = '#f0b90b';
-  g.shadowBlur = 40;
+  g.fillStyle = 'rgba(176,134,10,.78)'; // a muted gold: under the spotlights a bright one dazzles
   drawBnb(g, w / 2, h / 2, 430, -Math.PI / 2);
-  g.shadowBlur = 0;
 
 });
 
@@ -453,7 +450,7 @@ export function createScene(root) {
   // the ring
   const ringMat = [
     new THREE.MeshStandardMaterial({ map: hazardTex(), roughness: 0.55, metalness: 0.2 }),
-    new THREE.MeshStandardMaterial({ map: floorTex(), roughness: 0.18, metalness: 0.7, envMapIntensity: 1.0 }),
+    new THREE.MeshStandardMaterial({ map: floorTex(), roughness: 0.3, metalness: 0.5, envMapIntensity: 0.7 }),
     M.black,
   ];
   const ring = new THREE.Mesh(new THREE.CylinderGeometry(RING, RING + 0.22, FLOOR, 6, 1, false, Math.PI / 6), ringMat);
@@ -904,7 +901,7 @@ export function createScene(root) {
       winSpot.target.position.copy(v3);
     }
     crown.m.visible = state.lights === 'winner';
-    winSpot.intensity = state.lights === 'winner' ? 4 : 0;
+    winSpot.intensity = state.lights === 'winner' ? 2.4 : 0;
     haze.update(t);
     flags.update(t, state.exc);
     pyro.update(t, dt);
