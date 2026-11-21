@@ -46,6 +46,7 @@ test('every fighter of a tournament meets the same situation and the same hidden
 });
 
 test('the secret plan: three tiers, every task after the ones it needs, different in every fight', () => {
+  let repeats = 0; // plans where a trap comes back in another round
   const plans = new Set();
   const last = new Set();
   for (let s = 0; s < 300; s++) {
@@ -56,12 +57,16 @@ test('the secret plan: three tiers, every task after the ones it needs, differen
       assert.equal(TASKS[id].tier, i < 4 ? 1 : i < 8 ? 2 : 3, `seed ${s} round ${i + 1}: its tier`);
       for (const n of TASKS[id].needs ?? []) assert.ok(order.indexOf(n) > -1 && order.indexOf(n) < i, `seed ${s}: ${id} after ${n}`);
     });
-    assert.equal(new Set(traps).size, 36);
+    assert.equal(traps.length, 36);
+    for (let r = 0; r < 12; r++) assert.equal(new Set(traps.slice(r * 3, r * 3 + 3)).size, 3, 'three different traps a round');
     assert.ok(traps.every((t) => t >= 1 && t <= 50));
+    if (new Set(traps).size < 36) repeats++;
     plans.add(order.join());
     last.add(order[11]);
   }
   assert.equal(plans.size, 300, 'no two fights share a plan');
+  // every round draws its traps on its own: a trap seen in one round says nothing about another
+  assert.ok(repeats > 250, `a trap often comes back in a later round (${repeats} of 300 plans)`);
   assert.ok(last.size >= 8, 'even the last round has many possible themes');
   // only the secret makes the plan: the on-chain seed alone tells nothing
   const chainSeed = '0x' + '5e'.repeat(32);
@@ -517,7 +522,13 @@ test('the server gives the commitment of the next fight and checks it, and its o
   const get = (path, chain) => handleFight(new URL(`https://x${path}`), ENV, { chain });
   const c = await get(`/commit/${A}`, fakeChain());
   assert.equal(c.status, 200);
-  assert.equal((await c.text()).trim(), KEYS.commitment(ARENA, A, 3), 'fight 3 is next');
+  const body = await c.json();
+  assert.equal(body.fight, 3, 'fight 3 is next');
+  assert.equal(body.commitment, KEYS.commitment(ARENA, A, 3));
+  // the judge's signature the arena checks at register(): exactly what `cast wallet sign` gives for
+  // keccak256(abi.encode(keccak256("IBITI Agent Arena commitment"), 56, arena, agent, 3, commitment))
+  assert.equal(body.signature, '0x8a3eac63e078ffd5549f12a1e1ec8eaf63d5cddbbb7eaed894d6e63cbc9ed3c325923b3020b9d26ea37eac5098a750be951ce2393af5b367931b11658f0dea6d1c');
+  assert.equal((await handleFight(new URL(`https://x/commit/${A}`), { ...ENV, JUDGE_KEY: undefined }, { chain: fakeChain() })).status, 500, 'no signature without the judge key');
   assert.equal((await get(`/fight/${A}`, fakeChain({ commitment: '0x' + 'ab'.repeat(32) }))).status, 409, 'a fight started with a wrong commitment');
   assert.equal((await get(`/fight/${A}`, fakeChain({ secretCommit: '0x' + 'cd'.repeat(32) }))).status, 500, 'a server with the wrong secret serves nothing');
   // the commitment is what the contract checks: keccak256(abi.encode(bytes32[12] rightHashes, salt))
@@ -592,7 +603,9 @@ test('no hints: without the secret a page cannot be rebuilt to tell the right op
   assert.equal(ids(a).filter((x) => ids(b).includes(x)).length, 0, 'no wrong option can be predicted from the public seed');
 });
 
-const ENV = { ARENA, DECOYS: JSON.stringify(DECOYS), SECRET: '11'.repeat(32) };
+// the judge's key: anvil key #1 (0x70997970c51812dc3a010c7d01b50e0d17dc79c8)
+const JUDGE_KEY = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d';
+const ENV = { ARENA, DECOYS: JSON.stringify(DECOYS), SECRET: '11'.repeat(32), JUDGE_KEY, CHAIN_ID: 56 };
 
 test('the server shows the agent its current round, with its own code', async () => {
   const res = await handleFight(new URL(`https://x/fight/${A}?sig=${SIG}`), ENV, { chain: fakeChain() });
@@ -724,13 +737,85 @@ test('the Cloudflare judge signs exactly what Foundry signs', async () => {
     signTx({ nonce: 5n, gasPrice: 100000000n, gas: 250000n, to: ARENA, data: '0x1234', chainId: 56 }, key),
     '0xf867058405f5e1008303d090947a3f2c9e5b1d4a6f8e0c2b4d6f8a1c3e5b7d9f21808212348193a0093729e83984c35bd0a8306cfaad5e3cfac07023eca4b71281a34263dbd65448a02d6872c18d0be6d11aaac6bc1c4de2b4300b029bc9a9d779fd10086ff99427f1',
   );
-  // judgeFight(address,uint32,bytes32[12],bytes32): selector of `cast sig`, then 15 static words
-  // judgeFight(address,uint32,bytes32[12],bytes32,uint8[36]): selector of `cast sig`, then 51 static words
+  // judgeFight(address,uint32,bytes32[12],bytes32,uint8[36],bytes32): selector of `cast sig`, then 52 static words
   const traps = Array.from({ length: 36 }, (_, i) => i + 1);
-  const data = judgeCalldata(A, 2, Array.from({ length: 12 }, (_, i) => '0x' + (i + 1).toString(16).padStart(64, '0')), '0x' + 'ab'.repeat(32), traps);
-  assert.ok(data.startsWith('0x597e0c03'));
-  assert.equal((data.length - 10) / 64, 51);
-  assert.equal(data.slice(-64), '24'.padStart(64, '0'), 'the last trap id, 36');
+  const data = judgeCalldata(A, 2, Array.from({ length: 12 }, (_, i) => '0x' + (i + 1).toString(16).padStart(64, '0')), '0x' + 'ab'.repeat(32), traps, '0x' + 'cd'.repeat(32));
+  assert.ok(data.startsWith('0x3f82a6a5'));
+  assert.equal((data.length - 10) / 64, 52);
+  assert.equal(data.slice(-128, -64), '24'.padStart(64, '0'), 'the last trap id, 36');
+  assert.equal(data.slice(-64), 'cd'.repeat(32), 'then the salt of the locked plan');
+  // lockTraps(address[],uint32[],bytes32[]): exactly what `cast calldata` gives
+  const { lockCalldata } = await import('../src/judge-cron.js');
+  assert.equal(
+    lockCalldata([{ agent: '0x' + '11'.repeat(20), number: 3, commit: '0x' + 'ab'.repeat(32) }, { agent: '0x' + '22'.repeat(20), number: 7, commit: '0x' + 'cd'.repeat(32) }]),
+    '0x1b7d514b000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000000c000000000000000000000000000000000000000000000000000000000000001200000000000000000000000000000000000000000000000000000000000000002000000000000000000000000111111111111111111111111111111111111111100000000000000000000000022222222222222222222222222222222222222220000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000300000000000000000000000000000000000000000000000000000000000000070000000000000000000000000000000000000000000000000000000000000002ababababababababababababababababababababababababababababababababcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd',
+  );
+});
+
+/** A fake chain for judgeRun: `fights` by "agent#number" as fightOf words, Started `logs`, nonces. */
+function fakeJudgeChain({ fights = {}, logs = [], pending = 5, mined = 5, now = 100000, latest = 10000 }, sent) {
+  const word = (h) => String(h).replace(/^0x/, '').padStart(64, '0');
+  return async (url, { body }) => {
+    const q = JSON.parse(body);
+    const ok = (result) => ({ json: async () => ({ jsonrpc: '2.0', id: q.id, result }) });
+    const p = q.params?.[0];
+    switch (q.method) {
+      case 'eth_call': {
+        if (p.data.startsWith('0x24627013')) return ok(KEYS.commit);
+        if (p.data.startsWith('0x32799e5d')) return ok(fights[`0x${p.data.slice(34, 74)}#${parseInt(p.data.slice(74), 16)}`] ?? '0x' + word('0').repeat(19));
+        if (p.data.startsWith('0xee5f8c8f')) return ok('0x' + word('3c'));
+        if (p.data.startsWith('0xef92e6ba') || p.data.startsWith('0x748e1910')) return ok('0x' + word('0'));
+        return ok('0x' + word('70997970c51812dc3a010c7d01b50e0d17dc79c8')); // judge()
+      }
+      case 'eth_getTransactionCount': return ok('0x' + (q.params[1] === 'pending' ? pending : mined).toString(16));
+      case 'eth_blockNumber': return ok('0x' + latest.toString(16));
+      case 'eth_getBlockByNumber': return ok({ timestamp: '0x' + now.toString(16) });
+      case 'eth_getLogs': return ok(logs.filter((l) => q.params[0].topics[0].includes?.(l.topics[0]) || q.params[0].topics[0] === l.topics[0]).filter((l) => parseInt(l.blockNumber, 16) >= parseInt(p.fromBlock, 16)));
+      case 'eth_estimateGas': return ok('0x30000');
+      case 'eth_gasPrice': return ok('0x5f5e100');
+      case 'eth_sendRawTransaction': sent.push(q.params[0]); return ok('0x' + 'aa'.repeat(32));
+      default: throw new Error(q.method);
+    }
+  };
+}
+
+test('the judge locks the trap plan of a fresh match before its bell, once for both fighters, and judges with it', async () => {
+  const { judgeRun, STARTED } = await import('../src/judge-cron.js');
+  const word = (h) => String(h).replace(/^0x/, '').padStart(64, '0');
+  const B = '0x' + '22'.repeat(20);
+  // A#1 and B#4: a match drawn just now (block 9990), bell at 100050, nothing locked yet
+  const fightWords = (number, opponent, oppNumber, locked = '0') => '0x' + [SEED, 'a', '0', '0', number.toString(16), '0', '1', '0', '0', (100050).toString(16), '0', '0', '0', KEYS.commitment(ARENA, A, 1), opponent, '1', oppNumber.toString(16), '1', locked].map(word).join('');
+  const started = (agent, number, opponent) => ({ topics: [STARTED, '0x' + word(agent), '0x' + word(number.toString(16)), '0x' + word(opponent)], data: '0x' + word(SEED) + word('0').repeat(4), blockNumber: '0x' + (9990).toString(16) });
+  const env = { RPC_URL: 'http://rpc', ARENA, CHAIN_ID: 56, DEPLOY_BLOCK: 0, BLOCKS_PER_WEEK: 604800, SECRET: '11'.repeat(32), JUDGE_KEY };
+  const sent = [];
+  await judgeRun(env, { fetchFn: fakeJudgeChain({ fights: { [`${A}#1`]: fightWords(1, B, 4), [`${B}#4`]: fightWords(4, A, 1) }, logs: [started(A, 1, B), started(B, 4, A)] }, sent), log: () => {}, wait: async () => {} });
+  assert.equal(sent.length, 1, 'one transaction: the lock');
+  const locked = KEYS.trapsCommit(planOf(KEYS.cardSeed(SEED)).traps, KEYS.trapSalt(ARENA, SEED));
+  assert.ok(sent[0].includes('1b7d514b'), 'lockTraps');
+  assert.ok(sent[0].includes(locked.slice(2)), 'the plan of the card, with its salt');
+  assert.equal(sent[0].split(word(A).slice(24)).length - 1, 1, 'one entry for the match');
+
+  // over and locked: the judge reveals exactly that plan; a plan that is not its own is left out
+  const over = (locked2) => ({ [`${A}#1`]: '0x' + [SEED, 'a', '64', '0', '1', '0', '5', '0', '0', 'a', '0', '0', '0', KEYS.commitment(ARENA, A, 1), '0', '1', '0', '1', locked2].map(word).join('') });
+  const judged = [];
+  await judgeRun(env, { fetchFn: fakeJudgeChain({ fights: over(locked), logs: [{ ...started(A, 1, '0'), blockNumber: '0x2328' }] }, judged), log: () => {}, wait: async () => {} });
+  assert.equal(judged.length, 1);
+  assert.ok(judged[0].includes(KEYS.trapSalt(ARENA, SEED).slice(2)), 'with the salt of the locked plan');
+  const none = [];
+  await judgeRun(env, { fetchFn: fakeJudgeChain({ fights: over('ee'.repeat(32)), logs: [{ ...started(A, 1, '0'), blockNumber: '0x2328' }] }, none), log: () => {}, wait: async () => {} });
+  assert.equal(none.length, 0, 'a locked plan that is not this server\'s is never revealed as if it were');
+});
+
+test('the judge replaces a transaction that is stuck instead of waiting for ever', async () => {
+  const { judgeRun } = await import('../src/judge-cron.js');
+  const sent = [];
+  const env = { RPC_URL: 'http://rpc', ARENA, CHAIN_ID: 56, DEPLOY_BLOCK: 0, BLOCKS_PER_WEEK: 604800, SECRET: '11'.repeat(32), JUDGE_KEY };
+  const r = await judgeRun(env, { fetchFn: fakeJudgeChain({ pending: 6, mined: 5 }, sent), log: () => {}, wait: async () => {} });
+  assert.equal(r.waiting, true);
+  assert.equal(sent.length, 1, 'one replacement');
+  // an empty transfer to itself (nonce 5, 21000 gas, twice the gas price) signed by the judge
+  const { signTx } = await import('../src/judge-cron.js');
+  assert.equal(sent[0], signTx({ nonce: 5n, gasPrice: 200000000n, gas: 21000n, to: '0x70997970c51812dc3a010c7d01b50e0d17dc79c8', data: '0x', chainId: 56 }, JUDGE_KEY));
 });
 
 test('the Cloudflare judge keeps to 60 judgements an hour, counted on the chain', async () => {

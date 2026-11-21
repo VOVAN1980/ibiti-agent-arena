@@ -73,6 +73,7 @@ export function makeChain({ rpc, arena, fetchFn }) {
         clockRound: Number(big(w[15])),
         opponentNumber: Number(big(w[16])),
         draw: Number(big(w[17] ?? '0')),
+        trapsCommit: '0x' + (w[18] ?? '0'.repeat(64)), // the trap plan locked before the first bell (zero: none)
       };
     },
     /** The agent's latest fight (all zero if it never fought). */

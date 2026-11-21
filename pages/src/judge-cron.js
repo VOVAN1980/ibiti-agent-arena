@@ -2,9 +2,14 @@
 // the draws and scores the fights, without keeping any state: the chain says what is due.
 //
 // Each run:
+// - an earlier transaction of the judge still pending after a few seconds is stuck: it is replaced
+//   (an empty transfer to itself, same nonce, a higher gas price) and the run ends there;
 // - the draw: after a cutoff it seals the draw (if no registration did it already), waits for the
 //   sealed block, then holds the draw on its hash (AgentArena.draw); a draw with an empty hall is left
 //   alone (a later registration closes it);
+// - the trap plans: every fight drawn in the last minutes whose first bell has not rung yet (drawn by
+//   this judge or by anyone else) gets its trap plan locked (AgentArena.lockTraps), one hash per
+//   match, so the judge can later judge it only with that plan;
 // - reads the arena's Started events of the last LOOKBACK_BLOCKS blocks (in chunks); a fight lasts at
 //   most 14 min 50 s, so the window leaves hours for retries. A fight left out longer (an outage) is
 //   judged by hand with judge.mjs;
@@ -12,7 +17,8 @@
 //   judged only when both fights are over), empty (nothing answered: it would score 0 and only cost
 //   gas), or registered with a foreign commitment (it can never be judged);
 // - does nothing while an earlier transaction of the judge is still pending (no double sending);
-// - judges with the fight's right-answer hashes, salt and secret trap plan (plan.js), at most
+// - judges with the fight's right-answer hashes, salt and the trap plan it locked (plan.js; a fight
+//   whose plan was not locked in time is judged with none: every call a foul), at most
 //   MAX_PER_RUN a run and MAX_PER_HOUR an hour (a guard against draining the judge's gas; the hour is
 //   counted on the chain itself, from the Judged events of the last hour of blocks);
 // - simulates every transaction first (eth_estimateGas), signs it here with the judge key (a Worker
@@ -31,7 +37,8 @@ import { planOf } from './plan.js';
 export const STARTED = keccak256(utf8Hex('Started(address,uint32,bytes32,bool,bytes32,bytes32,address,uint32)'));
 export const JUDGED = keccak256(utf8Hex('Judged(address,uint32,bool,uint8,uint16,uint64,uint8,uint8,uint8,uint32,bytes32[12])'));
 const SEL = (sig) => keccak256(utf8Hex(sig)).slice(0, 10);
-const JUDGE_FIGHT = SEL('judgeFight(address,uint32,bytes32[12],bytes32,uint8[36])');
+const JUDGE_FIGHT = SEL('judgeFight(address,uint32,bytes32[12],bytes32,uint8[36],bytes32)');
+const LOCK_TRAPS = SEL('lockTraps(address[],uint32[],bytes32[])');
 const JUDGE = SEL('judge()');
 const DRAW = SEL('draw()');
 const PENDING_CUTOFF = SEL('pendingCutoff()');
@@ -92,8 +99,18 @@ export function addressOf(key) {
 }
 
 /** The judgeFight call: all arguments are static, so the encoding is the words one after another. */
-export function judgeCalldata(agent, number, rightHashes, salt, traps) {
-  return JUDGE_FIGHT + w(agent) + w(Number(number).toString(16)) + rightHashes.map(w).join('') + w(salt) + traps.map((t) => w(Number(t).toString(16))).join('');
+export function judgeCalldata(agent, number, rightHashes, salt, traps, trapSalt) {
+  return JUDGE_FIGHT + w(agent) + w(Number(number).toString(16)) + rightHashes.map(w).join('') + w(salt) + traps.map((t) => w(Number(t).toString(16))).join('') + w(trapSalt);
+}
+
+/** The lockTraps call for [{ agent, number, commit }]: three dynamic arrays. */
+export function lockCalldata(items) {
+  const n = items.length;
+  const arr = (xs) => w(n.toString(16)) + xs.join('');
+  const head = 3 * 32;
+  const size = 32 * (1 + n);
+  return LOCK_TRAPS + w(head.toString(16)) + w((head + size).toString(16)) + w((head + 2 * size).toString(16)) +
+    arr(items.map((x) => w(x.agent))) + arr(items.map((x) => w(Number(x.number).toString(16)))) + arr(items.map((x) => w(x.commit)));
 }
 
 // ------------------------------------------------------------------ one run
@@ -114,11 +131,25 @@ export async function judgeRun(env, { fetchFn = fetch, log = console.log, wait =
   const judge = '0x' + (await rpc('eth_call', [{ to: arena, data: JUDGE }, 'latest'])).slice(-40);
   if (judge.toLowerCase() !== me.toLowerCase()) throw new Error("JUDGE_KEY is not the arena's judge");
 
-  // an earlier transaction still on its way: wait for it, never send twice
-  const [pendingNonce, minedNonce] = await Promise.all(['pending', 'latest'].map((tag) => rpc('eth_getTransactionCount', [me, tag])));
-  if (BigInt(pendingNonce) > BigInt(minedNonce)) return { judged: 0, drew: false, waiting: true };
-  let nonce = BigInt(pendingNonce);
+  // an earlier transaction still on its way: wait a little; still there, it is stuck: replace it
   const chainId = Number(env.CHAIN_ID ?? 56);
+  const nonces = async () => (await Promise.all(['pending', 'latest'].map((tag) => rpc('eth_getTransactionCount', [me, tag])))).map(BigInt);
+  let [pendingNonce, minedNonce] = await nonces();
+  for (let i = 0; i < 10 && pendingNonce > minedNonce; i++) {
+    await wait(1000);
+    [pendingNonce, minedNonce] = await nonces();
+  }
+  if (pendingNonce > minedNonce) {
+    const gasPrice = BigInt(await rpc('eth_gasPrice', [])) * 2n;
+    try {
+      const hash = await rpc('eth_sendRawTransaction', [signTx({ nonce: minedNonce, gasPrice, gas: 21000n, to: me, data: '0x', chainId }, env.JUDGE_KEY)]);
+      log('a stuck transaction (nonce ' + minedNonce + ') replaced: ' + hash);
+    } catch (e) {
+      log('a stuck transaction (nonce ' + minedNonce + ') could not be replaced yet: ' + e.message);
+    }
+    return { judged: 0, drew: false, waiting: true };
+  }
+  let nonce = pendingNonce;
   const send = async (data, what) => {
     let gas;
     try {
@@ -149,7 +180,32 @@ export async function judgeRun(env, { fetchFn = fetch, log = console.log, wait =
   if ((await word(PENDING_CUTOFF)) !== 0) {
     const sb = await word(SEED_BLOCK);
     for (let i = 0; i < 20 && (await blockNow()) <= sb; i++) await wait(1000);
-    drew = (await send(DRAW, 'hold the draw')) !== null;
+    const held = await send(DRAW, 'hold the draw');
+    drew = held !== null;
+    for (let i = 0; held && i < 20 && !(await rpc('eth_getTransactionReceipt', [held])); i++) await wait(1000);
+  }
+
+  // ---- the trap plans of the fights just drawn, locked before their first bell
+  {
+    const latestNow = await blockNow();
+    const recent = Math.max(Number(env.DEPLOY_BLOCK ?? 0), latestNow - Math.ceil(Number(env.BLOCKS_PER_WEEK ?? 604800) / (7 * 24 * 60)) * 5); // five minutes of blocks
+    const logs = await rpc('eth_getLogs', [{ address: arena, fromBlock: '0x' + recent.toString(16), toBlock: '0x' + latestNow.toString(16), topics: [STARTED] }]);
+    const t = await timeNow();
+    const items = [];
+    const seen = new Set();
+    for (const l of logs) {
+      if (l.topics?.[0] !== STARTED || !l.data) continue;
+      const agent = '0x' + l.topics[1].slice(26);
+      const number = parseInt(l.topics[2], 16);
+      const seed = '0x' + l.data.slice(2, 66);
+      if (seen.has(seed)) continue; // the other fighter of a match: one lock covers both
+      const f = await chain.fightOf(agent, number);
+      if (BigInt(f.trapsCommit) !== 0n || f.clockRound !== 1 || t >= f.clockAt) continue;
+      seen.add(seed);
+      const { traps } = planOf(keys.cardSeed(f.seed));
+      items.push({ agent, number, commit: keys.trapsCommit(traps, keys.trapSalt(arena, f.seed)) });
+    }
+    if (items.length) await send(lockCalldata(items), 'lock the trap plans of ' + items.length + ' fight(s)');
   }
 
   // ---- the judgements
@@ -184,8 +240,18 @@ export async function judgeRun(env, { fetchFn = fetch, log = console.log, wait =
     if (f.round <= 1) continue; // nothing answered
     if (f.commitment.toLowerCase() !== keys.commitment(arena, agent, number).toLowerCase()) continue; // never judgeable
     const hashes = Array.from({ length: 12 }, (_, i) => answerHash(keys.code(arena, agent, number, i + 1)));
-    const { traps } = planOf(keys.cardSeed(f.seed));
-    const data = judgeCalldata(agent, number, hashes, keys.salt(arena, agent, number), traps);
+    // the plan locked before the first bell, or none (every call a foul) if it was not locked in time
+    let traps = new Array(36).fill(0);
+    let trapSalt = '0x' + '0'.repeat(64);
+    if (BigInt(f.trapsCommit) !== 0n) {
+      traps = planOf(keys.cardSeed(f.seed)).traps;
+      trapSalt = keys.trapSalt(arena, f.seed);
+      if (keys.trapsCommit(traps, trapSalt).toLowerCase() !== f.trapsCommit.toLowerCase()) {
+        log(agent + '#' + number + ': its locked trap plan is not this server\'s: left out');
+        continue;
+      }
+    }
+    const data = judgeCalldata(agent, number, hashes, keys.salt(arena, agent, number), traps, trapSalt);
     if ((await send(data, agent + '#' + number + ' judged')) !== null) judged++;
   }
   return { judged, drew, waiting: false };

@@ -192,7 +192,7 @@ function cornerHtml(f, side, v) {
   const who = s.fighters.get(f.agent) ?? {};
   const nm = nameOf(s, f.agent);
   return `<div class="corner ${side}">
-    <div class="fighter">${avatar(nm, side)}<a href="${agentUrl(f.agent)}"><div class="nm">${keep(nm)}</div><div class="tiny">${keep(who.model || '')} ${f.official || who.official ? '<span class="badge id" translate="no">Agent ID</span>' : ''}</div></a><div class="run" translate="no"></div></div>
+    <div class="fighter">${avatar(nm, side)}<a href="${agentUrl(f.agent)}"><div class="nm">${keep(nm)}</div><div class="tiny">${keep(who.model || '')} ${f.official ? '<span class="badge id" translate="no">Agent ID</span>' : ''}</div></a><div class="run" translate="no"></div></div>
     <div class="bar${v.hurry ? ' hurry' : ''}"><i data-bar="${side}" style="width:${v.pct.toFixed(1)}%"></i></div>
     <div class="accepted${v.bad ? ' no' : ''}" translate="no">${esc(v.note)}</div>
     <div class="pips">${v.pips.map((cls, i) => `<i class="${cls}" title="${i + 1}"></i>`).join('')}</div>

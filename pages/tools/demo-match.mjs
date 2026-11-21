@@ -2,11 +2,13 @@
 // --watch) draws them at the next cutoff, and they answer in real time, each round
 // after a random delay, sometimes wrong, sometimes late, sometimes taking a trap. For watching the
 // ring on the site (and for the video). They read the right codes from the secret: demo only.
-//   node pages/tools/demo-match.mjs <rpc> <deployment.json> <secret.hex> <keyA> <keyB> [nameA] [nameB]
+//   JUDGE_KEY_FILE=<the judge's key file> node pages/tools/demo-match.mjs <rpc> <deployment.json> <secret.hex> <keyA> <keyB> [nameA] [nameB]
+// (the judge's key signs the bots' commitments, as the page server's /commit does)
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { makeChain } from '../src/chain.js';
 import { arenaKeys } from '../src/keys.js';
+import { signCommitment } from '../src/sign.js';
 
 const [rpc, depPath, secretPath, keyA, keyB, nameA = 'Night Owl', nameB = 'Iron Fox'] = process.argv.slice(2);
 const dep = JSON.parse(readFileSync(depPath, 'utf8'));
@@ -23,7 +25,9 @@ const send = (b, sig, ...args) => cast('send', '--rpc-url', rpc, '--private-key'
 for (const b of bots) {
   const number = (await chain.lastFight(b.agent)) + 1;
   b.number = number;
-  send(b, 'register(string,string,bytes32,address)', b.name, b.model, keys.commitment(dep.arena, b.agent, number), '0x0000000000000000000000000000000000000000');
+  const commitment = keys.commitment(dep.arena, b.agent, number);
+  const signature = signCommitment(readFileSync(process.env.JUDGE_KEY_FILE, 'utf8').trim(), Number(cast('chain-id', '--rpc-url', rpc)), dep.arena, b.agent, number, commitment);
+  send(b, 'register(string,string,bytes32,bytes,address)', b.name, b.model, commitment, signature, '0x0000000000000000000000000000000000000000');
   console.log(`${b.name} is in the waiting hall`);
 }
 console.log(`the next draw at ${new Date((await chain.nextDrawAt()) * 1000).toISOString()}: waiting for the judge to hold it`);

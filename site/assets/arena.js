@@ -19,7 +19,7 @@ const T = {
   fell: '0xc3e87813b67aa53b9a0d3de2a7c21f7a26e7c7686ffb8977b522f70b15c6cb1d', // Fell(address,uint32,uint8,uint8)
   ended: '0xcbca55018385ed06f25abc2d5806a421e63af1c97fb1c9ac914356fec2db920d',
   judged: '0x72e2438d123b5dc0eb021a0e91584f9268b8dbc84049b95899e13a1697bb2f2f',
-  revealed: '0x5ce78aea16cdd4e1a89d57c51dae34b1bacb78001cd58df7e6063d20618566b5', // Revealed(address,uint32,uint8[36],bytes32)
+  revealed: '0xf29b9dc50d66703886ed14e24d46c1acc05a39c92207e2c4aeefc6caf2f95a11', // Revealed(address,uint32,uint8[36],bytes32,bytes32)
 };
 const SEL = { fightOf: '0x32799e5d', drawEvery: '0xa2fcf826', hall: '0x78a2ce59', nextDrawAt: '0x748e1910', pendingCutoff: '0xef92e6ba', roundTime: '0xee5f8c8f', cooldown: '0x787a08a6', seasonEnd: '0xe757b20d' };
 
@@ -127,8 +127,12 @@ export async function refresh(s) {
 }
 
 /** With the fight's trap plan revealed: a call of a trap of its round is a hit, anything else a foul. */
+/** The contract records the first MAX_CALLS calls of a fight; any call beyond them is a foul at once. */
+const MAX_CALLS = 64;
 function classify(f) {
-  for (const x of f.falls) x.foul = !(x.round >= 1 && x.round <= ROUNDS && x.trap !== 0 && f.traps.slice((x.round - 1) * 3, x.round * 3).includes(x.trap));
+  f.falls.forEach((x, i) => {
+    x.foul = i >= MAX_CALLS || !(x.round >= 1 && x.round <= ROUNDS && x.trap !== 0 && f.traps.slice((x.round - 1) * 3, x.round * 3).includes(x.trap));
+  });
 }
 
 function apply(s, l) {
@@ -141,8 +145,7 @@ function apply(s, l) {
       const who = fighter(s, agent);
       who.name = text32(d[0]) || who.name;
       who.model = text32(d[1]) || who.model;
-      who.verified = big(d[2]) !== 0n;
-      if (who.verified) who.official = true;
+      who.verified = big(d[2]) !== 0n; // this name is its own Agent ID (".ai" only then)
       who.challenge = addrOf(t[2].slice(2));
       who.registeredBlock = block;
       break;
@@ -170,7 +173,7 @@ function apply(s, l) {
       if (name) who.name = name;
       const model = text32(d[3]);
       if (model) who.model = model;
-      if (f.official) who.official = true;
+      who.verified = f.official; // the name of its latest fight, checked by the contract
       break;
     }
     case T.matched: {
@@ -194,7 +197,8 @@ function apply(s, l) {
       const n = parseInt(t[2], 16);
       if (n === 0) break; // outside a fight
       const f = fight(s, agent, n);
-      f.falls.push({ round: num(d[0]), trap: num(d[1]), foul: null }); // hit or foul: decided by the judge
+      // hit or foul: decided by the judge (a call beyond the recorded ones is a foul at once)
+      f.falls.push({ round: num(d[0]), trap: num(d[1]), foul: f.falls.length >= MAX_CALLS ? true : null });
       if (f.traps) classify(f);
       break;
     }
@@ -224,7 +228,7 @@ function apply(s, l) {
 export function nameOf(s, agent) {
   const f = s.fighters.get(agent);
   if (!f?.name) return `${agent.slice(0, 6)}…${agent.slice(-4)}`;
-  return f.official && !/\.ai$/i.test(f.name) ? `${f.name}.ai` : f.name;
+  return f.verified && !/\.ai$/i.test(f.name) ? `${f.name}.ai` : f.name;
 }
 
 /** Where a fight stands on the clock: countdown, open round, break, or over. */

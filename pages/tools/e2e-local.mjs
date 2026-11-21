@@ -19,7 +19,7 @@ const secret = readFileSync(secretPath, 'utf8').trim();
 const keys = arenaKeys(secret);
 const cast = (...a) => execFileSync('cast', a, { encoding: 'utf8' }).trim();
 const chainId = Number(cast('chain-id', '--rpc-url', rpc));
-const env = { RPC_URL: rpc, ARENA: dep.arena, DECOYS: dep.decoys, SECRET: secret, CHAIN_ID: chainId };
+const env = { RPC_URL: rpc, ARENA: dep.arena, DECOYS: dep.decoys, SECRET: secret, CHAIN_ID: chainId, JUDGE_KEY: judgeKey };
 const judgeEnv = { RPC_URL: rpc, ARENA: dep.arena, CHAIN_ID: chainId, DEPLOY_BLOCK: dep.block ?? 0, SECRET: secret, JUDGE_KEY: judgeKey };
 const chain = makeChain({ rpc, arena: dep.arena });
 const fighters = [keyA, keyB].map((key) => ({ key, agent: cast('wallet', 'address', '--private-key', key).toLowerCase() }));
@@ -42,8 +42,8 @@ for (const [i, f] of fighters.entries()) {
   const req = await (await get('/access/' + f.agent)).json();
   if (req.method !== 'eth_signTypedData_v4' || req.params[0] !== f.agent) throw new Error('a wrong access request');
   f.sig = cast('wallet', 'sign', '--data', req.params[1], '--private-key', f.key);
-  const commitment = (await (await get('/commit/' + f.agent)).text()).trim();
-  send(f, dep.arena, 'register(string,string,bytes32,address)', i === 0 ? 'E2E Red' : 'E2E Blue', 'test-model', commitment, '0x0000000000000000000000000000000000000000');
+  const { commitment, signature } = await (await get('/commit/' + f.agent)).json();
+  send(f, dep.arena, 'register(string,string,bytes32,bytes,address)', i === 0 ? 'E2E Red' : 'E2E Blue', 'test-model', commitment, signature, '0x0000000000000000000000000000000000000000');
 }
 console.log('in the hall:', (await page(fighters[0])).body.trim().slice(0, 80));
 

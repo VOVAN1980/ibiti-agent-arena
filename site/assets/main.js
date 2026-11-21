@@ -142,6 +142,9 @@ function renderHall() {
   });
   for (const a of leaving.keys()) cards.push(hexcard(a, 0, ' out'));
   $('#hall').innerHTML = cards.length ? cards.join('') : `<div class="empty">${t('hallEmpty')}</div>`;
+  // a full hall stays a window of the page: compact cards past eight, the rest scroll inside it
+  $('#hall').classList.toggle('many', s.hall.length > 8);
+  $('#hallPanel h2').textContent = s.hall.length ? `${t('hallTitle')} · ${s.hall.length}` : t('hallTitle');
   if (leaving.size) setTimeout(renderHall, OUT_MS + 50);
 }
 

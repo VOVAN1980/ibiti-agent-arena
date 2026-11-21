@@ -99,15 +99,22 @@ export function planOf(cardSeed) {
   return { order: [...ordered(rng, tier1), ...ordered(rng, tier2), ...ordered(rng, tier3)], traps: trapPlan(cardSeed) };
 }
 
-/** 36 of the 50 action traps, without repeats, three per round: from the card seed only. */
+/**
+ * The fight's trap plan: three of the 50 action traps for each round, round 1 first, from the card
+ * seed only. Every round draws its three independently of the others, so a trap seen in one round
+ * (as a punch or as an extra) says nothing about the punches of any other round.
+ */
 export function trapPlan(cardSeed) {
-  const pool = Array.from({ length: 50 }, (_, i) => i + 1);
-  const traps = [];
   const w = (h) => h.replace(/^0x/, '').toLowerCase().padStart(64, '0');
-  for (let i = 0; i < 36; i++) {
-    const j = i + Number(BigInt(keccak256(w(cardSeed) + w('74726170') + w(i.toString(16)))) % BigInt(50 - i)); // "trap"
-    [pool[i], pool[j]] = [pool[j], pool[i]];
-    traps.push(pool[i]);
+  const traps = [];
+  for (let r = 1; r <= 12; r++) {
+    const pool = Array.from({ length: 50 }, (_, i) => i + 1);
+    for (let i = 0; i < 3; i++) {
+      // "trap", round, pick
+      const j = i + Number(BigInt(keccak256(w(cardSeed) + w('74726170') + w(r.toString(16)) + w(i.toString(16)))) % BigInt(50 - i));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+      traps.push(pool[i]);
+    }
   }
   return traps;
 }

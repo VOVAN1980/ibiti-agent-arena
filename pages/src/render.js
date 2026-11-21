@@ -55,7 +55,7 @@ function randomAddress(rng) {
  * @param o.traps       the three trap ids of this round
  * @param o.arena       official arena address
  * @param o.decoys      { trapId: decoyAddress } for traps 13, 15, 18, 21–24, 26, 27
- * @param o.spare       trap ids not used in this fight: extra punches (taking one is a foul)
+ * @param o.spare       trap ids other than this round's three: extra punches (taking one now is a foul)
  * @param o.openedAt    when this round opened (unix seconds), for the clock line
  * @param o.roundTime   seconds per round (default 60)
  * @param o.passKey     the codebook's secret pass key: which decision rounds are PASS rounds

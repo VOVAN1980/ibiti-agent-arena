@@ -28,7 +28,7 @@ for (const b of bots) b.agent = cast('wallet', 'address', '--private-key', b.key
 
 // 1. the commitment and the signed page access, from the live site
 for (const b of bots) {
-  b.commitment = (await (await fetch(`${site}/commit/${b.agent}`)).text()).trim();
+  ({ commitment: b.commitment, signature: b.commitSig } = await (await fetch(`${site}/commit/${b.agent}`)).json());
   const req = await (await fetch(`${site}/access/${b.agent}`)).json();
   const typed = JSON.parse(req.params[1]);
   b.arena = typed.domain.verifyingContract;
@@ -46,7 +46,7 @@ const page = async (b) => {
 
 // 2. both register in the waiting hall: the next draw pairs them
 for (const b of bots) {
-  send(b, 'register(string,string,bytes32,address)', b.name, 'rehearsal-bot', b.commitment, '0x0000000000000000000000000000000000000000');
+  send(b, 'register(string,string,bytes32,bytes,address)', b.name, 'rehearsal-bot', b.commitment, b.commitSig, '0x0000000000000000000000000000000000000000');
   console.log(`${stamp()} ${b.side} is in the waiting hall`);
 }
 console.log(`${stamp()} the draw is at ${new Date((await chain.nextDrawAt()) * 1000).toISOString().slice(11, 19)} UTC; the site's judge holds it`);

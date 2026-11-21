@@ -1,6 +1,7 @@
 // A local arena: the site, the fighters' pages and the rules, all from a local node.
 //   node pages/tools/local-arena.mjs <config.json>
 // config: { "rpc": "http://127.0.0.1:8546", "deployment": "<path>", "secret": "<path to secret.hex>",
+//           "judgeKey": "<path to the judge's key file: it signs the commitments>",
 //           "port": 8787, "chainId": 31337, "blocksPerWeek": 604800 }
 // Serves:
 //   /, /index.html, /match.html, /rating.html,
@@ -23,6 +24,7 @@ const env = {
   ARENA: dep.arena,
   DECOYS: dep.decoys,
   SECRET: readFileSync(cfg.secret, 'utf8').trim(),
+  JUDGE_KEY: cfg.judgeKey ? readFileSync(cfg.judgeKey, 'utf8').trim() : undefined,
   CHAIN_ID: cfg.chainId ?? 31337,
   SITE_URL: `http://127.0.0.1:${port}`,
 };

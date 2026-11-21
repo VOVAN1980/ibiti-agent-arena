@@ -2,6 +2,7 @@
 pragma solidity 0.8.24;
 
 import "forge-std/Test.sol";
+import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {AgentArena, ArenaDecoy} from "../src/AgentArena.sol";
 import {ArenaArt} from "../src/ArenaArt.sol";
 import {ArenaCertificate} from "../src/ArenaCertificate.sol";
@@ -17,6 +18,13 @@ contract MockAgentId {
     }
 }
 
+/// @dev The chain's block-hash history (EIP-2935) in short: any block's hash, made up.
+contract MockHistory {
+    fallback(bytes calldata data) external returns (bytes memory) {
+        return abi.encode(keccak256(abi.encode("history", abi.decode(data, (uint256)))));
+    }
+}
+
 contract AgentArenaTest is Test {
     AgentArena arena;
     MockAgentId registry;
@@ -28,7 +36,10 @@ contract AgentArenaTest is Test {
     address bob = makeAddr("bob"); // open division
     address carol = makeAddr("carol"); // Agent ID "carol"
     address dave = makeAddr("dave"); // open division
-    address judgeKey = makeAddr("judge");
+    address judgeKey; // the judge's address
+    uint256 judgePk; // and its key: it signs the commitments
+    uint64 seasonEnd = SEASON_END;
+    bool lockOnDraw = true; // the judge locks every drawn fight's trap plan during the countdown
     bytes32 constant COMMIT = keccak256("test season secret");
     uint64 constant SEASON_END = 1_800_000_000 + 365 days;
 
@@ -43,11 +54,12 @@ contract AgentArenaTest is Test {
         registry.give(alice, "alice");
         registry.give(carol, "carol");
         art = new ArenaArt();
+        (judgeKey, judgePk) = makeAddrAndKey("judge");
         arena = _deploy(true);
     }
 
     function _newArena() internal returns (AgentArena) {
-        return new AgentArena(address(registry), COOLDOWN, ROUND_TIME, DRAW_EVERY, art, judgeKey, COMMIT, SEASON_END);
+        return new AgentArena(address(registry), COOLDOWN, ROUND_TIME, DRAW_EVERY, art, judgeKey, COMMIT, seasonEnd);
     }
 
     function _deploy(bool sealIt) internal returns (AgentArena a) {
@@ -69,8 +81,21 @@ contract AgentArenaTest is Test {
 
     function _register(address who, address challenge) internal {
         bytes32 commitment = _next(who);
+        bytes memory sig = _sig(who, commitment);
         vm.prank(who);
-        arena.register(_nameOf(who), "claude-opus-5.5", commitment, challenge);
+        arena.register(_nameOf(who), "claude-opus-5.5", commitment, sig, challenge);
+    }
+
+    /// @dev The judge's signature of a commitment for `who`'s next fight, as /commit gives it. Taken
+    ///      before a prank: it reads the arena.
+    function _sig(address who, bytes32 c) internal view returns (bytes memory) {
+        return _signAs(judgePk, who, c);
+    }
+
+    function _signAs(uint256 key, address who, bytes32 c) internal view returns (bytes memory) {
+        bytes32 digest = keccak256(abi.encode(keccak256("IBITI Agent Arena commitment"), block.chainid, address(arena), who, arena.lastFight(who) + 1, c));
+        (uint8 v, bytes32 r, bytes32 sg) = vm.sign(key, MessageHashUtils.toEthSignedMessageHash(digest));
+        return abi.encodePacked(r, sg, v);
     }
 
     function _register(address who) internal {
@@ -87,7 +112,36 @@ contract AgentArenaTest is Test {
         uint64 sb = arena.seedBlock();
         vm.roll(sb + 1);
         vm.setBlockhash(sb, keccak256(abi.encode("block", sb)));
+        vm.recordLogs();
         arena.draw();
+        if (lockOnDraw) _lockTrapsOfTheDraw();
+    }
+
+    /// @dev What the judge does during the countdown: lock the trap plan of every fight just drawn.
+    function _lockTrapsOfTheDraw() internal {
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        bytes32 started = keccak256("Started(address,uint32,bytes32,bool,bytes32,bytes32,address,uint32)");
+        uint256 n;
+        for (uint256 i; i < logs.length; ++i) if (logs[i].emitter == address(arena) && logs[i].topics[0] == started) ++n;
+        address[] memory agents = new address[](n);
+        uint32[] memory numbers = new uint32[](n);
+        bytes32[] memory commits = new bytes32[](n);
+        n = 0;
+        for (uint256 i; i < logs.length; ++i) {
+            if (logs[i].emitter != address(arena) || logs[i].topics[0] != started) continue;
+            agents[n] = address(uint160(uint256(logs[i].topics[1])));
+            numbers[n] = uint32(uint256(logs[i].topics[2]));
+            (bytes32 seed,,,,) = abi.decode(logs[i].data, (bytes32, bool, bytes32, bytes32, uint32));
+            commits[n++] = keccak256(abi.encode(_plan(seed), _trapSalt(seed)));
+        }
+        if (n == 0) return;
+        vm.prank(judgeKey);
+        arena.lockTraps(agents, numbers, commits);
+    }
+
+    /// @dev The salt of a card's trap plan: the page server derives it from the season secret.
+    function _trapSalt(bytes32 seed) internal pure returns (bytes32) {
+        return keccak256(abi.encode("test trap salt", seed));
     }
 
     /// @dev `a` and `b` alone in the hall: the draw pairs them.
@@ -158,12 +212,14 @@ contract AgentArenaTest is Test {
         return _plan(_fight(who).seed);
     }
 
-    /// @dev The judge scores `who`'s latest fight.
+    /// @dev The judge scores `who`'s latest fight (with its locked plan, or with none).
     function _judge(address who) internal {
-        uint32 n = _number(who);
-        uint8[36] memory traps = _traps(who);
+        AgentArena.Fight memory f = _fight(who);
+        uint8[36] memory traps;
+        bytes32 ts;
+        if (f.trapsCommit != bytes32(0)) (traps, ts) = (_plan(f.seed), _trapSalt(f.seed));
         vm.prank(judgeKey);
-        arena.judgeFight(who, n, _rightHashes(who, n), _salt(who, n), traps);
+        arena.judgeFight(who, f.number, _rightHashes(who, f.number), _salt(who, f.number), traps, ts);
     }
 
     function _finishAndJudge(address who) internal {
@@ -288,7 +344,7 @@ contract AgentArenaTest is Test {
         a.seal();
         vm.prank(alice);
         vm.expectRevert(AgentArena.NotSealed.selector);
-        a.register("alice", "y", bytes32(uint256(1)), address(0));
+        a.register("alice", "y", bytes32(uint256(1)), "", address(0));
     }
 
     function test_onlyAdminSetsUp() public {
@@ -353,7 +409,7 @@ contract AgentArenaTest is Test {
         bytes32 c = _next(alice);
         vm.prank(alice);
         vm.expectRevert(AgentArena.InTheHall.selector);
-        arena.register("alice", "m", c, address(0));
+        arena.register("alice", "m", c, "", address(0));
         vm.prank(alice);
         arena.leave();
         assertEq(arena.hall().length, 0);
@@ -480,7 +536,7 @@ contract AgentArenaTest is Test {
         vm.warp(arena.nextDrawAt());
         arena.draw(); // seal
         uint64 sb = arena.seedBlock();
-        vm.roll(sb + 300); // too late: the sealed block's hash is gone
+        vm.roll(sb + 300); // too late, and this chain keeps no block-hash history: the hash is gone
         arena.draw();
         assertFalse(arena.isLive(alice), "not drawn on an unknown hash");
         assertEq(arena.seedBlock(), block.number + 1, "sealed again on a new future block");
@@ -490,6 +546,48 @@ contract AgentArenaTest is Test {
         vm.expectRevert(abi.encodeWithSelector(AgentArena.NotYet.selector, arena.nextDrawAt()));
         arena.draw(); // the next draw only at the next cutoff
     }
+    function test_aLateDrawStillPairsOnItsSealedBlockFromTheHistory() public {
+        vm.etch(arena.BLOCK_HASH_HISTORY(), address(new MockHistory()).code);
+        _register(alice);
+        _register(bob);
+        vm.warp(arena.nextDrawAt());
+        arena.draw(); // seal
+        uint64 sb = arena.seedBlock();
+        vm.roll(sb + 300); // beyond blockhash(), still in the chain's history
+        vm.recordLogs();
+        arena.draw();
+        _lockTrapsOfTheDraw();
+        assertEq(arena.seedBlock(), sb, "not sealed again: one draw, one result");
+        bytes32 drawSeed = keccak256(abi.encode(keccak256(abi.encode("history", uint256(sb))), uint32(1), address(arena)));
+        assertEq(_fight(alice).seed, keccak256(abi.encode(drawSeed, uint8(0))), "paired on the sealed block's own hash");
+        assertEq(_fight(alice).opponent, bob);
+    }
+
+    function test_nobodyOnAClosedListCanLeave() public {
+        _register(alice);
+        _register(bob);
+        vm.warp(arena.nextDrawAt());
+        _register(carol); // after the cutoff: seals the list without carol
+        vm.prank(alice);
+        vm.expectRevert(AgentArena.DrawPending.selector);
+        arena.leave(); // the list is closed: leaving would change the pairs
+        vm.prank(carol);
+        arena.leave(); // carol is not on it
+        _draw();
+        assertEq(_fight(alice).opponent, bob);
+    }
+
+    function test_aWaitingChallengeTakesNoPlaceInTheDraw() public {
+        // 40 agents challenge agents that never come: they wait, and take no place from the others
+        for (uint256 i; i < 40; ++i) _register(makeAddr(string.concat("challenger", vm.toString(i))), makeAddr(string.concat("absent", vm.toString(i))));
+        _register(bob);
+        _register(dave);
+        _draw();
+        assertEq(_fight(bob).opponent, dave, "drawn although 40 challengers came first");
+        assertEq(arena.hall().length, 40, "the challengers keep waiting, in their order");
+        assertEq(arena.hall()[0], makeAddr("challenger0"));
+    }
+
     function test_oneFightADayFromTheFinalBell() public {
         _match(alice, bob);
         _answerBoth(alice, bob);
@@ -497,7 +595,7 @@ contract AgentArenaTest is Test {
         bytes32 c = _next(alice);
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(AgentArena.Cooldown.selector, uint64(bell + COOLDOWN)));
-        arena.register("alice", "m", c, address(0));
+        arena.register("alice", "m", c, "", address(0));
         vm.warp(bell + COOLDOWN);
         _register(alice);
     }
@@ -513,30 +611,36 @@ contract AgentArenaTest is Test {
         bytes32 c = _next(alice);
         vm.prank(alice);
         vm.expectRevert(AgentArena.FightActive.selector);
-        arena.register("alice", "m", c, address(0));
+        arena.register("alice", "m", c, "", address(0));
     }
 
     function test_onlyItsOwnAgentIdNameIsOfficial() public {
-        vm.recordLogs();
         bytes32 c = _next(alice);
+        bytes memory sg = _sig(alice, c);
         vm.prank(alice);
-        arena.register("alice.ai", "m", c, address(0));
+        arena.register("Alice.AI", "m", c, sg, address(0));
         (,,,,,, bool verified,) = arena.entries(alice);
-        assertTrue(verified, "with .ai");
-        c = _next(bob);
-        vm.prank(bob);
-        arena.register("alice", "m", c, address(0));
-        (,,,,,, verified,) = arena.entries(bob);
-        assertFalse(verified, "someone else's name");
+        assertTrue(verified, "its own name, with .ai, in any case");
         c = _next(carol);
+        sg = _sig(carol, c);
         vm.prank(carol);
-        arena.register("Night Owl", "m", c, address(0));
+        arena.register("Night Owl", "m", c, sg, address(0));
         (,,,,,, verified,) = arena.entries(carol);
         assertFalse(verified, "an Agent ID holder under another name fights in the open division");
-        c = _next(dave);
-        vm.prank(dave);
-        arena.register(".ai", "m", c, address(0));
-        (,,,,,, verified,) = arena.entries(dave);
+    }
+
+    function test_nobodyUsesAnotherAgentsAgentIdNameOrAFakeDotAi() public {
+        string[5] memory refused = ["alice", "ALICE", "alice.ai", "bob.ai", ".ai"];
+        bytes32 c = _next(bob);
+        bytes memory sg = _sig(bob, c);
+        for (uint256 i; i < refused.length; ++i) {
+            vm.prank(bob);
+            vm.expectRevert(AgentArena.NameTaken.selector);
+            arena.register(refused[i], "m", c, sg, address(0));
+        }
+        vm.prank(bob);
+        arena.register("bob", "m", c, sg, address(0)); // a free name, no Agent ID: the open division
+        (,,,,,, bool verified,) = arena.entries(bob);
         assertFalse(verified);
     }
 
@@ -544,18 +648,63 @@ contract AgentArenaTest is Test {
         vm.warp(SEASON_END);
         vm.prank(alice);
         vm.expectRevert(AgentArena.SeasonOver.selector);
-        arena.register("alice", "b", bytes32(uint256(1)), address(0));
+        arena.register("alice", "b", bytes32(uint256(1)), "", address(0));
+        // nor when a fight drawn at the next cutoff could end after the season
+        vm.warp(SEASON_END - 900);
+        vm.prank(alice);
+        vm.expectRevert(AgentArena.SeasonOver.selector);
+        arena.register("alice", "b", bytes32(uint256(1)), "", address(0));
+    }
+
+    function test_noFightStartsThatCouldEndAfterTheSeason() public {
+        // a season that ends 20 minutes after the next cutoff: just room for one fight
+        uint64 slot = uint64((block.timestamp / DRAW_EVERY + 1) * DRAW_EVERY);
+        seasonEnd = slot + 1200;
+        arena = _deploy(true);
+        _register(alice);
+        _register(bob);
+        vm.warp(slot + 400); // the draw is held so late that its fight would end after the season
+        _draw();
+        assertFalse(arena.isLive(alice) || arena.isLive(bob), "no fight");
+        assertEq(arena.hall().length, 0, "the hall is closed");
+        assertEq(arena.draws(), 0);
     }
 
     function test_registrationNeedsACommitmentAndShortNames() public {
         vm.startPrank(alice);
         vm.expectRevert(AgentArena.BadCommitment.selector);
-        arena.register("alice", "b", bytes32(0), address(0));
+        arena.register("alice", "b", bytes32(0), "", address(0));
         vm.expectRevert(AgentArena.TooLong.selector);
-        arena.register("a name that is longer than thirty-two bytes", "b", bytes32(uint256(1)), address(0));
+        arena.register("a name that is longer than thirty-two bytes", "b", bytes32(uint256(1)), "", address(0));
         vm.expectRevert(AgentArena.TooLong.selector);
-        arena.register("alice", "a model that is longer than thirty-two bytes", bytes32(uint256(1)), address(0));
+        arena.register("alice", "a model that is longer than thirty-two bytes", bytes32(uint256(1)), "", address(0));
         vm.stopPrank();
+    }
+
+    function test_onlyACommitmentTheJudgeSignedOpensAFight() public {
+        bytes32 c = _next(alice);
+        bytes memory other = _sig(alice, keccak256("another commitment"));
+        bytes memory stranger = _signAs(0xA11CE, alice, c);
+        bytes memory forBob = _sig(bob, c);
+        bytes memory good = _sig(alice, c);
+        vm.startPrank(alice);
+        vm.expectRevert(AgentArena.BadCommitment.selector);
+        arena.register("alice", "m", c, "", address(0));
+        vm.expectRevert(AgentArena.BadCommitment.selector);
+        arena.register("alice", "m", c, other, address(0));
+        vm.expectRevert(AgentArena.BadCommitment.selector);
+        arena.register("alice", "m", c, stranger, address(0));
+        vm.expectRevert(AgentArena.BadCommitment.selector);
+        arena.register("alice", "m", c, forBob, address(0));
+        arena.register("alice", "m", c, good, address(0));
+        vm.stopPrank();
+        // and every fight the arena opens can be judged
+        _register(bob);
+        _draw();
+        _answerBoth(alice, bob);
+        _judge(alice);
+        _judge(bob);
+        assertEq(_bestPoints(alice), 120);
     }
 
     function testFuzz_aDrawPairsEveryoneOnce(uint8 count, uint256 salt) public {
@@ -592,9 +741,10 @@ contract AgentArenaTest is Test {
         assertEq(given[1], keccak256("WRONG"));
         bytes32[12] memory right = _rightHashes(alice, 1);
         uint8[36] memory traps = _traps(alice);
+        bytes32 ts = _trapSalt(_fight(alice).seed);
         vm.prank(judgeKey);
         vm.expectRevert(AgentArena.FightActive.selector);
-        arena.judgeFight(alice, 1, right, _salt(alice, 1), traps);
+        arena.judgeFight(alice, 1, right, _salt(alice, 1), traps, ts);
         _finishAndJudge(alice);
         assertEq(arena.roundPointsOf(alice, 1), 10);
         assertEq(arena.roundPointsOf(alice, 2), 0);
@@ -609,45 +759,35 @@ contract AgentArenaTest is Test {
         bytes32[12] memory forged = _rightHashes(alice, 1);
         forged[0] = keccak256("a wrong answer");
         uint8[36] memory traps = _traps(alice);
+        bytes32 ts = _trapSalt(_fight(alice).seed);
         vm.startPrank(judgeKey);
         vm.expectRevert(AgentArena.BadCommitment.selector);
-        arena.judgeFight(alice, 1, forged, _salt(alice, 1), traps);
+        arena.judgeFight(alice, 1, forged, _salt(alice, 1), traps, ts);
         bytes32[12] memory right = _rightHashes(alice, 1);
         vm.expectRevert(AgentArena.BadCommitment.selector);
-        arena.judgeFight(alice, 1, right, _salt(alice, 2), traps);
+        arena.judgeFight(alice, 1, right, _salt(alice, 2), traps, ts);
         vm.stopPrank();
         _judge(alice);
         assertEq(arena.roundPointsOf(alice, 1), 0);
         assertEq(_bestPoints(alice), 110);
     }
 
-    function test_aFightRegisteredWithAWrongCommitmentCannotBeJudged() public {
-        vm.prank(alice);
-        arena.register("alice", "b", keccak256("not the page server's commitment"), address(0));
-        _draw();
-        _draw();
-        _answerAll(alice);
-        bytes32[12] memory right = _rightHashes(alice, 1);
-        uint8[36] memory traps = _traps(alice);
-        vm.prank(judgeKey);
-        vm.expectRevert(AgentArena.BadCommitment.selector);
-        arena.judgeFight(alice, 1, right, _salt(alice, 1), traps);
-    }
 
     function test_onlyTheJudgeScoresAndOnlyOnce() public {
         _solo(alice);
         _answerAll(alice);
         bytes32[12] memory right = _rightHashes(alice, 1);
         uint8[36] memory traps = _traps(alice);
+        bytes32 ts = _trapSalt(_fight(alice).seed);
         vm.expectRevert(AgentArena.NotJudge.selector);
-        arena.judgeFight(alice, 1, right, _salt(alice, 1), traps);
+        arena.judgeFight(alice, 1, right, _salt(alice, 1), traps, ts);
         _judge(alice);
         vm.prank(judgeKey);
         vm.expectRevert(AgentArena.AlreadyJudged.selector);
-        arena.judgeFight(alice, 1, right, _salt(alice, 1), traps);
+        arena.judgeFight(alice, 1, right, _salt(alice, 1), traps, ts);
         vm.prank(judgeKey);
         vm.expectRevert(AgentArena.NoFight.selector);
-        arena.judgeFight(bob, 1, right, _salt(bob, 1), traps);
+        arena.judgeFight(bob, 1, right, _salt(bob, 1), traps, ts);
     }
 
     function test_aMatchIsJudgedOnlyWhenBothFightsAreOver() public {
@@ -660,9 +800,10 @@ contract AgentArenaTest is Test {
         arena.finish(); // alice stops, bob fights on
         bytes32[12] memory right = _rightHashes(alice, 1);
         uint8[36] memory traps = _traps(alice);
+        bytes32 ts = _trapSalt(_fight(alice).seed);
         vm.prank(judgeKey);
         vm.expectRevert(AgentArena.FightActive.selector);
-        arena.judgeFight(alice, 1, right, _salt(alice, 1), traps);
+        arena.judgeFight(alice, 1, right, _salt(alice, 1), traps, ts);
         for (uint8 r = 4; r <= 12; ++r) _answer(bob, r, _rightCode(bob, r));
         _judge(alice);
         _judge(bob);
@@ -682,6 +823,68 @@ contract AgentArenaTest is Test {
     }
 
     // ============================================================ traps: secret until the judge
+
+    function test_theTrapPlanIsLockedBeforeTheBellOnceForBothFighters() public {
+        _match(alice, bob);
+        bytes32 locked = _fight(alice).trapsCommit;
+        assertTrue(locked != bytes32(0), "locked during the countdown");
+        assertEq(_fight(bob).trapsCommit, locked, "one plan for both fighters of the match");
+        // the judge cannot lock it again, for either fighter
+        address[] memory a = new address[](1);
+        uint32[] memory n = new uint32[](1);
+        bytes32[] memory c = new bytes32[](1);
+        (a[0], n[0], c[0]) = (bob, 1, keccak256("another plan"));
+        vm.prank(judgeKey);
+        arena.lockTraps(a, n, c);
+        assertEq(_fight(bob).trapsCommit, locked);
+        _answerBoth(alice, bob);
+        // judged only with that plan and its salt
+        uint8[36] memory other = _plan(keccak256("another card"));
+        bytes32[12] memory right = _rightHashes(alice, 1);
+        bytes32 ts = _trapSalt(_fight(alice).seed);
+        uint8[36] memory traps = _traps(alice);
+        vm.startPrank(judgeKey);
+        vm.expectRevert(AgentArena.BadTraps.selector);
+        arena.judgeFight(alice, 1, right, _salt(alice, 1), other, ts);
+        vm.expectRevert(AgentArena.BadTraps.selector);
+        arena.judgeFight(alice, 1, right, _salt(alice, 1), traps, keccak256("another salt"));
+        vm.stopPrank();
+        _judge(alice);
+        _judge(bob);
+        assertEq(_bestPoints(alice), 120);
+    }
+
+    function test_onlyTheJudgeLocksAndOnlyBeforeTheBell() public {
+        lockOnDraw = false;
+        _match(alice, bob);
+        address[] memory a = new address[](1);
+        uint32[] memory n = new uint32[](1);
+        bytes32[] memory c = new bytes32[](1);
+        (a[0], n[0], c[0]) = (alice, 1, keccak256("a plan"));
+        vm.expectRevert(AgentArena.NotJudge.selector);
+        arena.lockTraps(a, n, c);
+        vm.warp(_fight(alice).clockAt); // the bell
+        vm.prank(judgeKey);
+        arena.lockTraps(a, n, c);
+        assertEq(_fight(alice).trapsCommit, bytes32(0), "too late: the first bell has rung");
+    }
+
+    function test_aFightWhosePlanWasNotLockedCountsEveryCallAsAFoul() public {
+        lockOnDraw = false;
+        _solo(alice);
+        uint8[36] memory traps = _traps(alice);
+        _goto(alice, 1);
+        _takeTrap(alice, traps[0]); // would be round 1's punch
+        _answerAll(alice);
+        bytes32[12] memory right = _rightHashes(alice, 1);
+        vm.prank(judgeKey);
+        vm.expectRevert(AgentArena.BadTraps.selector);
+        arena.judgeFight(alice, 1, right, _salt(alice, 1), traps, bytes32(0)); // no plan can be shown now
+        _judge(alice);
+        assertEq(_fight(alice).hits, 0);
+        assertEq(_fight(alice).fouls, 1);
+        assertEq(arena.pointsOf(alice), 118);
+    }
 
     function test_trapCallsAreRecordedAndJudgedOnlyAfterTheFight() public {
         _solo(alice);
@@ -973,7 +1176,7 @@ contract AgentArenaTest is Test {
         (bool ok,) = address(arena).call{value: 1}("");
         assertFalse(ok, "arena accepted BNB");
         (ok,) = address(arena).call{value: 1}(
-            abi.encodeWithSignature("register(string,string,bytes32,address)", "a", "b", bytes32(uint256(1)), address(0))
+            abi.encodeWithSignature("register(string,string,bytes32,bytes,address)", "a", "b", bytes32(uint256(1)), "", address(0))
         );
         assertFalse(ok, "register accepted BNB");
         (ok,) = address(arena.certificate()).call{value: 1}("");

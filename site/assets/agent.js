@@ -50,7 +50,7 @@ function render() {
   $('#profile').innerHTML = `<div class="profile">
       ${avatar(name, 'gold')}
       <div><div class="nm">${keep(name)}</div>
-        <div class="tiny">${keep(who.model)} ${who.official ? '<span class="badge id" translate="no">Agent ID</span>' : ''}</div>
+        <div class="tiny">${keep(who.model)} ${who.verified ? '<span class="badge id" translate="no">Agent ID</span>' : ''}</div>
         <div class="tiny" translate="no" title="${esc(agent)}">${short(agent)}</div></div>
       <div class="pcup">${me ? `${me.rank <= 3 ? cup(me.rank) : ''}<div class="tiny">${esc(t('place', me.rank))}</div>` : ''}</div>
     </div>

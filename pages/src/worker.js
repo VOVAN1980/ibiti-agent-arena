@@ -1,6 +1,8 @@
-// The page server (a Cloudflare Worker). Stateless: it holds no keys and no money.
+// The page server (a Cloudflare Worker). Stateless; it holds no money. It shares the judge's key with
+// the judge (the same Worker), only to sign commitments.
 //
-//   GET /commit/<address>          the commitment to pass to register() for the agent's next fight
+//   GET /commit/<address>          { fight, commitment, signature } for register(): the agent's next
+//                                  fight's commitment and the judge's signature of it
 //   GET /access/<address>          what the agent signs (EIP-712) to see its own pages of that fight
 //   GET /fight/<address>?sig=<signature>[&format=md]
 //   GET /task/<address>/<fight>/<round>[?lang=xx]   for the audience: a round's theme, once it has opened
@@ -22,6 +24,7 @@
 //             from it. Secret until the season ends; the arena stores only its keccak256
 //             (secretCommit), and the server refuses to serve pages with any other secret.
 //   CHAIN_ID  56 on BNB Smart Chain
+//   JUDGE_KEY the judge's key (a Worker secret): it signs the commitments
 //   SITE_URL  the public origin of this server, for the links in /skill.md
 
 import { makeChain, clockOf, BREAK } from './chain.js';
@@ -31,6 +34,7 @@ import { arenaKeys } from './keys.js';
 import { accessRequest, signedBy } from './access.js';
 import { planOf } from './plan.js';
 import { themeOf } from './themes.js';
+import { signCommitment } from './sign.js';
 
 const HEADERS = { 'cache-control': 'no-store', 'x-robots-tag': 'noindex, nofollow', 'referrer-policy': 'no-referrer' };
 const hms = (unix) => new Date(unix * 1000).toISOString().slice(11, 19);
@@ -99,11 +103,13 @@ export async function handleFight(url, env, deps = {}) {
   if (t) return task(url, env, chain, t[1].toLowerCase(), Number(t[2]), Number(t[3]));
   const agent = m[2].toLowerCase();
 
-  if (m[1] === 'commit') {
-    const next = (await chain.lastFight(agent)) + 1;
-    return text(200, keys.commitment(env.ARENA, agent, next));
-  }
   const chainId = Number(env.CHAIN_ID ?? 56);
+  if (m[1] === 'commit') {
+    if (!env.JUDGE_KEY) return text(500, 'The arena is not configured: the judge key is missing.');
+    const fight = (await chain.lastFight(agent)) + 1;
+    const commitment = keys.commitment(env.ARENA, agent, fight);
+    return json(200, { fight, commitment, signature: signCommitment(env.JUDGE_KEY, chainId, env.ARENA, agent, fight, commitment) });
+  }
   if (m[1] === 'access') {
     // the live fight, or else the next one: sign it before register()
     const number = (await chain.lastFight(agent)) + ((await chain.isLive(agent)) ? 0 : 1);
@@ -119,12 +125,12 @@ export async function handleFight(url, env, deps = {}) {
       return text(404, `You are in the waiting hall. The next draw is at ${hms(at)} UTC (in ${Math.max(0, at - now)} s): if you are paired, or after two draws alone, your fight starts with a 60-second countdown. Reload this page then.`);
     }
     return f.startedAt === 0
-      ? text(404, 'This agent has not stepped into the ring yet. Get your commitment at /commit/<your address> and sign your page access at /access/<your address>, then call register(name, model, commitment, challenge) to enter the waiting hall for the next draw.')
+      ? text(404, 'This agent has not stepped into the ring yet. Get your commitment and its signature at /commit/<your address> and sign your page access at /access/<your address>, then call register(name, model, commitment, signature, challenge) to enter the waiting hall for the next draw.')
       : text(410, 'This fight is over. The scorecard is on the site.');
   }
   if (f.round < 1 || f.round > 12) return text(410, 'All 12 rounds are answered. The scorecard is on the site.');
   if (f.commitment.toLowerCase() !== keys.commitment(env.ARENA, agent, f.number).toLowerCase()) {
-    return text(409, 'This fight was registered with a wrong commitment, so it cannot be judged. Call finish(), wait for the next day, get the commitment at /commit/<your address> and register again.');
+    return text(409, "This fight does not carry this server's commitment, so this server cannot show its pages. Call finish() and tell the arena's team.");
   }
   // the signature: in the Authorization header (best: it stays out of links and logs), or in ?sig=
   // for an agent that can only open links
@@ -150,7 +156,8 @@ export async function handleFight(url, env, deps = {}) {
 
   // the fight's secret plan: the same for both fighters of a match, nowhere on-chain
   const plan = planOf(keys.cardSeed(f.seed));
-  const spare = [...Array(50).keys()].map((i) => i + 1).filter((tr) => !plan.traps.includes(tr));
+  // extra punches: any trap but this round's three (another round may well use it)
+  const spare = [...Array(50).keys()].map((i) => i + 1).filter((tr) => !plan.traps.slice((round - 1) * 3, round * 3).includes(tr));
   const decoys = typeof env.DECOYS === 'string' ? JSON.parse(env.DECOYS) : env.DECOYS;
   const page = renderRound({
     tournament: f.number,

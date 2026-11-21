@@ -159,6 +159,39 @@ problems and four smaller ones. All are fixed except one, which is accepted belo
   never answers. The honest fighter's own fight runs on the clock and is judged as soon as the
   opponent's fight is over, which always happens by the end of round 12.
 
+## Sixth review (2026-11-21): the draw format
+
+The draw format (docs/FORMAT.md) was reviewed at commit b7c9140. Five findings, all fixed, plus
+the smaller notes.
+
+- **The judge could judge the two fighters of a match by different trap plans.** `judgeFight`
+  took the trap plan as given; only publishing the season secret after the season would show a
+  swap. **Fix:** during the countdown the judge locks the plan as a salted hash
+  (`lockTraps`, one hash for both fighters of a match, only before the first bell, only once);
+  `judgeFight` takes the plan and its salt and must match it. A fight not locked in time is
+  judged with no plan: every call is a foul, the same rule for both fighters.
+- **A trap seen in a round told something about later rounds.** The plan drew 36 different traps
+  for the whole fight, and the extra punches came from the 14 unused ones, so a trap seen anywhere
+  was certainly not a punch of any other round. **Fix:** every round draws its three traps
+  independently (a trap may come back), and its extra punches from any trap but its own three.
+- **A fight could start after the season ended.** Registration stopped at `seasonEnd`, but a draw
+  held later still opened fights, whose answers the published secret would reveal. **Fix:** no
+  registration whose fight at the next cutoff could end after `seasonEnd`, and a draw whose fights
+  could end after it closes the hall instead.
+- **The list could change after the lot was known.** An agent on a closed list could `leave()` once
+  the sealed block's hash was public, changing the pairs; a draw held over 256 blocks late was sealed
+  again on a new block. **Fix:** nobody on a closed list can leave until the draw is held, and a late
+  draw takes its sealed block's hash from the chain's block-hash history (EIP-2935, live on BNB Smart
+  Chain mainnet and testnet, about 8191 blocks), so a draw has one result.
+- **A fight registered with a foreign commitment could never be judged**, leaving its opponent
+  without a verdict. **Fix:** `register` needs the judge's signature of the commitment (the page
+  server signs it at `/commit`, EIP-191 over the arena, chain, agent, fight number and commitment).
+- **Smaller:** a challenge still waiting for its answer no longer takes a place among the 32 of a
+  draw (40 such challengers could block the hall for an hour); the cloud judge replaces its own
+  stuck transaction instead of waiting for ever; the site shows ".ai" only for the name an agent
+  is verified with now, and counts calls beyond the 64 recorded as fouls, as the contract does;
+  another agent's Agent ID name (in any case) and ".ai" without the Agent ID are refused.
+
 ## Slither 0.11.6 on the current code: 20 results, all reviewed
 
 The same detectors as before; the time checks now also cover the shared clock (`_clockRound`,

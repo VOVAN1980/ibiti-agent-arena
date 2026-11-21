@@ -39,6 +39,15 @@ export function arenaKeys(secretHex) {
     cardSeed(seed) {
       return keccak256(w(s) + w('63617264') + w(seed)); // "card"
     },
+    /** The salt of a card's locked trap plan (both fighters of a match share the card and the plan):
+     *  without it the locked hash cannot be used to test a guessed plan. */
+    trapSalt(arena, seed) {
+      return keccak256(w(s) + w('7472617073') + w(arena) + w(seed)); // "traps"
+    },
+    /** What the judge locks before the first bell: keccak256(abi.encode(uint8[36] traps, bytes32 trapSalt)). */
+    trapsCommit(traps, trapSalt) {
+      return keccak256(traps.map((t) => w(Number(t).toString(16))).join('') + w(trapSalt));
+    },
   };
 }
 
