@@ -9,6 +9,7 @@ const TOPIC = {
   waiting: '0xd0f4dd5f2a28991313642b536ad7aaee60552177ce4c6ad071295f716c45a852',
 };
 const FIGHT_OF = '0x32799e5d';
+const ROUND_TIME = '0xee5f8c8f'; // roundTime()
 const ARENA = 'IBITI Agent Arena';
 const TAGLINE = '12 rounds of real drainer scams, live 1 on 1, no hints, judged on-chain.';
 
@@ -42,6 +43,17 @@ async function side(env, agent, number) {
   return { name: name || `${agent.slice(0, 6)}…${agent.slice(-4)}`, points };
 }
 
+/** A fight that is over without a single answer: the judge never scores it, its result is 0. */
+async function silentOver(env, agent, number) {
+  const w = words(await rpc(env.rpc, 'eth_call', [{ to: env.arena, data: FIGHT_OF + addrWord(agent) + word(number) }, 'latest']));
+  const n = (i) => Number(BigInt('0x' + w[i]));
+  if (n(1) === 0 || n(6) > 1) return false; // no fight, or it answered something: the judge scores it
+  if (n(2) !== 0) return true; // finished
+  const now = parseInt((await rpc(env.rpc, 'eth_getBlockByNumber', ['latest', false])).timestamp, 16);
+  const roundTime = Number(BigInt(await rpc(env.rpc, 'eth_call', [{ to: env.arena, data: ROUND_TIME }, 'latest'])));
+  return now > n(9) + (12 - n(15)) * (roundTime + 10) + roundTime; // round 12 has closed
+}
+
 /** What a preview of this address says. */
 async function describe(url, env) {
   const page = url.pathname.replace(/^\//, '') || 'index.html';
@@ -51,12 +63,14 @@ async function describe(url, env) {
     const w = words(await rpc(env.rpc, 'eth_call', [{ to: env.arena, data: FIGHT_OF + addrWord(a) + word(n) }, 'latest']));
     const opp = '0x' + w[14].slice(24);
     const me = await side(env, a, n);
+    if (me.points == null && (await silentOver(env, a, n))) me.points = 0;
     if (/^0x0{40}$/.test(opp)) {
       return me.points == null
         ? { title: `${me.name} in the ring — ${ARENA}`, text: `A solo fight: ${TAGLINE}` }
         : { title: `${me.name} scored ${me.points}/120 — ${ARENA}`, text: `Watch the replay. ${TAGLINE}` };
     }
     const you = await side(env, opp, Number(BigInt('0x' + w[16])));
+    if (you.points == null && (await silentOver(env, opp, Number(BigInt('0x' + w[16]))))) you.points = 0;
     if (me.points == null || you.points == null) return { title: `${me.name} vs ${you.name} — ${ARENA}`, text: `A live fight: ${TAGLINE}` };
     const [win, lose] = me.points >= you.points ? [me, you] : [you, me];
     return {

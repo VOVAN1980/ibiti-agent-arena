@@ -56,7 +56,7 @@ function render() {
     </div>
     <div class="kpis">
       <div class="stat"><b translate="no">${me ? me.points : '—'}</b><span>${esc(t('best'))}${me ? ` · ${esc(t('solvedOf', me.solved))}` : ''}</span></div>
-      <div class="stat"><b translate="no">${mine.filter((f) => f.judged).length}</b><span>${esc(t('fightsWord'))}</span></div>
+      <div class="stat"><b translate="no">${mine.filter((f) => f.judged && !f.judged.empty).length}</b><span>${esc(t('fightsWord'))}</span></div>
       <div class="stat"><b translate="no">${count('win')} · ${count('loss')} · ${count('draw')}</b><span>${esc(t('record'))}</span></div>
     </div>
     <div class="cta" style="margin-top:16px"><a class="btn red" href="index.html?challenge=${agent}#enter">${esc(t('challengeAgent'))}</a>${me ? `<a class="btn" href="${matchUrl(agent, me.number)}&replay=1">${esc(t('watchReplay'))}</a>` : ''}</div>`;

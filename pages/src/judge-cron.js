@@ -10,18 +10,23 @@
 //   match is judged only when both fights are over), empty (nothing answered: it would score 0 and
 //   only cost gas), or started with a foreign commitment (it can never be judged);
 // - does nothing while an earlier judgement is still pending (no double sending);
-// - sends at most MAX_PER_RUN judgements, each first simulated (eth_estimateGas), signed here with
-//   the judge key (a Worker secret) and sent as a raw transaction.
+// - sends at most MAX_PER_RUN judgements a run and MAX_PER_HOUR an hour (a guard against draining
+//   the judge's gas). The hour is counted on the chain itself: the Judged events of the last hour of
+//   blocks, since only the judge emits them;
+// - simulates each judgement first (eth_estimateGas), signs it here with the judge key (a Worker
+//   secret) and sends it as a raw transaction.
 //
-// Environment: RPC_URL, ARENA, CHAIN_ID, DEPLOY_BLOCK, SECRET (Worker secret), JUDGE_KEY (Worker
-// secret), LOOKBACK_BLOCKS (default 20000), MAX_PER_RUN (default 5).
+// Environment: RPC_URL, ARENA, CHAIN_ID, DEPLOY_BLOCK, BLOCKS_PER_WEEK, SECRET (Worker secret),
+// JUDGE_KEY (Worker secret), LOOKBACK_BLOCKS (default 20000), MAX_PER_RUN (default 5),
+// MAX_PER_HOUR (default 60).
 
 import { secp256k1 } from '@noble/curves/secp256k1.js';
 import { keccak256 } from './keccak.js';
 import { arenaKeys, answerHash } from './keys.js';
 import { makeChain, BREAK } from './chain.js';
 
-const STARTED = keccak256(utf8Hex('Started(address,uint32,bytes32,bool,bytes32,bytes32,address,bool)'));
+export const STARTED = keccak256(utf8Hex('Started(address,uint32,bytes32,bool,bytes32,bytes32,address,bool)'));
+export const JUDGED = keccak256(utf8Hex('Judged(address,uint32,bool,uint8,uint16,uint64,uint8,uint8,uint8,uint32,bytes32[12])'));
 const JUDGE_FIGHT = keccak256(utf8Hex('judgeFight(address,uint32,bytes32[12],bytes32)')).slice(0, 10);
 const JUDGE = keccak256(utf8Hex('judge()')).slice(0, 10);
 const CHUNK = 5000;
@@ -108,18 +113,29 @@ export async function judgeRun(env, { fetchFn = fetch, log = console.log } = {})
   const latest = parseInt(await rpc('eth_blockNumber', []), 16);
   const now = parseInt((await rpc('eth_getBlockByNumber', ['latest', false])).timestamp, 16);
   const roundTime = await chain.roundTime();
+  const blocksPerHour = Math.ceil(Number(env.BLOCKS_PER_WEEK ?? 604800) / 168);
   const fights = new Map();
-  for (let from = Math.max(Number(env.DEPLOY_BLOCK ?? 0), latest - Number(env.LOOKBACK_BLOCKS ?? 20000)); from <= latest; from += CHUNK) {
+  let lastHour = 0; // judgements sent in the last hour
+  for (let from = Math.max(Number(env.DEPLOY_BLOCK ?? 0), latest - Math.max(Number(env.LOOKBACK_BLOCKS ?? 20000), blocksPerHour)); from <= latest; from += CHUNK) {
     const to = Math.min(latest, from + CHUNK - 1);
-    const logs = await rpc('eth_getLogs', [{ address: arena, fromBlock: '0x' + from.toString(16), toBlock: '0x' + to.toString(16), topics: [STARTED] }]);
-    for (const l of logs) fights.set(l.topics[1] + l.topics[2], { agent: '0x' + l.topics[1].slice(26), number: parseInt(l.topics[2], 16) });
+    const logs = await rpc('eth_getLogs', [{ address: arena, fromBlock: '0x' + from.toString(16), toBlock: '0x' + to.toString(16), topics: [[STARTED, JUDGED]] }]);
+    for (const l of logs) {
+      if (l.topics[0] === JUDGED) {
+        if (parseInt(l.blockNumber, 16) > latest - blocksPerHour) lastHour++;
+      } else fights.set(l.topics[1] + l.topics[2], { agent: '0x' + l.topics[1].slice(26), number: parseInt(l.topics[2], 16) });
+    }
+  }
+  const budget = Math.min(Number(env.MAX_PER_RUN ?? 5), Number(env.MAX_PER_HOUR ?? 60) - lastHour);
+  if (budget <= 0) {
+    log(`hourly limit reached: ${lastHour} judgements in the last hour`);
+    return { judged: 0, waiting: false, limited: true };
   }
 
   const over = (f) => f.finishedAt !== 0 || now > f.clockAt + (12 - f.clockRound) * (roundTime + BREAK) + roundTime;
   let nonce = BigInt(pendingNonce);
   let judged = 0;
   for (const { agent, number } of fights.values()) {
-    if (judged >= Number(env.MAX_PER_RUN ?? 5)) break;
+    if (judged >= budget) break;
     const f = await chain.fightOf(agent, number);
     if (f.judged || !over(f)) continue;
     if (f.opponent !== ZERO && !over(await chain.fightOf(f.opponent, f.opponentNumber))) continue;

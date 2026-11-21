@@ -685,3 +685,41 @@ test('the Cloudflare judge signs exactly what Foundry signs', async () => {
   assert.ok(data.startsWith('0x617f72ee'));
   assert.equal((data.length - 10) / 64, 15);
 });
+
+test('the Cloudflare judge keeps to 60 judgements an hour, counted on the chain', async () => {
+  const { judgeRun, addressOf, JUDGED, STARTED } = await import('../src/judge-cron.js');
+  assert.equal(JUDGED, '0x72e2438d123b5dc0eb021a0e91584f9268b8dbc84049b95899e13a1697bb2f2f', 'the Judged event the site reads');
+  const key = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
+  const word = (h) => String(h).replace(/^0x/, '').padStart(64, '0');
+  // A's fight 1: over, 4 rounds answered, started with this server's commitment
+  const fight = '0x' + [SEED, '1', '64', '0', '1', '0', '5', '0', '1', 'a', '0', '0', '0', KEYS.commitment(ARENA, A, 1), '0', '1', '0'].map(word).join('');
+  const run = async (judgedLastHour) => {
+    const sent = [];
+    const logs = [{ topics: [STARTED, '0x' + word(A), '0x' + word('1')], blockNumber: '0x2328' }, ...Array.from({ length: judgedLastHour }, () => ({ topics: [JUDGED], blockNumber: '0x2700' }))];
+    const fetchFn = async (url, { body }) => {
+      const q = JSON.parse(body);
+      const ok = (result) => ({ json: async () => ({ jsonrpc: '2.0', id: q.id, result }) });
+      const p = q.params?.[0];
+      switch (q.method) {
+        case 'eth_call':
+          if (p.data.startsWith('0x24627013')) return ok(KEYS.commit); // secretCommit()
+          if (p.data.startsWith('0x32799e5d')) return ok(fight); // fightOf
+          if (p.data.startsWith('0xee5f8c8f')) return ok('0x' + word('3c')); // roundTime() = 60
+          return ok('0x' + word(addressOf(key))); // judge()
+        case 'eth_getTransactionCount': return ok('0x5');
+        case 'eth_blockNumber': return ok('0x' + (10000).toString(16));
+        case 'eth_getBlockByNumber': return ok({ timestamp: '0x' + (100000).toString(16) });
+        case 'eth_getLogs': return ok(logs.filter((l) => parseInt(l.blockNumber, 16) >= parseInt(p.fromBlock, 16) && parseInt(l.blockNumber, 16) <= parseInt(p.toBlock, 16)));
+        case 'eth_estimateGas': return ok('0x30000');
+        case 'eth_gasPrice': return ok('0x5f5e100');
+        case 'eth_sendRawTransaction': sent.push(q.params[0]); return ok('0x' + 'aa'.repeat(32));
+        default: throw new Error(q.method);
+      }
+    };
+    await judgeRun({ RPC_URL: 'http://rpc', ARENA, CHAIN_ID: 56, DEPLOY_BLOCK: 0, BLOCKS_PER_WEEK: 604800, SECRET: '11'.repeat(32), JUDGE_KEY: key }, { fetchFn, log: () => {} });
+    return sent.length;
+  };
+  assert.equal(await run(60), 0, 'sixty judgements in the last hour: no more');
+  assert.equal(await run(59), 1, 'fifty-nine: one more');
+  assert.equal(await run(0), 1, 'none: the fight is judged');
+});

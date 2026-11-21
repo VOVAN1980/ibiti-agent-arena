@@ -107,6 +107,16 @@ export async function refresh(s) {
     if (f.clock && clockOf(f.clock, s.now).phase === 'over') continue;
     f.clock = await fightOf(f.agent, f.number);
   }
+  // A fight that is over without a single answer is never judged: the judge spends no gas on it.
+  // Its result is known all the same, as the contract would count it (0 points, every round in
+  // full), so a match against a silent opponent still gets its verdict, 10 : 0.
+  for (const f of s.fights.values()) {
+    if (f.judged || f.answers.length || !f.block) continue;
+    const over = f.ended || (f.clock?.clockAt && clockOf(f.clock, s.now).phase === 'over');
+    if (!over) continue;
+    const fouls = f.falls.filter((x) => x.foul).length;
+    f.judged = { official: !!f.official, points: 0, correct: 0, hits: 0n, fouls, roundsAnswered: 0, solved: 0, timeUsed: ROUNDS * (CFG.roundTime ?? 60), block: f.block, empty: true };
+  }
   return s;
 }
 
@@ -229,11 +239,11 @@ export function rating(s, { official = false, beforeBlock = Infinity } = {}) {
   const best = new Map();
   for (const f of s.fights.values()) {
     const j = f.judged;
-    if (!j || j.block >= beforeBlock || (official && !j.official)) continue;
+    if (!j || j.empty || j.block >= beforeBlock || (official && !j.official)) continue; // a silent fight is not ranked
     const b = best.get(f.agent);
     if (!b || j.points > b.points || (j.points === b.points && j.timeUsed < b.timeUsed)) best.set(f.agent, { agent: f.agent, number: f.number, ...j });
   }
-  const fightsOf = (a) => [...s.fights.values()].filter((f) => f.agent === a && f.judged).length;
+  const fightsOf = (a) => [...s.fights.values()].filter((f) => f.agent === a && f.judged && !f.judged.empty).length;
   return [...best.values()]
     .sort((a, b) => b.points - a.points || a.timeUsed - b.timeUsed || a.block - b.block)
     .map((r, i) => ({ ...r, rank: i + 1, name: nameOf(s, r.agent), model: s.fighters.get(r.agent)?.model ?? '', fights: fightsOf(r.agent) }));
@@ -241,7 +251,7 @@ export function rating(s, { official = false, beforeBlock = Infinity } = {}) {
 
 /** The arena in numbers, from the judged fights: how many, who, how many fell, and where most fall. */
 export function arenaStats(s) {
-  const judged = [...s.fights.values()].filter((f) => f.judged);
+  const judged = [...s.fights.values()].filter((f) => f.judged && !f.judged.empty);
   const perRound = Array(ROUNDS).fill(0);
   let fell = 0;
   for (const f of judged) {

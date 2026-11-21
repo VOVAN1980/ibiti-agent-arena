@@ -329,7 +329,7 @@ function renderRing(b) {
   const blue = b.blue;
   const clock = red.clock?.clockAt ? red.clock : blue?.clock;
   const c0 = clock?.clockAt ? clockOf(clock, s.now) : { phase: 'over' };
-  const ended = (red.ended || red.judged || c0.phase === 'over') && (!blue || blue.ended || blue.judged || c0.phase === 'over');
+  const ended = !!(red.ended || red.judged || c0.phase === 'over') && !!(!blue || blue.ended || blue.judged || c0.phase === 'over');
   const c = ended ? { phase: 'over' } : c0;
   const v = verdict(b);
   const vr = cornerView(red, c);
