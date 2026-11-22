@@ -143,7 +143,7 @@ export async function judgeRun(env, { fetchFn = fetch, log = console.log, wait =
   for (let n = 1, count = await chain.seasonCount(); n <= count; n++) {
     const s = await chain.season(n);
     if (s.judge.toLowerCase() !== me.toLowerCase()) continue;
-    const secret = env[`SECRET_${n}`] ?? env.SECRET;
+    const secret = env[`SECRET_${n}`] ?? (n === 1 ? env.SECRET : undefined); // a secret serves one season
     let k = null;
     try {
       k = secret ? arenaKeys(secret) : null;

@@ -59,6 +59,21 @@ contract SeasonHarness {
     }
 }
 
+/// @dev A season certificate that answers the calendar's checks but reverts on every record.
+contract BrokenCertificate {
+    address public arena;
+    uint16 public season;
+
+    constructor(address arena_, uint16 season_) {
+        arena = arena_;
+        season = season_;
+    }
+
+    function record(address, bytes32, bool, uint8, uint32, uint64) external pure {
+        revert("broken");
+    }
+}
+
 contract AgentArenaTest is Test {
     AgentArena arena;
     ArenaLens lens = new ArenaLens();
@@ -1612,12 +1627,15 @@ contract AgentArenaTest is Test {
 
     // ------------------------------------------------------------ seasons in one arena
 
+    bytes32 constant S2 = keccak256("season 2 secret");
+    bytes32 constant S3 = keccak256("season 3 secret");
+
     /// @dev Season 1 runs one day from now; season 2 is scheduled right after it, for a week.
     function _twoSeasons(address judge2) internal returns (uint64 end1) {
         seasonEnd = uint64(block.timestamp) + 1 days;
         arena = _deploy(true);
         end1 = seasonEnd;
-        arena.seasonBook().schedule(end1, end1 + 7 days, judge2, keccak256("season 2 secret"), address(_certFor(arena, 2)));
+        arena.seasonBook().schedule(end1, end1 + 7 days, judge2, S2, address(_certFor(arena, 2)));
     }
 
     function test_seasonsFollowOneAnotherAndNeverOverlap() public {
@@ -1626,8 +1644,8 @@ contract AgentArenaTest is Test {
         ArenaSeasons book = arena.seasonBook();
         ArenaCertificate c2 = _certFor(arena, 2);
         vm.expectRevert(ArenaSeasons.BadSeason.selector);
-        book.schedule(seasonEnd - 1, seasonEnd + 7 days, judgeKey, COMMIT, address(c2)); // overlaps season 1
-        book.schedule(seasonEnd, seasonEnd + 7 days, judgeKey, COMMIT, address(c2));
+        book.schedule(seasonEnd - 1, seasonEnd + 7 days, judgeKey, S2, address(c2)); // overlaps season 1
+        book.schedule(seasonEnd, seasonEnd + 7 days, judgeKey, S2, address(c2));
         assertEq(book.seasonCount(), 2);
         assertEq(arena.currentSeason(), 1);
         vm.warp(seasonEnd);
@@ -1641,7 +1659,7 @@ contract AgentArenaTest is Test {
         ArenaSeasons book = arena.seasonBook();
         // season 2 has not started: the owner moves it, same number, same certificate contract
         address c2 = book.get(2).certificate;
-        book.schedule(end1 + 1 hours, end1 + 30 days, judgeKey, COMMIT, c2);
+        book.schedule(end1 + 1 hours, end1 + 30 days, judgeKey, S2, c2);
         assertEq(book.seasonCount(), 2);
         assertEq(book.get(2).end, end1 + 30 days);
         // season 2 has started: nothing can touch it; scheduling now makes season 3, after season 2
@@ -1649,8 +1667,8 @@ contract AgentArenaTest is Test {
         assertEq(arena.currentSeason(), 2);
         ArenaCertificate c3 = _certFor(arena, 3);
         vm.expectRevert(ArenaSeasons.BadSeason.selector);
-        book.schedule(end1 + 3 hours, end1 + 40 days, judgeKey, COMMIT, address(c3)); // inside season 2
-        book.schedule(end1 + 30 days, end1 + 60 days, judgeKey, COMMIT, address(c3));
+        book.schedule(end1 + 3 hours, end1 + 40 days, judgeKey, S3, address(c3)); // inside season 2
+        book.schedule(end1 + 30 days, end1 + 60 days, judgeKey, S3, address(c3));
         assertEq(book.seasonCount(), 3);
         assertEq(book.get(1).end, end1, "season 1 unchanged");
         assertEq(book.get(2).end, end1 + 30 days, "season 2 unchanged once started");
@@ -1663,12 +1681,12 @@ contract AgentArenaTest is Test {
         ArenaCertificate c2 = _certFor(arena, 2);
         vm.prank(alice);
         vm.expectRevert(ArenaSeasons.NotAdmin.selector);
-        book.schedule(SEASON_END, SEASON_END + 7 days, judgeKey, COMMIT, address(c2));
+        book.schedule(SEASON_END, SEASON_END + 7 days, judgeKey, S2, address(c2));
         book.setAdmin(alice);
         vm.expectRevert(ArenaSeasons.NotAdmin.selector);
-        book.schedule(SEASON_END, SEASON_END + 7 days, judgeKey, COMMIT, address(c2));
+        book.schedule(SEASON_END, SEASON_END + 7 days, judgeKey, S2, address(c2));
         vm.prank(alice);
-        book.schedule(SEASON_END, SEASON_END + 7 days, judgeKey, COMMIT, address(c2));
+        book.schedule(SEASON_END, SEASON_END + 7 days, judgeKey, S2, address(c2));
         assertEq(book.seasonCount(), 2);
     }
 
@@ -1677,25 +1695,25 @@ contract AgentArenaTest is Test {
         uint64 s = SEASON_END;
         ArenaCertificate wrongNumber = _certFor(arena, 3);
         vm.expectRevert(ArenaSeasons.BadSeason.selector);
-        book.schedule(s, s + 7 days, judgeKey, COMMIT, address(wrongNumber));
+        book.schedule(s, s + 7 days, judgeKey, S2, address(wrongNumber));
         AgentArena other = _newArena();
         ArenaCertificate foreign = _certFor(other, 2);
         vm.expectRevert(ArenaSeasons.BadSeason.selector);
-        book.schedule(s, s + 7 days, judgeKey, COMMIT, address(foreign));
+        book.schedule(s, s + 7 days, judgeKey, S2, address(foreign));
         ArenaCertificate c2 = _certFor(arena, 2);
         vm.expectRevert(ArenaSeasons.BadSeason.selector);
         book.schedule(s, s + 7 days, address(0), COMMIT, address(c2));
         vm.expectRevert(ArenaSeasons.BadSeason.selector);
         book.schedule(s, s + 7 days, judgeKey, bytes32(0), address(c2));
         vm.expectRevert(ArenaSeasons.BadSeason.selector);
-        book.schedule(s, s + 10 minutes, judgeKey, COMMIT, address(c2)); // no room for one fight
+        book.schedule(s, s + 10 minutes, judgeKey, S2, address(c2)); // no room for one fight
     }
 
     function test_aStartAlreadyPastMeansNow() public {
         seasonEnd = uint64(block.timestamp) + 1 days;
         arena = _deploy(true);
         vm.warp(seasonEnd + 5 days); // season 1 is over; season 2 is sent "to start yesterday"
-        arena.seasonBook().schedule(seasonEnd, seasonEnd + 30 days, judgeKey, COMMIT, address(_certFor(arena, 2)));
+        arena.seasonBook().schedule(seasonEnd, seasonEnd + 30 days, judgeKey, S2, address(_certFor(arena, 2)));
         assertEq(arena.seasonBook().get(2).start, vm.getBlockTimestamp(), "it starts when the transaction lands");
         assertEq(arena.currentSeason(), 2);
     }
@@ -1710,7 +1728,7 @@ contract AgentArenaTest is Test {
         vm.expectRevert(AgentArena.SeasonOver.selector);
         arena.register("alice", "b", bytes32(uint256(1)), "", PAGE_KEY_HASH, address(0));
         ArenaCertificate c2 = _certFor(arena, 2);
-        arena.seasonBook().schedule(end1 + 1 days, end1 + 8 days, judgeKey, keccak256("season 2 secret"), address(c2));
+        arena.seasonBook().schedule(end1 + 1 days, end1 + 8 days, judgeKey, S2, address(c2));
         vm.warp(end1 + 1 days);
         _match(alice, bob);
         assertEq(_fight(alice).season, 2, "the fight belongs to season 2");
@@ -1769,6 +1787,37 @@ contract AgentArenaTest is Test {
         _draw();
         assertTrue(arena.isLive(bob) && arena.isLive(carol), "bob and carol fight in season 2");
         assertEq(_fight(bob).season, 2);
+    }
+
+    function test_aSecretServesOneSeasonOnly() public {
+        // season 1's secret is published after season 1: given to season 2 too, it would give away
+        // every season-2 answer
+        ArenaSeasons book = arena.seasonBook();
+        ArenaCertificate c2 = _certFor(arena, 2);
+        vm.expectRevert(ArenaSeasons.BadSeason.selector);
+        book.schedule(SEASON_END, SEASON_END + 7 days, judgeKey, COMMIT, address(c2));
+        book.schedule(SEASON_END, SEASON_END + 7 days, judgeKey, S2, address(c2));
+        // season 2, not started yet, scheduled again: its own secret is still its own
+        book.schedule(SEASON_END + 1 days, SEASON_END + 8 days, judgeKey, S2, address(c2));
+        assertEq(book.seasonOfSecret(S2), 2);
+        assertEq(book.seasonOfSecret(COMMIT), 1);
+    }
+
+    function test_aBrokenCertificateCannotStopTheJudge() public {
+        // a season whose certificate contract reverts on every record: the judgement stands anyway
+        seasonEnd = uint64(block.timestamp) + 1 days;
+        arena = _deploy(true);
+        BrokenCertificate bad = new BrokenCertificate(address(arena), 2);
+        arena.seasonBook().schedule(seasonEnd, seasonEnd + 7 days, judgeKey, S2, address(bad));
+        vm.warp(seasonEnd);
+        _match(alice, bob);
+        _answerBoth(alice, bob);
+        _judge(alice);
+        assertTrue(_fight(alice).judged, "judged although the certificate reverted");
+        (uint8 all,,,) = arena.officialBest(alice);
+        assertEq(all, 120, "the all-time result stands");
+        (uint8 p2,,,) = arena.seasonBest(2, alice);
+        assertEq(p2, 120, "and the season's best in the arena");
     }
 
     function test_theCertificateKeepsTheNameTheFightWasFoughtUnder() public {

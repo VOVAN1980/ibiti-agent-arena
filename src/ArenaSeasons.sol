@@ -35,6 +35,9 @@ contract ArenaSeasons {
     mapping(uint16 => Season) public seasons;
     /// @notice The last season scheduled (seasons are numbered from 1).
     uint16 public seasonCount;
+    /// @notice The season each secret was given to: a secret serves one season only, since it is
+    ///         published after that season and would give away another season's answers.
+    mapping(bytes32 => uint16) public seasonOfSecret;
 
     /// @notice A season is scheduled, or a season that has not started yet is scheduled again.
     event SeasonScheduled(uint16 indexed season, uint64 start, uint64 end, address judge, bytes32 secretCommit, address certificate);
@@ -68,6 +71,9 @@ contract ArenaSeasons {
         uint64 fight = 60 + 12 * IArenaClock(arena).roundTime() + 11 * 10;
         if (end <= start + fight) revert BadSeason();
         if (judge_ == address(0) || secretCommit_ == bytes32(0)) revert BadSeason();
+        uint16 used = seasonOfSecret[secretCommit_];
+        if (used != 0 && used != n) revert BadSeason(); // another season's secret
+        seasonOfSecret[secretCommit_] = n;
         if (ISeasonCertificate(certificate_).arena() != arena || ISeasonCertificate(certificate_).season() != n) revert BadSeason();
         seasons[n] = Season(start, end, judge_, secretCommit_, certificate_);
         emit SeasonScheduled(n, start, end, judge_, secretCommit_, certificate_);

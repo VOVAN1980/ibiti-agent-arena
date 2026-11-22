@@ -101,6 +101,8 @@ contract AgentArena {
     uint8 public constant CHALLENGE_WAIT = 6;
     /// @notice Trap calls recorded per fight; any call beyond them is a foul at once.
     uint8 public constant MAX_CALLS = 64;
+    /// @notice The gas a season's certificate gets to record a judged fight.
+    uint32 public constant RECORD_GAS = 500_000;
     /// @notice A draw walks at most this many queue slots (left or stale ones included); the rest of
     ///         the queue waits for the next draw, in its order.
     uint8 public constant MAX_VISIT = 255;
@@ -308,6 +310,7 @@ contract AgentArena {
     error BadPageKey();
     error NotLocked();
     error BadText();
+    error LowGas();
 
     constructor(
         address agentIdRegistry_,
@@ -768,10 +771,14 @@ contract AgentArena {
     /// @dev The season's contract: this agent took part, and (official fights) its best result so far,
     ///      under the name this fight was fought under: a registration made before the judge came may
     ///      carry another.
+    ///      The certificate contract is the admin's choice: whatever it does, it cannot stop a
+    ///      judgement. It gets RECORD_GAS (far more than a record costs) and its failure is ignored; the
+    ///      judge must leave that much gas, so it cannot starve the record either.
     function _record(address agent, Fight storage f, uint8 points) internal {
         Best storage sb = seasonBest[f.season][agent];
         if (f.official) _keepBest(sb, f, points);
-        ArenaCertificate(_season(f.season).certificate).record(agent, f.name, f.official, sb.points, sb.timeUsed, sb.at);
+        if (gasleft() < RECORD_GAS + RECORD_GAS / 32) revert LowGas();
+        try ArenaCertificate(_season(f.season).certificate).record{gas: RECORD_GAS}(agent, f.name, f.official, sb.points, sb.timeUsed, sb.at) {} catch {}
     }
 
     // ================================================================ traps (all harmless)

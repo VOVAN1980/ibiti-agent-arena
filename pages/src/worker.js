@@ -431,7 +431,7 @@ const planSetOf = (env, n) => Number(seasonsConf(env)[n]?.plan ?? env.PLAN_VERSI
 /** Season `n`'s keys, from its secret (SECRET_<n>, or SECRET), checked against the secret's hash in the
  *  season calendar; null if this server does not hold that season's secret. */
 async function seasonKeys(env, chain, n) {
-  const secret = env[`SECRET_${n}`] ?? env.SECRET;
+  const secret = env[`SECRET_${n}`] ?? (n === 1 ? env.SECRET : undefined); // SECRET is season 1's only: a secret serves one season
   if (!n || !secret) return null;
   let keys;
   try {
