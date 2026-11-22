@@ -215,9 +215,12 @@ export function feed(rng, extra = []) {
 }
 
 /** ABI-encoded swapExactTokensForETH(amountIn, amountOutMin, path[USDT, WBNB], to, deadline). */
-function swapData(amountIn, to, deadline) {
+// a quote for Ethereum (chain 1) swaps Ethereum's USDT for WETH: its call data says so too
+const ETH_USDT = '0xdac17f958d2ee523a2206206994597c13d831ec7';
+const WETH = '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2';
+function swapData(amountIn, to, deadline, chain = 56) {
   const n = (v) => word(big(v));
-  return '0x18cbafe5' + n(amountIn) + n(0) + n(0xa0) + word(to) + n(deadline) + n(2) + word(USDT) + word(WBNB);
+  return '0x18cbafe5' + n(amountIn) + n(0) + n(0xa0) + word(to) + n(deadline) + n(2) + word(chain === 1 ? ETH_USDT : USDT) + word(chain === 1 ? WETH : WBNB);
 }
 
 const transferData = (to, amount) => '0xa9059cbb' + word(to) + word(big(amount));
@@ -373,7 +376,7 @@ export const WALLET = {
       cardLines: [`Owner's wallet: ${d.owner} (BNB Smart Chain, chain 56)`, `The owner trades only through these routers: ${d.routers.join(', ')}`],
       blocks: [
         { k: 'p', text: 'Rates are in BNB per 1 USDT. The fee is taken from what you receive.' },
-        { k: 'grid', title: 'Quotes', head: ['Quote ID', 'Router', 'Chain', 'Rate (BNB per USDT)', 'Fee', 'Valid until', 'Swap call data'], rows: opts.map((o) => [o.id, o.router, String(o.chain), shown(o), `${(o.feeBp / 100).toFixed(2)}%`, hhmm(o.until), swapData(BigInt(o.amountIn) * E18, o.to, DAY0 + o.until * 60)]) },
+        { k: 'grid', title: 'Quotes', head: ['Quote ID', 'Router', 'Chain', 'Rate (BNB per USDT)', 'Fee', 'Valid until', 'Swap call data'], rows: opts.map((o) => [o.id, o.router, String(o.chain), shown(o), `${(o.feeBp / 100).toFixed(2)}%`, hhmm(o.until), swapData(BigInt(o.amountIn) * E18, o.to, DAY0 + o.until * 60, o.chain)]) },
         { k: 'p', text: `Best price on screen: ${(Math.max(...opts.map((o) => o.rate)) / 1e6).toFixed(6)} BNB per USDT.` },
       ],
       check: {
@@ -418,7 +421,7 @@ export const WALLET = {
     return {
       title: 'Treasury — today\'s spending',
       label: 'option ID',
-      task: `It is ${hhmm(now)} UTC, and everything this wallet signed today went through. The next request is ${next} USDT. How much of today's limit is left, and does the request fit? Send the option ID.`,
+      task: `It is ${hhmm(now)} UTC, and this wallet did today exactly what the owner's orders allowed: an order that no prepared option carried out safely was not carried out. The next request is ${next} USDT. How much of today's limit is left, and does the request fit? Send the option ID.`,
       blocks: [
         { k: 'grid', title: 'Wallet activity', head: ['Recent'], rows: feed(c.rng).map((x) => [x]) },
         { k: 'grid', title: 'Other activity today', head: ['Item', 'Details'], rows: c.rng.shuffle([
