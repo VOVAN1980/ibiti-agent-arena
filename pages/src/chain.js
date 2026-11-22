@@ -94,6 +94,14 @@ export function makeChain({ rpc, arena, fetchFn }) {
       return { challenge: '0x' + w[3].slice(24), waited: Number(big(w[5])), registeredAt: Number(big(w[5])), verified: big(w[6]) !== 0n, active: big(w[7]) !== 0n, pageKeyHash: '0x' + (w[8] ?? '0'.repeat(64)) };
     },
     /** When the next draw may be held (0 before the first registration). */
+    /** The answer hashes of a fight, round 1 first (zero: not answered). */
+    async answersOf(agent, number) {
+      return words(await call('0x19a379cc' + word(agent) + num(number))).slice(0, 12).map((x) => '0x' + x);
+    },
+    /** How many agents wait in the hall. */
+    async hallCount() {
+      return Number(big(words(await call('0xb5c81661'))[0]));
+    },
     /** The cutoff of a draw that is sealed and not held yet (0: none). */
     async pendingCutoff() {
       return Number(big(words(await call('0xef92e6ba'))[0]));

@@ -35,7 +35,31 @@ const VIEWS = new Set([
   '0x787a08a6', // cooldown()
   '0xe757b20d', // seasonEnd()
 ]);
+// the season's contract (the ranking, the close, the certificates): what the site reads of it
+const SEASON_VIEWS = new Set([
+  '0xfe6dcdba', // top()
+  '0x9ef27b00', // closedAt()
+  '0x6c4470fb', // participants()
+  '0xc50b0fb0', // season()
+  '0x6b067159', // tookPart(address)
+  '0x222d825b', // placeOf(address)
+  '0x623c4047', // resultOf(address)
+  '0xc87b56dd', // tokenURI(uint256)
+]);
 const MAX_BODY = 4096;
+
+/** Earlier arenas of this site (their fights stay readable by links that name them). */
+function archive(env) {
+  let list = env.ARCHIVE ?? [];
+  if (typeof list === 'string') {
+    try {
+      list = JSON.parse(list);
+    } catch {
+      list = [];
+    }
+  }
+  return (Array.isArray(list) ? list : []).filter((x) => /^0x[0-9a-fA-F]{40}$/.test(String(x?.arena)));
+}
 
 /** The request body, read up to `max` bytes (null past it): a body without a length is never read whole. */
 async function bodyOf(request, max) {
@@ -73,6 +97,11 @@ export function siteConfig(env) {
     deployBlock: Number(env.DEPLOY_BLOCK ?? 0),
     blocksPerWeek: Number(env.BLOCKS_PER_WEEK ?? 604800),
     pollMs: 2000,
+    // the season: its number, its contract (the ranking, the close, the certificates)
+    season: Number(env.SEASON ?? 1),
+    certificate: env.CERTIFICATE ?? null,
+    // earlier arenas of this site: a link that names one opens its fight
+    archive: archive(env).map((x) => ({ arena: x.arena, deployBlock: Number(x.deployBlock ?? 0), season: x.season ?? null, certificate: x.certificate ?? null })),
   })};\n`;
 }
 
@@ -98,22 +127,30 @@ async function rpc(request, env) {
   // this arena only, in bounded ranges: the judge shares the node, so the site's reads stay small
   const refuse = (message) => json({ jsonrpc: '2.0', id: q.id ?? null, error: { code: -32602, message } });
   const arena = String(env.ARENA).toLowerCase();
+  const old = archive(env);
+  const arenas = new Set([arena, ...old.map((x) => x.arena.toLowerCase())]);
+  const seasons = new Set([env.CERTIFICATE, ...old.map((x) => x.certificate)].filter(Boolean).map((x) => String(x).toLowerCase()));
   const p0 = Array.isArray(q.params) ? q.params[0] : undefined;
+  let params = q.params ?? []; // what goes to the node: rebuilt from the checked fields only
   if (q.method === 'eth_call') {
-    if (String(p0?.to ?? '').toLowerCase() !== arena) return refuse('this arena only');
+    const to = String(p0?.to ?? '').toLowerCase();
+    if (!arenas.has(to) && !seasons.has(to)) return refuse('this arena only');
     // a known view, its arguments, at the latest block: no sender, gas, value or state override
     const data = String(p0.data ?? p0.input ?? '');
     if (Object.keys(p0).some((k) => !['to', 'data', 'input'].includes(k)) || q.params.length > 2 || (q.params.length === 2 && q.params[1] !== 'latest')) return refuse('a plain call of a view');
-    if (!/^0x[0-9a-fA-F]{8}([0-9a-fA-F]{64}){0,2}$/.test(data) || !VIEWS.has(data.slice(0, 10).toLowerCase())) return refuse('the views the site reads only');
+    if (!/^0x[0-9a-fA-F]{8}([0-9a-fA-F]{64}){0,2}$/.test(data) || !(seasons.has(to) ? SEASON_VIEWS : VIEWS).has(data.slice(0, 10).toLowerCase())) return refuse('the views the site reads only');
+    params = [{ to, data }, 'latest'];
   }
   if (q.method === 'eth_getLogs') {
-    if (String(p0?.address ?? '').toLowerCase() !== arena) return refuse('this arena only');
+    const address = String(p0?.address ?? '').toLowerCase();
+    if (!arenas.has(address) && !seasons.has(address)) return refuse('this arena only');
     const from = parseInt(p0?.fromBlock, 16);
     const to = parseInt(p0?.toBlock, 16);
     if (!(Number.isFinite(from) && Number.isFinite(to)) || to < from || to - from >= 50000) return refuse('a range of at most 50000 blocks');
+    params = [{ address, fromBlock: '0x' + from.toString(16), toBlock: '0x' + to.toString(16), ...(Array.isArray(p0.topics) ? { topics: p0.topics } : {}) }];
   }
   if (q.method === 'eth_getBlockByNumber' && (Array.isArray(q.params) ? q.params[1] : false) !== false) return refuse('no full blocks');
-  const res = await fetch(env.SITE_RPC_URL ?? env.RPC_URL, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: q.id ?? 1, method: q.method, params: q.params ?? [] }) });
+  const res = await fetch(env.SITE_RPC_URL ?? env.RPC_URL, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: q.id ?? 1, method: q.method, params }) });
   return new Response(await res.text(), { status: res.status, headers: { ...NO_STORE, 'content-type': 'application/json' } });
 }
 
@@ -142,7 +179,7 @@ export default {
     if (!env.JUDGE_KEY) return; // a server without the judge's key only serves pages
     ctx.waitUntil(
       judgeRun(env).then(
-        (r) => r.judged && console.log(`judged ${r.judged} fight(s)`),
+        (r) => r.sent && console.log(`sent ${r.sent} transaction(s), ${r.confirmed} confirmed; ${r.judged} judgement(s) among them${r.closed ? '; the season is closed' : ''}`),
         (e) => console.log(`judge: ${e.message}`),
       ),
     );

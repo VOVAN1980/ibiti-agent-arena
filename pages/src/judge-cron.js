@@ -53,6 +53,9 @@ const PENDING_CUTOFF = SEL('pendingCutoff()');
 const SEED_BLOCK = SEL('seedBlock()');
 const HALL_COUNT = SEL('hallCount()');
 const SEASON_END = SEL('seasonEnd()');
+const CERTIFICATE = SEL('certificate()');
+const CLOSED_AT = SEL('closedAt()');
+const CLOSE = SEL('close()');
 const CHUNK = 5000;
 const ZERO = '0x' + '0'.repeat(40);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -162,20 +165,20 @@ export async function judgeRun(env, { fetchFn = fetch, log = console.log, wait =
   }
   let nonce = pendingNonce;
   const sent = []; // [hash, what]: their receipts are checked before the run ends
-  const send = async (data, what) => {
+  const send = async (data, what, to = arena) => {
     if (Date.now() > deadline) {
       log(what + ': left for the next run (this run\'s time is up)');
       return null;
     }
     let gas;
     try {
-      gas = (BigInt(await rpc('eth_estimateGas', [{ from: me, to: arena, data }])) * 12n) / 10n;
+      gas = (BigInt(await rpc('eth_estimateGas', [{ from: me, to, data }])) * 12n) / 10n;
     } catch (e) {
       log(what + ': not now (' + e.message + ')');
       return null;
     }
     const gasPrice = BigInt(await rpc('eth_gasPrice', []));
-    const hash = await rpc('eth_sendRawTransaction', [signTx({ nonce, gasPrice, gas, to: arena, data, chainId }, env.JUDGE_KEY)]);
+    const hash = await rpc('eth_sendRawTransaction', [signTx({ nonce, gasPrice, gas, to, data, chainId }, env.JUDGE_KEY)]);
     nonce++;
     log(what + ': sent ' + hash);
     sent.push([hash, what]);
@@ -291,5 +294,12 @@ export async function judgeRun(env, { fetchFn = fetch, log = console.log, wait =
     const data = judgeCalldata(agent, number, hashes, keys.salt(arena, agent, number), traps, trapSalt);
     if ((await send(data, agent + '#' + number + ' judged')) !== null) judged++;
   }
-  return { judged, drew, waiting: false, confirmed: await receipts(), sent: sent.length };
+  // the season's close: after its end, once a run finds nothing left to judge, the judge closes the
+  // season (the ranking is final, the first ten places get their certificates)
+  let closed = false;
+  if (judged === 0 && now > (await word(SEASON_END))) {
+    const season = '0x' + (await rpc('eth_call', [{ to: arena, data: CERTIFICATE }, 'latest'])).slice(-40);
+    if (BigInt(await rpc('eth_call', [{ to: season, data: CLOSED_AT }, 'latest'])) === 0n) closed = (await send(CLOSE, 'close the season', season)) !== null;
+  }
+  return { judged, drew, waiting: false, closed, confirmed: await receipts(), sent: sent.length };
 }

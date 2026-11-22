@@ -745,6 +745,76 @@ test('what the first rehearsal with AI agents showed: the draw being held, the s
   assert.ok(card.includes('send it with the gas limit it gives'));
 });
 
+test('the cards of a judged match open for the jury: the page, the answer, the right code, never a key', async () => {
+  const right = KEYS.code(ARENA, A, 2, 3);
+  const ended = (finishedAt, more = {}) => {
+    const base = fakeChain({ round: 13, live: false, finishedAt });
+    return {
+      ...base,
+      fightOf: async () => ({ ...(await base.fight()), judged: true, correct: 0b100, ...more }),
+      answersOf: async () => Array.from({ length: 12 }, (_, i) => answerHash(i === 2 ? right : 'NOT-A-CODE')),
+    };
+  };
+  const get = async (chain, round = 3, q = '', env = ENV) => {
+    const r = await handleFight(new URL(`https://x/card/${A}/2/${round}${q}`), env, { chain });
+    return { status: r.status, body: await r.json() };
+  };
+  assert.equal((await get(fakeChain())).status, 425, 'a fight still running: no card');
+  assert.equal((await get({ ...ended(BELL + 900), fightOf: async () => ({ ...(await fakeChain({ round: 13, live: false, finishedAt: BELL + 900 }).fight()), judged: false }) })).status, 425, 'over but not judged yet');
+  const solved = await get(ended(BELL + 900));
+  assert.equal(solved.status, 200);
+  assert.deepEqual(solved.body.answer, { state: 'right', sent: right, right, pass: solved.body.answer.pass });
+  assert.equal(solved.body.points, 10, 'solved, no trap taken');
+  assert.equal(solved.body.traps.length, 3);
+  assert.ok(solved.body.page.includes('Round 3 of 12') && solved.body.page.includes(right), 'the page as the fighter saw it');
+  assert.ok(!JSON.stringify(solved.body).includes(PAGE_KEY) && !solved.body.page.includes('key='), 'no page key, no private link');
+  assert.ok(solved.body.theme.name, 'the theme of the round');
+  const wrong = await get(ended(BELL + 900), 5);
+  assert.deepEqual([wrong.body.answer.state, wrong.body.answer.sent, wrong.body.points], ['wrong', null, 0]);
+  assert.equal(wrong.body.answer.right, KEYS.code(ARENA, A, 2, 5), 'the right code is shown after the match');
+  assert.equal((await get(ended(BELL + 100), 3)).status, 404, 'a round that never opened has no card');
+  assert.equal((await get(ended(BELL + 900, { trapsCommit: '0x' + '0'.repeat(64) }))).status, 404, 'a match that never started has no cards');
+  // a fight of an earlier arena of this site, by a link that names it; an arena this site never ran is refused
+  const OLD = '0x' + 'ab'.repeat(20);
+  const withArchive = { ...ENV, ARCHIVE: JSON.stringify([{ arena: OLD, decoys: DECOYS }]) };
+  const task = async (q, env) => (await handleFight(new URL(`https://x/task/${A}/2/1${q}`), env, { chain: fakeChain() })).status;
+  assert.equal(await task(`?arena=${OLD}`, withArchive), 200);
+  assert.equal(await task(`?arena=${'0x' + 'cd'.repeat(20)}`, withArchive), 404);
+  assert.equal(await task(`?arena=${OLD}`, ENV), 404, 'no archive: only this arena');
+});
+
+test('alone in the hall an agent is told it waits for an opponent, not for a draw', async () => {
+  const get = async (chain) => (await (await handleFight(new URL(`https://x/fight/${A}?format=md&key=${PAGE_KEY}`), ENV, { chain })).text());
+  const hall = fakeChain({ startedAt: 0, inHall: true });
+  assert.match(await get({ ...hall, hallCount: async () => 1, nextDrawAt: async () => BELL }), /alone for now\. There is no fight without an opponent/);
+  assert.match(await get({ ...hall, hallCount: async () => 2, nextDrawAt: async () => BELL }), /the draw is being held now/);
+  assert.match(await get({ ...hall, hallCount: async () => 1, pendingCutoff: async () => BELL + 100, entry: async () => ({ ...(await hall.entry()), registeredAt: BELL }) }), /the draw is being held now/, 'its draw is sealed: it is held');
+});
+
+test('the public RPC knows the season\'s contract and forwards only what it checked', async () => {
+  const { default: host } = await import('../src/host.js');
+  const CERT = '0x' + 'cc'.repeat(20);
+  const env = { ...ENV, RPC_URL: 'http://rpc.invalid', CERTIFICATE: CERT, ASSETS: { fetch: async () => new Response('no', { status: 404 }) } };
+  const seen = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    seen.push(JSON.parse(init.body));
+    return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: '0x' }), { headers: { 'content-type': 'application/json' } });
+  };
+  try {
+    const ask = (params) => host.fetch(new Request('https://arena.example/rpc', { method: 'POST', body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params }) }), env).then((r) => r.json());
+    assert.equal((await ask([{ to: CERT, data: '0xfe6dcdba' }, 'latest'])).result, '0x', 'top() of the season');
+    assert.equal((await ask([{ to: CERT, data: '0x43d726d6' }, 'latest'])).error.message, 'the views the site reads only', 'close() is not a view');
+    assert.equal((await ask([{ to: CERT, data: '0x78a2ce59' }, 'latest'])).error.message, 'the views the site reads only', "the arena's views are not the season's");
+    await ask([{ to: ARENA.toUpperCase().replace('0X', '0x'), input: '0x78a2ce59' }]);
+    assert.deepEqual(seen.at(-1).params, [{ to: ARENA, data: '0x78a2ce59' }, 'latest'], 'rebuilt: the checked address and data, the latest block');
+    const cfg = await (await host.fetch(new Request('https://arena.example/config.js'), { ...env, SEASON: 3, ARCHIVE: JSON.stringify([{ arena: '0x' + 'ab'.repeat(20), deployBlock: 7 }]) })).text();
+    assert.ok(cfg.includes('"season":3') && cfg.includes(`"certificate":"${CERT}"`) && cfg.includes('"deployBlock":7'), 'the site knows its season and its earlier arenas');
+  } finally {
+    globalThis.fetch = real;
+  }
+});
+
 test('the server refuses: no fight yet, fight over, all rounds answered, bad path', async () => {
   const get = (path, chain) => handleFight(new URL(`https://x${path}`), ENV, { chain });
   assert.equal((await get(`/fight/${A}`, fakeChain({ startedAt: 0 }))).status, 404);
@@ -853,6 +923,7 @@ function fakeJudgeChain({ fights = {}, logs = [], pending = 5, mined = 5, now = 
         if (hall && p.data.startsWith('0x748e1910')) return ok('0x' + word(hall.nextDrawAt.toString(16))); // nextDrawAt()
         if (hall && p.data.startsWith('0xb5c81661')) return ok('0x' + word(hall.count.toString(16))); // hallCount()
         if (hall && p.data.startsWith('0xe757b20d')) return ok('0x' + word(hall.seasonEnd.toString(16))); // seasonEnd()
+        if (hall && p.data.startsWith('0x9ef27b00')) return ok('0x' + word((hall.closedAt ?? 0).toString(16))); // closedAt() of the season's contract
         if (p.data.startsWith('0xef92e6ba') || p.data.startsWith('0x748e1910')) return ok('0x' + word('0'));
         return ok('0x' + word('70997970c51812dc3a010c7d01b50e0d17dc79c8')); // judge()
       }
@@ -909,6 +980,20 @@ test("the judge closes a hall of one by the current time once no fight fits the 
   assert.equal(await run({ nextDrawAt: 1000, count: 1, seasonEnd: 100500 }), 1, 'the draw that closes the hall is held');
   assert.equal(await run({ nextDrawAt: 1000, count: 1, seasonEnd: 200000 }), 0, 'mid-season: no fight without an opponent');
   assert.equal(await run({ nextDrawAt: 1000, count: 2, seasonEnd: 200000 }), 1, 'two in the hall: the draw');
+});
+
+test('after the season the judge closes it, once nothing is left to judge', async () => {
+  const { judgeRun } = await import('../src/judge-cron.js');
+  const env = { RPC_URL: 'http://rpc', ARENA, CHAIN_ID: 56, DEPLOY_BLOCK: 0, BLOCKS_PER_WEEK: 604800, SECRET: '11'.repeat(32), JUDGE_KEY };
+  const close = keccak256(Buffer.from('close()').toString('hex')).slice(2, 10);
+  const run = async (hall) => {
+    const sent = [];
+    const r = await judgeRun(env, { fetchFn: fakeJudgeChain({ hall }, sent), log: () => {}, wait: async () => {} });
+    return { closes: sent.filter((tx) => tx.includes(close)).length, closed: r.closed };
+  };
+  assert.deepEqual(await run({ nextDrawAt: 0, count: 0, seasonEnd: 500 }), { closes: 1, closed: true }, 'the season is over and open: closed');
+  assert.deepEqual(await run({ nextDrawAt: 0, count: 0, seasonEnd: 500, closedAt: 600 }), { closes: 0, closed: false }, 'closed already');
+  assert.deepEqual(await run({ nextDrawAt: 0, count: 0, seasonEnd: 200000 }), { closes: 0, closed: false }, 'the season still runs');
 });
 
 test('the judge replaces a transaction that is stuck instead of waiting for ever', async () => {

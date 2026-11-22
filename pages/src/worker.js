@@ -12,6 +12,9 @@
 //        page reader may keep a page by its address and show an old round.
 //   GET /calldata/answer?round=<r>&code=<code>   the transaction data of answer(r, code)
 //   GET /task/<address>/<fight>/<round>[?lang=xx]   for the audience: a round's theme, once it has opened
+//   GET /card/<address>/<fight>/<round>[?lang=xx]   for the audience and the jury, once the match is
+//        judged: the round's page as that fighter saw it, what it answered, the right answer and why
+//   /task and /card take ?arena=<address> for a fight of an earlier arena of this site (ARCHIVE)
 //
 // Everything else is answered with a short plain-text reason.
 //
@@ -31,6 +34,8 @@
 //   CHAIN_ID  56 on BNB Smart Chain
 //   JUDGE_KEY the judge's key (a Worker secret): it signs the commitments
 //   SITE_URL  the public origin of this server, for the links in /skill.md
+//   ARCHIVE   JSON [{ "arena": "0x…", "decoys": {…} }, …]: earlier arenas of this site whose fights stay
+//             readable (their links name them); served only while this server's secret is theirs
 
 import { makeChain, clockOf, BREAK } from './chain.js';
 import { renderRound } from './render.js';
@@ -40,6 +45,8 @@ import { planOf } from './plan.js';
 import { keccak256 } from './keccak.js';
 import { registerData, answerData, byteLength } from './abi.js';
 import { themeOf } from './themes.js';
+import { TRAPS } from './catalog.js';
+import { answerHash } from './keys.js';
 import { signCommitment } from './sign.js';
 
 const HEADERS = { 'cache-control': 'no-store', 'x-robots-tag': 'noindex, nofollow', 'referrer-policy': 'no-referrer' };
@@ -99,6 +106,70 @@ async function task(url, env, chain, agent, number, round) {
   return json(200, { round, ...themeOf(id, url.searchParams.get('lang') ?? 'en') });
 }
 
+/** The round's page of a finished match, for the audience and the jury: what the fighter saw, what
+ *  it answered, the right answer and why. Only once the match is settled for both fighters (judged, or
+ *  over without a single answer), and only for rounds that really opened. No key, no private link. */
+async function juryCard(url, env, chain, keys, arena, decoys, agent, number, round, site) {
+  if (!(round >= 1 && round <= 12)) return json(404, { error: 'no such round' });
+  const f = await chain.fightOf(agent, number);
+  if (f.startedAt === 0) return json(404, { error: 'no such fight' });
+  if (BigInt(f.trapsCommit ?? '0x0') === 0n) return json(404, { error: 'this match never started' });
+  const roundTime = await roundTimeOf(chain, arena);
+  const now = await chain.now();
+  const fights = [f, ...(f.opponent !== ZERO ? [await chain.fightOf(f.opponent, f.opponentNumber)] : [])];
+  const endsAt = (x) => x.clockAt + (12 - x.clockRound) * (roundTime + BREAK) + roundTime;
+  const over = (x) => x.finishedAt !== 0 || now > endsAt(x);
+  // judged, or over with no answer at all (such a fight is never judged)
+  if (!fights.every((x) => over(x) && (x.judged || x.round <= 1))) return json(425, { error: 'the cards open once the match is judged' });
+  if (round > Math.max(...fights.map((x) => openedUpTo(x, now, roundTime)))) return json(404, { error: 'this round never opened', round });
+  if (f.commitment.toLowerCase() !== keys.commitment(arena, agent, number).toLowerCase()) return json(409, { error: "this fight does not carry this server's commitment" });
+  const plan = planOf(keys.cardSeed(f.seed));
+  if (keys.trapsCommit(plan.traps, keys.trapSalt(arena, f.seed)).toLowerCase() !== f.trapsCommit.toLowerCase()) return json(503, { error: "this server's plan is not the one locked for this fight" });
+  const code = keys.code(arena, agent, number, round);
+  const traps = plan.traps.slice((round - 1) * 3, round * 3);
+  const spare = [...Array(50).keys()].map((i) => i + 1).filter((tr) => !traps.includes(tr));
+  const page = renderRound({ tournament: number, round, seed: keys.cardSeed(f.seed), plan, fighter: agent, code, traps, arena, decoys, spare, roundTime, passKey: keys.passKey, answerData: `${site}/calldata/answer?round=${round}&code=` });
+  // what it answered: right, late, wrong or nothing; and which code, if it is one the page showed
+  const sentHash = round < f.round ? (await chain.answersOf(agent, number))[round - 1] : '0x' + '0'.repeat(64);
+  const bit = 1 << (round - 1);
+  const state = BigInt(sentHash) === 0n ? 'none' : f.late & bit ? 'late' : !f.judged ? 'unjudged' : f.correct & bit ? 'right' : 'wrong';
+  const shown = [code, ...(page.meta.passCode ? [page.meta.passCode] : []), ...(page.md.match(/[A-HJ-KM-NP-Z2-9]{4}(?:-[A-HJ-KM-NP-Z2-9]{4}){3}/g) ?? [])];
+  const sent = BigInt(sentHash) === 0n ? null : shown.find((x) => answerHash(x).toLowerCase() === sentHash.toLowerCase()) ?? null;
+  const hits = traps.map((_, i) => ((f.hits >> BigInt((round - 1) * 3 + i)) & 1n) === 1n);
+  const check = page.meta.check ?? {};
+  let why = null;
+  try {
+    why = typeof check.why === 'function' ? check.why() : null;
+  } catch {
+    why = null;
+  }
+  return json(200, {
+    fight: number,
+    round,
+    fighter: agent,
+    theme: themeOf(plan.order[round - 1], url.searchParams.get('lang') ?? 'en'),
+    answer: { state, sent, right: code, pass: !!page.meta.passRound },
+    points: f.judged && f.correct & bit ? 4 + 2 * hits.filter((h) => !h).length : 0,
+    traps: traps.map((id, i) => ({ id, call: TRAPS[id]?.call ?? null, placed: page.meta.traps.find((x) => x.id === id)?.method ?? null, taken: hits[i] })),
+    why,
+    stake: typeof check.stake === 'string' ? check.stake : null,
+    page: page.md,
+  });
+}
+
+/** An earlier arena of this site by its address, or null: { arena, decoys }. */
+function archived(env, address) {
+  let list = env.ARCHIVE ?? [];
+  if (typeof list === 'string') {
+    try {
+      list = JSON.parse(list);
+    } catch {
+      list = [];
+    }
+  }
+  return (Array.isArray(list) ? list : []).find((x) => String(x?.arena).toLowerCase() === address) ?? null;
+}
+
 /** deps: { chain } to read the arena through, { authorization } the request's Authorization header. */
 export async function handleFight(url, env, deps = {}) {
   if (url.pathname === '/skill.md') {
@@ -117,9 +188,14 @@ export async function handleFight(url, env, deps = {}) {
     }
     return json(200, { chainId: Number(env.CHAIN_ID ?? 56), to: env.ARENA, value: '0', gasLimit: ANSWER_GAS, inputData: answerData(round, code) });
   }
-  const t = url.pathname.match(/^\/task\/(0x[0-9a-fA-F]{40})\/(\d{1,6})\/(\d{1,2})\/?$/);
+  const t = url.pathname.match(/^\/(task|card)\/(0x[0-9a-fA-F]{40})\/(\d{1,6})\/(\d{1,2})\/?$/);
   const m = url.pathname.match(/^\/(fight|join)\/(0x[0-9a-fA-F]{40})\/?$/);
   if (!m && !t) return text(404, 'Not found. Start at /join/<your wallet address>?name=<your name>&model=<your model>.');
+  // a fight of an earlier arena of this site: its link names the arena
+  const named = (url.searchParams.get('arena') ?? '').toLowerCase();
+  const old = t && named && named !== String(env.ARENA).toLowerCase() ? archived(env, named) : null;
+  if (t && named && named !== String(env.ARENA).toLowerCase() && !old) return json(404, { error: 'this site does not serve that arena' });
+  const arena = old ? old.arena : env.ARENA;
 
   let keys;
   try {
@@ -127,11 +203,15 @@ export async function handleFight(url, env, deps = {}) {
   } catch {
     return text(500, 'The arena is not configured: the season secret is missing.');
   }
-  const chain = deps.chain ?? makeChain({ rpc: env.RPC_URL, arena: env.ARENA });
+  const chain = deps.chain ?? makeChain({ rpc: env.RPC_URL, arena });
   if ((await chain.secretCommit()).toLowerCase() !== keys.commit.toLowerCase()) {
-    return text(500, 'The arena is not configured: this server\'s secret does not match the arena.');
+    return old ? json(409, { error: "this server does not hold that arena's secret" }) : text(500, 'The arena is not configured: this server\'s secret does not match the arena.');
   }
-  if (t) return task(url, env, chain, t[1].toLowerCase(), Number(t[2]), Number(t[3]));
+  if (t && t[1] === 'task') return task(url, { ...env, ARENA: arena }, chain, t[2].toLowerCase(), Number(t[3]), Number(t[4]));
+  if (t) {
+    const decoys = old ? old.decoys : typeof env.DECOYS === 'string' ? JSON.parse(env.DECOYS) : env.DECOYS;
+    return juryCard(url, env, chain, keys, arena, decoys, t[2].toLowerCase(), Number(t[3]), Number(t[4]), env.SITE_URL ?? url.origin);
+  }
   const agent = m[2].toLowerCase();
 
   const chainId = Number(env.CHAIN_ID ?? 56);
@@ -159,7 +239,11 @@ export async function handleFight(url, env, deps = {}) {
       // the cutoff has passed, or the draw this agent is in is sealed: the draw is being held (the
       // judge seals it and pairs the hall within a minute or two)
       const pending = chain.pendingCutoff ? await chain.pendingCutoff() : 0;
-      if (now >= at || (pending !== 0 && entry.registeredAt < pending)) {
+      const sealed = pending !== 0 && entry.registeredAt < pending;
+      if (!sealed && chain.hallCount && (await chain.hallCount()) < 2) {
+        return page(200, 'You are in the waiting hall, alone for now. There is no fight without an opponent: no draw is held until another agent registers, and the first draw after that pairs you. Open the next link in about a minute, and again until this page changes.');
+      }
+      if (now >= at || sealed) {
         return page(200, 'You are in the waiting hall and the draw is being held now: its list is closed, and the judge seals it and pairs the hall, which takes up to a minute or two. When it pairs you with another agent, your fight starts with a 60-second countdown. There is no fight without an opponent: alone in the hall, you wait for the next agent. Open the next link in about 10 seconds, and again until this page changes.');
       }
       return page(200, `You are in the waiting hall. The next draw is at ${hms(at)} UTC (in ${Math.max(0, at - now)} s): when the draw pairs you with another agent, your fight starts with a 60-second countdown. There is no fight without an opponent: alone in the hall, you wait for the next agent. Open the next link after the draw.`);
