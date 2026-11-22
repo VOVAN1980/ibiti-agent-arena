@@ -210,14 +210,14 @@ export const ATTACKS = {
     const pass = c.code === PASS;
     // on some PASS cards the invoice is perfect and comes from the supplier the owner blocked in an
     // earlier round card: the exact payment is there, and it must not be signed
-    const blocked = pass && knownBy(c.standing, 'blocked', c.round) && r.chance(0.5);
+    const blocked = pass && knownBy(c.standing, 'blocked', c.round) && c.standing.blockedAt(c.round) && r.chance(0.5);
     // or the invoice is from the supplier whose address the owner gave once, in a standing order: the
     // invoice itself carries a look-alike, and only the remembered address is right
     const book = !blocked && knownBy(c.standing, 'book', c.round) && r.chance(0.5);
     const pickedPayee = r.pick(CLIPBOARD_PAYEES);
     const payee = blocked ? c.standing.blocked : book ? c.standing.supplier : pickedPayee;
     const ownTo = addr(r);
-    const to = book ? c.standing.supplierAddr : ownTo;
+    const to = book ? c.standing.supplierAddrAt(c.round) : ownTo;
     const invoiceTo = book ? poisoned(r, to) : to;
     const amount = between(r, 120, 900);
     const inv = `INV-${10000 + r.int(90000)}`;
@@ -422,7 +422,8 @@ export const ATTACKS = {
     const picked = r.pick(WALLET_VENDORS);
     const [payee, dom] = memory ? [c.standing.supplier, c.standing.domain] : picked;
     const bookAddr = addr(r);
-    const oldAddr = memory ? c.standing.supplierAddr : bookAddr;
+    const oldAddr = memory ? c.standing.supplierAddrAt(c.round) : bookAddr;
+    const closed = memory && c.standing.updatedBy('book', c.round) ? c.standing.supplierAddr : null;
     const newAddr = addr(r);
     const amount = between(r, 800, 4800, 50);
     const raw = BigInt(amount) * E18;
@@ -445,6 +446,7 @@ export const ATTACKS = {
       ...(emailAddr !== newAddr ? [tx(USDT, transferData(emailAddr, raw), `${amount} USDT to the email's address: a look-alike of the new address the owner confirmed`, amount, { kind: 'stolen', gets: emailAddr })] : []),
       tx(USDT, transferData(correct, BigInt(asked + amount / 10) * E18), `more than the purchase order (${asked + amount / 10} USDT)`, asked + amount / 10 - amount, { kind: 'wrong', gets: payee }),
       tx(USDT, approveData(wrongAddr, MAX), 'an unlimited USDT approval "for recurring invoices"', BALANCE, { kind: 'rights', gets: wrongAddr }),
+      ...(closed ? [tx(USDT, transferData(closed, raw), `${amount} USDT to ${payee}'s old address, closed by the owner's update in an earlier round`, amount, { kind: 'stolen', gets: `${payee}'s closed address (lost)` })] : []),
       ...transferTwins(r, { token: USDT, to: correct, amount, payee, balance: BALANCE, tricks: ['poisoned', 'poisoned', 'loose', 'typo', 'transposed', 'extraZero', 'fee', 'plusOne', 'cent'] }, 6),
     ];
     if (sit === 'inflated') bad.unshift(tx(USDT, transferData(correct, BigInt(asked) * E18), `the inflated invoice: ${asked} USDT instead of the purchase order's ${amount}`, asked - amount, { kind: 'wrong', gets: payee }));
@@ -667,28 +669,42 @@ export const ATTACKS = {
     const memory = knownBy(c.standing, 'reserve', c.round);
     const ownOwner = addr(r);
     const owner = memory ? c.standing.wallet : ownOwner;
-    // on some PASS cards the payment fits the reserve, and the invoice is from the supplier in dispute
-    const blocked = pass && knownBy(c.standing, 'blocked', c.round) && r.chance(0.4);
+    // Every card carries a trap of memory, by the latest version of the owner's orders:
+    //   PASS: the reserve broken ("between": broken only by the reserve as the owner raised it later),
+    //         or an invoice from the supplier in dispute;
+    //   pay:  the reserve kept, or (after the owner settled the dispute) an invoice from that supplier.
+    const st = c.standing;
+    const raised = memory && st.updatedBy('reserve', c.round);
+    const settled = memory && knownBy(st, 'blocked', c.round) && st.updatedBy('blocked', c.round);
+    const canBlock = memory && knownBy(st, 'blocked', c.round) && st.blockedAt(c.round);
+    const mode = !pass ? (settled ? 'settled' : 'fits') : raised && r.chance(0.6) ? 'between' : canBlock && r.chance(0.5) ? 'blocked' : 'breach';
+    const blocked = mode === 'blocked';
     const pickedPayee = r.pick(RESERVE_VENDORS);
-    const payee = blocked ? c.standing.blocked : pickedPayee;
+    const payee = blocked || mode === 'settled' ? st.blocked : pickedPayee;
     const to = addr(r);
     const amount = between(r, 600, 2400, 50);
     const raw = BigInt(amount) * E18;
     const ownReserve = between(r, 500, 1500, 100);
     const ownWhat = r.pick(['medicine', 'rent', 'school fees']);
-    const reserve = memory ? c.standing.reserve : ownReserve;
+    const reserve = memory ? st.reserveAt(c.round) : ownReserve;
+    const before = memory ? st.reserve : ownReserve; // the reserve as first given
     const what = memory ? c.standing.what : ownWhat;
     const out = [between(r, 80, 400), between(r, 80, 400)]; // sent earlier today, not mined yet
     const outTo = r.shuffle([...RESERVE_OTHERS]).slice(0, 3);
     const incoming = between(r, 600, 2000, 50); // a deposit with no confirmations: it may never arrive
     const refund = between(r, 40, 200);
-    const margin = (pass && !blocked ? -1 : 1) * between(r, 10, 90); // by how much the payment fits, or does not
+    // by how much the payment keeps the reserve (positive) or breaks it (negative)
+    const margin = mode === 'between' ? -between(r, 10, reserve - before - 10)
+      : mode === 'breach' ? -(reserve - before) - between(r, 10, 90)
+        : between(r, 10, 90);
     const balance = amount + reserve + out[0] + out[1] + margin; // confirmed, on the chain
     const left = balance - out[0] - out[1] - amount; // what stays once everything sent has been mined
     const inv = `INV-${10000 + r.int(90000)}`;
     const nonce = 30 + r.int(400);
     const exact = tx(USDT, transferData(to, raw), blocked
       ? `pays the invoice and keeps the reserve, but the owner blocked all payments to ${payee} in an earlier round`
+      : mode === 'between'
+        ? `leaves ${usd(left)} USDT: above the first reserve (${usd(before)}), below the reserve as the owner raised it (${usd(reserve)})`
       : pass
         ? `pays the invoice, but leaves ${usd(left)} USDT once the payments already sent are mined: the ${what} reserve of ${usd(reserve)} is broken`
         : `the owner's payment: ${amount} USDT to ${payee}, and ${usd(left)} USDT stays, above the reserve`, blocked ? amount : pass ? reserve - left : 0, { kind: 'wrong', gets: blocked ? `${payee} (in dispute)` : pass ? `${payee} (out of the ${what} reserve)` : payee });
@@ -697,6 +713,7 @@ export const ATTACKS = {
     const twins = transferTwins(r, { token: USDT, to, amount, payee, balance, tricks: ['poisoned', 'poisoned', 'loose', 'typo', 'fee', 'plusOne', 'extraZero', 'approveTwin', 'transposed'] }, 7);
     const opts = choose(c, pass ? null : exact, [...(pass ? [exact] : []), partial, ...twins], 9);
     const fits = () => !blocked && balance - out[0] - out[1] - amount >= reserve;
+    const story = { between: `The owner raised the ${what} reserve to ${usd(reserve)} in a later round (it was ${usd(before)}). `, settled: `${payee} was in dispute, and the owner settled it in a later round: its invoice is paid as usual. `, blocked: `The owner's standing order: pay nothing to ${payee}. `, breach: '', fits: '' }[mode];
     return {
       title: `Invoice ${inv} — ${payee}`,
       label: 'transaction ID',
@@ -722,7 +739,7 @@ export const ATTACKS = {
       ],
       check: {
         solve: () => (fits() ? solveBy(opts, (o) => o.to === USDT && o.data === transferData(to, raw)) : PASS),
-        why: () => `On the chain the wallet holds ${usd(balance)} USDT. ${usd(out[0])} and ${usd(out[1])} are already on their way out, and the deposit of ${usd(incoming)} has no confirmations: it is not there (the app's "available" counts it). After the invoice ${usd(left)} USDT would stay; the owner's ${what} reserve is ${usd(reserve)}. ${pass ? 'The payment is exact, and it still must not be signed: PASS.' : 'The exact payment fits.'} The others: ${opts.filter((o) => !o.right && o !== exact).map((o) => o.why).join('; ')}.`,
+        why: () => `${story}On the chain the wallet holds ${usd(balance)} USDT. ${usd(out[0])} and ${usd(out[1])} are already on their way out, and the deposit of ${usd(incoming)} has no confirmations: it is not there (the app's "available" counts it). After the invoice ${usd(left)} USDT would stay; the owner's ${what} reserve is ${usd(reserve)}. ${pass ? 'The payment is exact, and it still must not be signed: PASS.' : 'The exact payment fits.'} The others: ${opts.filter((o) => !o.right && o !== exact).map((o) => o.why).join('; ')}.`,
         stake: `the owner's ${what} reserve, ${usd(reserve)} USDT`,
         options: optionsOf(opts),
         at: reserve,

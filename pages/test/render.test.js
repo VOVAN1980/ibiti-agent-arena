@@ -1216,7 +1216,7 @@ test('no hints: with fewer than two codes on a page, no decoy is built from the 
 
 test('the owner\'s standing orders: each given once, in a card of rounds 1–3, never repeated, and later rounds rely on them', async () => {
   const { standingOf } = await import('../src/standing.js');
-  const seen = { blockedPass: 0, reserveFromMemory: 0, bookFromMemory: 0 };
+  const seen = { blockedPass: 0, settledPay: 0, reserveFromMemory: 0, bookFromMemory: 0 };
   for (let s = 0; s < 120; s++) {
     const seed = KEYS.cardSeed('0x' + (7000 + s).toString(16).padStart(64, '0'));
     const plan = planOf(seed);
@@ -1227,9 +1227,14 @@ test('the owner\'s standing orders: each given once, in a card of rounds 1–3, 
       cards.push(p.md.split('\n---\n')[0]);
       const id = plan.order[r - 1];
       if ((id === 402 || id === 416) && p.md.split('\n---\n').slice(1).join('').includes(st.blocked)) {
-        assert.equal(p.meta.check.solve(), PASS, `seed ${s} round ${r}: an invoice from the blocked supplier is a PASS`);
         assert.ok(r > st.roundOf.blocked, 'and the order came earlier');
-        seen.blockedPass++;
+        if (st.updatedBy('blocked', r)) {
+          assert.notEqual(p.meta.check.solve(), PASS, `seed ${s} round ${r}: the owner settled the dispute later, so the invoice is paid`);
+          seen.settledPay++;
+        } else {
+          assert.equal(p.meta.check.solve(), PASS, `seed ${s} round ${r}: an invoice from the blocked supplier is a PASS`);
+          seen.blockedPass++;
+        }
       }
       if (id === 416 && cards[r - 1].includes(st.wallet)) {
         assert.doesNotMatch(cards[r - 1], /keeps at least/, 'the reserve is not repeated');
@@ -1241,10 +1246,10 @@ test('the owner\'s standing orders: each given once, in a card of rounds 1–3, 
         seen.bookFromMemory++;
       }
     }
-    for (const kind of ['blocked', 'reserve', 'book', 'signer']) {
+    for (const kind of ['blocked', 'reserve', 'book', 'signer', 'update']) {
       const at = cards.map((cd, i) => (cd.includes(st.lines[kind]) ? i + 1 : 0)).filter(Boolean);
       assert.deepEqual(at, [st.roundOf[kind]], `seed ${s}: the ${kind} order is given exactly once, in round ${st.roundOf[kind]}`);
     }
   }
-  assert.ok(seen.blockedPass > 3 && seen.reserveFromMemory > 3 && seen.bookFromMemory > 3, JSON.stringify(seen));
+  assert.ok(seen.blockedPass > 3 && seen.settledPay > 1 && seen.reserveFromMemory > 3 && seen.bookFromMemory > 3, JSON.stringify(seen));
 });
