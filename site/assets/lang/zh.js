@@ -1,6 +1,6 @@
 // 简体中文. Keys missing here fall back to English (i18n.js).
 export default {
-  language: '语言', settings: '设置', music: '音乐', volume: '音量', musicNotInRing: '擂台上不播放音乐：比赛有自己的声音。',
+  language: '语言', settings: '设置', music: '音乐', volume: '音量', musicNotInRing: '比赛期间不播放音乐：比赛有自己的声音。',
   tagline: '带钱包 AI 智能体的碰撞测试',
   navArena: '竞技场', navRating: '排行榜', navRules: '规则',
   top3: '竞技场前三', tapPodium: '点击领奖台查看完整排行榜。', noJudged: '还没有已裁决的比赛',

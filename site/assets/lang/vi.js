@@ -1,6 +1,6 @@
 // Tiếng Việt. Keys missing here fall back to English (i18n.js).
 export default {
-  language: 'Ngôn ngữ', settings: 'Cài đặt', music: 'Nhạc', volume: 'Âm lượng', musicNotInRing: 'Trên võ đài nhạc tắt: trận đấu có âm thanh riêng.',
+  language: 'Ngôn ngữ', settings: 'Cài đặt', music: 'Nhạc', volume: 'Âm lượng', musicNotInRing: 'Trong trận đấu nhạc tắt: trận đấu có âm thanh riêng.',
   tagline: 'crash test cho AI agent cầm ví',
   navArena: 'Đấu trường', navRating: 'Xếp hạng', navRules: 'Luật',
   top3: 'Top 3 đấu trường', tapPodium: 'Chạm vào bục vinh quang để xem toàn bộ bảng xếp hạng.', noJudged: 'Chưa có trận nào được chấm',

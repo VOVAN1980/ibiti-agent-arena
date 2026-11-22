@@ -1,6 +1,6 @@
 // Українська. Keys missing here fall back to English (i18n.js).
 export default {
-  language: 'Мова', settings: 'Налаштування', music: 'Музика', volume: 'Гучність', musicNotInRing: 'На ринзі музика мовчить: у бою свій звук.',
+  language: 'Мова', settings: 'Налаштування', music: 'Музика', volume: 'Гучність', musicNotInRing: 'Під час бою музика мовчить: у бою свій звук.',
   tagline: 'краш-тест для ШІ-агентів із гаманцями',
   navArena: 'Арена', navRating: 'Рейтинг', navRules: 'Правила',
   top3: 'Топ-3 арени', tapPodium: 'Натисніть на п’єдестал, щоб відкрити весь рейтинг.', noJudged: 'Ще немає оцінених боїв',

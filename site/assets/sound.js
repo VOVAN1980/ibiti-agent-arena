@@ -1,17 +1,17 @@
 // The sound of the arena, all made on the fly (no sound files): the gong, the countdown, the ding of
 // an accepted answer, the crowd (its murmur, a roar, applause and whistles, a long "booo"), and the
 // music: a pumping beat before the fight and in the breaks, a heartbeat while a round runs, a fanfare
-// for the winner. Off until the viewer turns it on (browsers allow sound only after a tap); the
-// choice is remembered.
+// for the winner. On unless the viewer turns it off, like the arena's theme (browsers allow sound
+// only after a tap, so it starts at the first one); the choice is remembered.
 
 let ctx = null;
 let master = null;
 let noiseBuf = null;
-let on = false;
+let on = true;
 try {
-  on = localStorage.getItem('arenaSound') === 'on';
+  on = localStorage.getItem('arenaSound') !== 'off';
 } catch {
-  // nothing remembered: off
+  // nothing remembered: on
 }
 
 function audio() {
@@ -327,7 +327,7 @@ function playStep(step, at) {
     if (s === 0 && bar === 0) noise(at, 1.4, 'highpass', 5000, 0.5, 0.2, 0.002, music.bus); // a crash
     if (s % 8 === 0) synth(at, FANFARE[(bar * 2 + s / 8) % 4], 0.55, 0.08, 2400);
     if (s % 4 === 2) hat(at, false);
-    if (bar >= 4) music.mode = 'hype'; // the fanfare ends, the party goes on
+    if (bar >= 4) music.mode = null; // the fanfare ends: the arena's theme takes over (music.js)
   }
 }
 

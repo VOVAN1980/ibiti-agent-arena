@@ -14,6 +14,13 @@ const foulsOf = (j) => (j.empty ? '—' : j.fouls);
 import { $, esc, keep, tName, header, footer, avatar, shareButtons, mmss, siteUrl, agentUrl, matchUrl, t, applyI18n } from './ui.js';
 import { forFight, loadTheme, loadAll, themeName, themePlain, themesKnown } from './themes.js';
 import { gong, beep, ding, thud, cheer, boo, ooh, crowdLevel, setMusic, soundOn, soundRunning, setSound } from './sound.js';
+import { musicHold } from './music.js';
+
+// The arena's theme plays on this page only while no battle is on: before a fight, after it, between
+// fights. From the countdown to the winner's moment, and during a replay, only the ring's sound is heard.
+const WIN_MOMENT = 12000; // the fanfare, the roar, the winner's backflip
+let winUntil = 0;
+const battleOn = (on) => musicHold(on || replaying || Date.now() < winUntil);
 import { createScene as createFlatScene } from './scene.js';
 
 $('#head').innerHTML = header('match');
@@ -103,6 +110,7 @@ arenaSetting('seasonEnd').then((v) => (seasonEnd = v)).catch(() => {});
 let idleSig = '';
 /** The arena now, when nobody is in the ring: the next draw, the draw itself, or the closed arena. */
 function renderIdle() {
+  battleOn(false);
   const waiting = s.hallCount ?? s.hall.length;
   const left = s.nextDrawAt ? s.nextDrawAt - s.now : null;
   const fightTime = 60 + ROUNDS * RT + (ROUNDS - 1) * 10;
@@ -378,6 +386,8 @@ function cues(b, c, v, views) {
 
 /** The verdict lands: winner's lights, music, the roar, confetti. */
 function celebrate(b, v) {
+  winUntil = Date.now() + WIN_MOMENT;
+  battleOn(true);
   setMusic('victory');
   cheer(1.4);
   if (b.blue) confetti();
@@ -409,9 +419,11 @@ function stage(b, c, v, views) {
       scene.setPose('blue', 'done');
       scene.setLights('sweep');
     }
-    crowdLevel(0.45);
+    crowdLevel(Date.now() < winUntil ? 0.45 : 0.2);
+    battleOn(cue.judged === false); // over: the theme comes back once the winner's moment has passed (a verdict that lands now is celebrated first)
     return;
   }
+  battleOn(true);
   for (const side of ['red', 'blue']) if (views[side]) scene.setPose(side, views[side].pose);
   if (c.phase === 'open') {
     scene.setLights('focus');
@@ -449,6 +461,7 @@ function renderRing(b) {
   if (b.cancelled) {
     // the match never started: no round, no score, no replay
     document.title = `${fightName(s, red)}${blue ? ` vs ${fightName(s, blue)}` : ''} — IBITI Agent Arena`;
+    battleOn(false);
     if (ringSig === 'cancelled') return;
     ringSig = 'cancelled';
     $('#ring').innerHTML = `<div class="hudmsg"><b>${esc(t('cancelledTitle'))}</b><br><span class="tiny">${esc(t('cancelledText'))}</span></div>`;
@@ -616,16 +629,19 @@ $('#rounds').addEventListener('click', (e) => {
 async function playReplay(b) {
   if (replaying || !b || !verdict(b)) return;
   replaying = true;
+  battleOn(true);
   const clocks = await Promise.all([b.red, b.blue].filter(Boolean).map((f) => fightOf(f.agent, f.number).catch(() => null)));
   if (clocks.some((c) => !c)) {
     // the fight's clock is not known: no guessing which rounds opened
     replaying = false;
+    battleOn(false);
     banner('text', 0, t('clockFailed'));
     return;
   }
   const last = Math.max(0, ...clocks.map((c) => openedRounds(c, s.now)));
   if (last === 0) {
     replaying = false;
+    battleOn(false);
     banner('text', 0, t('noRoundOpened'));
     return;
   }
@@ -746,6 +762,7 @@ async function playReplay(b) {
   announce(t('finalBellTitle'));
   await sleep(1800);
   hud.classList.remove('replaying');
+  winUntil = Date.now() + WIN_MOMENT; // the replay ends on the winner's moment, not on the theme
   replaying = false;
   ringSig = '';
   bannerSig = '';
@@ -779,6 +796,8 @@ async function loop() {
 }
 setInterval(() => {
   s.now += 1;
+  const gate = $('#soundGate');
+  if (gate.hidden !== (soundOn() && soundRunning())) soundButtons(); // the sound may start without a tap on this button
   const b = findBout();
   if (b && !verdict(b) && !replaying) renderRing(b);
   else if (!b && !wantAgent && s.latestBlock) renderIdle();

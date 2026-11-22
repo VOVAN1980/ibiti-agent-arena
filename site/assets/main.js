@@ -72,11 +72,17 @@ function middle(b) {
 
 function boutRow(b, live) {
   const v = verdict(b);
+  // the name stays whole on one line (cut with "…" only if it is very long), the cup right beside it
   const nm = (f, side) => {
     const won = v && v.winner === side;
-    return `<span class="dot ${side}"></span>${won ? '<b>' : ''}${keep(fightName(s, f))}${won ? ' 🏆</b>' : ''}`;
+    return `<span class="dot ${side}"></span><span class="nm">${won ? '<b>' : ''}${keep(fightName(s, f))}${won ? '</b>' : ''}</span>${won ? '<span class="wcup">🏆</span>' : ''}`;
   };
-  return `<a class="row" href="${matchUrl(b.red.agent, b.red.number)}">
+  if (!live && v) {
+    // a result, like a scoreboard: each fighter on its own line with its points on the right
+    const line = (f, side) => `<div class="line">${nm(f, side)}<span class="pts" translate="no">${f.judged?.points ?? '—'}</span></div>`;
+    return `<a class="row result" href="${matchUrl(b.red.agent, b.red.number)}">${line(b.red, 'red')}${b.blue ? line(b.blue, 'blue') : `<div class="line tiny">${t('solo')}</div>`}<div class="cap">${esc(t('pointsOf120'))}</div></a>`;
+  }
+  return `<a class="row bout" href="${matchUrl(b.red.agent, b.red.number)}">
     <div class="r">${nm(b.red, 'red')}</div>
     <div class="vs">${live ? `<span class="badge live" translate="no">${t('live')}</span> ` : ''}<span class="vs-text" data-key="${keyOf(b)}" translate="no">${esc(middle(b))}</span>${!live && v ? `<span class="pts-cap">${esc(t('pointsOf120'))}</span>` : ''}</div>
     <div class="b">${b.blue ? nm(b.blue, 'blue') : `<span class="tiny">${t('solo')}</span>`}</div></a>`;

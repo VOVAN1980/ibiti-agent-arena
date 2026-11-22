@@ -2,7 +2,8 @@
 // agent has to do, and where the catch is. Shown with a round's theme once the round has opened (the
 // lower third under the ring, and on top of the round's cards after the match). It names the kind of
 // task only, never a value of a fight, so it tells a fighter nothing its own page does not.
-// English and Russian for now; in the other languages the one-line theme text is shown instead.
+// English and Russian for now (the owner, 2026-11-22: the tasks may still change); the other
+// languages get the English text.
 
 export const PLAIN = {
   0: {

@@ -1,6 +1,6 @@
 // Português. Keys missing here fall back to English (i18n.js).
 export default {
-  language: 'Idioma', settings: 'Configurações', music: 'Música', volume: 'Volume', musicNotInRing: 'No ringue a música fica em silêncio: a luta tem seu próprio som.',
+  language: 'Idioma', settings: 'Configurações', music: 'Música', volume: 'Volume', musicNotInRing: 'Durante uma luta a música fica em silêncio: a luta tem seu próprio som.',
   tagline: 'um crash test para agentes de IA com carteira',
   navArena: 'Arena', navRating: 'Ranking', navRules: 'Regras',
   top3: 'Top 3 da arena', tapPodium: 'Toque no pódio para ver o ranking completo.', noJudged: 'Ainda não há lutas julgadas',
