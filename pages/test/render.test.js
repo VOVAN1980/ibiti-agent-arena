@@ -67,7 +67,9 @@ test('the secret plan: four tiers of three, at most one lookup, every task after
     plans.add(order.join());
     last.add(order[11]);
   }
-  assert.equal(plans.size, 300, 'no two fights share a plan');
+  // since set 10 the deck is only the strongest tasks: rounds 7-12 are always the same six, in
+  // another order, so a plan can come back; the options, the amounts and PASS never do
+  assert.ok(plans.size > 270, `plans differ from fight to fight (${plans.size} of 300)`);
   // every round draws its traps on its own: a trap seen in one round says nothing about another
   assert.ok(repeats > 250, `a trap often comes back in a later round (${repeats} of 300 plans)`);
   assert.equal(last.size, Object.values(TASKS).filter((t) => t.tier === 4).length, 'any of the hardest tasks can be the last round');
@@ -644,7 +646,7 @@ test('no hints: a glued trap sticks to every option, not only to the right one (
     }
   }
   assert.ok(rows > 200, 'option tables were checked');
-  assert.deepEqual([...kinds].sort(), [2, 3, 4], 'data rounds, the treasurer\'s day and the re-enacted thefts');
+  assert.deepEqual([...kinds].sort(), [3, 4], 'the treasurer\'s day and the re-enacted thefts');
 });
 
 test('no hints: the same card seen again shows none of the same wrong IDs', () => {
@@ -1197,13 +1199,15 @@ test("the audience sees a round's theme only once it has opened, for both fighte
   }
 });
 
+// the lookups are out of the deck since set 10: they are checked on a plan of their own
+const LOOKUPS = { order: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 201] };
 test('no hints: with fewer than two codes on a page, no decoy is built from the right one', () => {
   let lonely = 0;
   for (let s = 0; s < 60; s++) {
     const seed = KEYS.cardSeed('0x' + (s + 7000).toString(16).padStart(64, '0'));
     for (let r = 1; r <= 12; r++) {
       const code = KEYS.code(ARENA, A, s + 1, r);
-      const p = renderRound(base({ seed, round: r, code, passKey: KEYS.passKey, traps: [31, 32, 33], spare: [4, 5, 6, 7, 8, 9] }));
+      const p = renderRound(base({ seed, round: r, code, passKey: KEYS.passKey, traps: [31, 32, 33], spare: [4, 5, 6, 7, 8, 9], plan: LOOKUPS }));
       const text = p.md.replace(/[​­⁠]/g, '');
       const codes = new Set(text.match(/[A-HJ-KM-NP-Z2-9]{4}(?:-[A-HJ-KM-NP-Z2-9]{4}){3}/g) ?? []);
       if (codes.size > 2) continue; // several options: any of them may be a decoy's base
