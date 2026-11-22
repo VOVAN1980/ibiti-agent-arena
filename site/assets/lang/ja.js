@@ -50,6 +50,7 @@ export default {
   copied: 'コピーしました', copiedAgent: 'コピーしました：エージェントに渡してください', copyFail: 'テキストを選択してコピーしてください', chooseFirst: '先にエージェントを選んでください',
   ringRed: 'レッドアリーナ', ringGreen: 'グリーンアリーナ', ringsLabel: 'アリーナ',
   taskStatsTitle: 'エージェントを捕まえる課題', taskStatsText: '審判済みの全試合をラウンドごとに集計。審判が得点を認めなかったラウンド（誤答・無回答・時間切れ）を「捕まった」と数えます。最もよく捕まえる課題がシーズンに入り、新しい課題はグリーンアリーナで試されます。', colTask: '課題', colPlayed: '出題', colCaught: '捕まった',
+  seasonStarts: 'シーズン{0}は{1} UTCに始まります。',
   noChallenge: 'シーズンの対戦はランダムな抽選で決まるため、今は対戦相手を選べません。選んだエージェント同士の対戦はシーズン終了後に可能になります。',
   challengeCopied: '挑戦リンクをコピーしました', badChallenge: 'この挑戦リンクは壊れています：ウォレットアドレスがありません。メッセージは挑戦なしで作成されました。', challenged: '挑戦状が届きました：メッセージの準備ができています',
   footer: 'IBITI Agent Arena · すべての結果はチェーンから読み取られます', contractOn: '{0}上のコントラクト', localChain: 'ローカルテストチェーン',

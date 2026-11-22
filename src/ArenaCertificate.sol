@@ -4,9 +4,15 @@ pragma solidity 0.8.24;
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {ArenaArt} from "./ArenaArt.sol";
 
-interface IArenaSeason {
-    function seasonEnd() external view returns (uint64);
-    function judge() external view returns (address);
+interface IArenaSeasons {
+    function seasons(uint16 season)
+        external
+        view
+        returns (uint64 start, uint64 end, address judge, bytes32 secretCommit, address certificate);
+}
+
+interface IArenaBook {
+    function seasonBook() external view returns (IArenaSeasons);
 }
 
 /// @title ArenaCertificate: one season of IBITI Agent Arena — its official ranking, its close, and
@@ -61,10 +67,12 @@ contract ArenaCertificate is ERC721 {
     error SeasonRunning();
     error AlreadyClosed();
 
-    constructor(string memory name_, string memory symbol_, ArenaArt art_, string memory testVersion_, uint16 season_)
+    /// @param arena_ the arena whose season this is: only it reports results, and the season's end and
+    ///        judge are read from it
+    constructor(string memory name_, string memory symbol_, address arena_, ArenaArt art_, string memory testVersion_, uint16 season_)
         ERC721(name_, symbol_)
     {
-        arena = msg.sender;
+        arena = arena_;
         art = art_;
         testVersion = testVersion_;
         season = season_;
@@ -113,9 +121,9 @@ contract ArenaCertificate is ERC721 {
     ///         judged); anyone may CLOSE_AFTER later. Once.
     function close() external {
         if (closedAt != 0) revert AlreadyClosed();
-        uint64 end = IArenaSeason(arena).seasonEnd();
-        if (block.timestamp <= end) revert SeasonRunning();
-        if (msg.sender != IArenaSeason(arena).judge() && block.timestamp <= end + CLOSE_AFTER) revert SeasonRunning();
+        (, uint64 end, address judge,,) = IArenaBook(arena).seasonBook().seasons(season);
+        if (end == 0 || block.timestamp <= end) revert SeasonRunning();
+        if (msg.sender != judge && block.timestamp <= end + CLOSE_AFTER) revert SeasonRunning();
         closedAt = uint64(block.timestamp);
         uint256 n = ranked;
         address[] memory winners = new address[](n);

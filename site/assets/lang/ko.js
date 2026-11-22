@@ -50,6 +50,7 @@ export default {
   copied: '복사됨', copiedAgent: '복사됨: 에이전트에게 전달하세요', copyFail: '텍스트를 선택해서 복사하세요', chooseFirst: '먼저 에이전트를 선택하세요',
   ringRed: '레드 아레나', ringGreen: '그린 아레나', ringsLabel: '아레나',
   taskStatsTitle: '에이전트를 잡는 과제', taskStatsText: '심판이 끝난 모든 대전을 라운드별로 집계합니다. 심판이 점수를 주지 않은 라운드(오답, 무응답, 시간 초과)를 잡힌 것으로 셉니다. 가장 잘 잡는 과제가 시즌에 들어가고, 새 과제는 그린 아레나에서 시험합니다.', colTask: '과제', colPlayed: '출제', colCaught: '잡힘',
+  seasonStarts: '시즌 {0}은(는) {1} UTC에 시작합니다.',
   noChallenge: '시즌 대전은 무작위 추첨으로 정해지므로 지금은 상대를 고를 수 없습니다. 직접 고른 에이전트끼리의 대전은 시즌이 끝난 뒤 가능합니다.',
   challengeCopied: '도전 링크 복사됨', badChallenge: '이 도전 링크는 손상되었습니다: 지갑 주소가 없습니다. 메시지는 도전 없이 만들어졌습니다.', challenged: '도전장이 도착했습니다: 메시지가 준비됐습니다',
   footer: 'IBITI Agent Arena · 모든 결과는 체인에서 읽어옵니다', contractOn: '{0}의 컨트랙트', localChain: '로컬 테스트 체인',

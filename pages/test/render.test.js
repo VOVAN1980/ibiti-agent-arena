@@ -534,14 +534,16 @@ const LOCKED = KEYS.trapsCommit(planOf(KEYS.cardSeed(SEED)).traps, KEYS.trapSalt
  *  `clockRound` (5 s into it), or in the countdown, or in the break after it. */
 function fakeChain({ round = 3, clockRound = round, live = true, startedAt = 1, commitment = KEYS.commitment(ARENA, A, 2), secretCommit = KEYS.commit, countdown = false, inBreak = false, inHall = false, opponent = null, pageKeyHash = PAGE_KEY_HASH, trapsCommit = LOCKED, finishedAt = 0 } = {}) {
   const now = countdown ? BELL - 4 : BELL + (Math.min(clockRound, 12) - 1) * 70 + (inBreak ? 64 : 5);
-  const mine = { seed: SEED, startedAt, finishedAt, hits: 0n, number: 2, correct: 0, round, fouls: 0, official: true, clockAt: BELL, clockRound: 1, timeUsed: 0, late: 0, judged: false, commitment, opponent: opponent ? B : ZERO_ADDR, opponentNumber: opponent ? 1 : 0, pageKeyHash, trapsCommit };
+  const mine = { seed: SEED, startedAt, finishedAt, hits: 0n, number: 2, correct: 0, round, fouls: 0, official: true, clockAt: BELL, clockRound: 1, timeUsed: 0, late: 0, judged: false, commitment, opponent: opponent ? B : ZERO_ADDR, opponentNumber: opponent ? 1 : 0, pageKeyHash, trapsCommit, season: 1 };
   return {
     lastFight: async () => 2,
     fight: async () => mine,
     fightOf: async (who) => (who === B && opponent ? { ...mine, ...opponent, opponent: A, opponentNumber: 2 } : mine),
     isLive: async () => live,
-    secretCommit: async () => secretCommit,
-    entry: async () => ({ active: inHall, waited: 0, verified: true, challenge: ZERO_ADDR, pageKeyHash }),
+    currentSeason: async () => 1,
+    seasonCount: async () => 1,
+    season: async (n) => (n === 1 ? { start: 0, end: BELL + 10 ** 8, judge: ZERO_ADDR, secretCommit, certificate: ZERO_ADDR } : { start: 0, end: 0, judge: ZERO_ADDR, secretCommit: '0x' + '0'.repeat(64), certificate: ZERO_ADDR }),
+    entry: async () => ({ active: inHall, waited: 0, verified: true, challenge: ZERO_ADDR, pageKeyHash, season: 1 }),
     nextDrawAt: async () => BELL + 600,
     now: async () => now,
     roundTime: async () => 60,
@@ -581,7 +583,7 @@ test('/join: the registration transaction, ready for a wallet preview, and the p
   assert.equal(j.firstPage, `https://x/fight/${A}?key=${j.pageKey}&step=1`);
   assert.equal(j.firstPageByHeader, `https://x/fight/${A}?step=1`, 'for a header client: no key in any link');
   // the transaction: register(name, model, commitment, the judge's signature, pageKeyHash, no challenge)
-  const signature = '0xebe0eca2ebeac76663f381fd396c44cd03fd3e856c8929f9da27e0c0a2805b8d6bf248a32fe075bb01bd42a97b1ba0bb72e0ff79ad8872169a2b4f54ae773fa21c'; // `cast wallet sign` of fight 3's commitment digest (no challenge)
+  const signature = '0x6fd3e6b6dc49618787e85e029e2d5ae2c686a994edf2d9f5475bb23f151413343470e1a1177ceae35d73df0a680fcbbfb5d67928aeb47ece5c5e10d2724e92bb1c'; // `cast wallet sign` of fight 3's commitment digest (no challenge)
   assert.equal(j.transaction.inputData, registerData({ name: 'Night Owl', model: 'claude-opus-5.5', commitment: KEYS.commitment(ARENA, A, 3), signature, pageKeyHash: j.pageKeyHash, challenge: '' }));
   assert.notEqual((await (await get(`/join/${A}?name=x&model=y`)).json()).pageKey, j.pageKey, 'a fresh key every time');
   // a season arena: no challenge, the server refuses to sign one (the arena would refuse it too)
@@ -592,13 +594,13 @@ test('/join: the registration transaction, ready for a wallet preview, and the p
   const open = await handleFight(new URL(`https://x/join/${A}?name=x&model=y&challenge=${B}`), { ...ENV, CHALLENGES: 'open' }, { chain: fakeChain() });
   const withChallenge = await open.json();
   assert.ok(withChallenge.transaction.inputData.includes(B.slice(2)), 'the challenged agent in the call');
-  assert.ok(withChallenge.transaction.inputData.includes(signCommitment(JUDGE_KEY, 56, ARENA, A, 3, KEYS.commitment(ARENA, A, 3), B).slice(2)), 'the judge signed that challenge');
+  assert.ok(withChallenge.transaction.inputData.includes(signCommitment(JUDGE_KEY, 56, ARENA, 1, A, 3, KEYS.commitment(ARENA, A, 3), B).slice(2)), 'the judge signed that challenge');
   assert.equal((await get(`/join/${A}?name=x`)).status, 400, 'no model');
   assert.equal((await get(`/join/${A}?name=${'n'.repeat(33)}&model=y`)).status, 400, 'a name over 32 bytes');
   assert.equal((await handleFight(new URL(`https://x/join/${A}?name=x&model=y&challenge=bob`), { ...ENV, CHALLENGES: 'open' }, { chain: fakeChain() })).status, 400, 'a challenge that is not an address');
   assert.equal((await handleFight(new URL(`https://x/join/${A}?name=x&model=y`), { ...ENV, JUDGE_KEY: undefined }, { chain: fakeChain() })).status, 500, 'no signature without the judge key');
   assert.equal((await get(`/fight/${A}?key=${PAGE_KEY}`, fakeChain({ commitment: '0x' + 'ab'.repeat(32) }))).status, 409, 'a fight started with a wrong commitment');
-  assert.equal((await get(`/fight/${A}?key=${PAGE_KEY}`, fakeChain({ secretCommit: '0x' + 'cd'.repeat(32) }))).status, 500, 'a server with the wrong secret serves nothing');
+  assert.equal((await get(`/fight/${A}?key=${PAGE_KEY}`, fakeChain({ secretCommit: '0x' + 'cd'.repeat(32) }))).status, 503, 'a server without the secret of this season serves nothing');
   // the commitment is what the contract checks: keccak256(abi.encode(bytes32[12] rightHashes, salt))
   let enc = '';
   for (let r = 1; r <= 12; r++) enc += answerHash(KEYS.code(ARENA, A, 3, r)).slice(2);
@@ -1007,6 +1009,23 @@ test('the Cloudflare judge signs exactly what Foundry signs', async () => {
   );
 });
 
+/** The season calendar's answers for the judge's fake chains: season 1, judged by `judge`, from 0 to
+ *  `end`, with this test's secret; its certificate contract at CERT. A fight's words get season 1. */
+const BOOK = '0x' + 'b0'.repeat(20);
+const CERT = '0x' + 'ce'.repeat(20);
+function seasonAnswer(p, judge, end, now) {
+  const word = (h) => String(h).replace(/^0x/, '').padStart(64, '0');
+  if (p.data.startsWith('0xfda7b9db')) return '0x' + word(BOOK.slice(2)); // seasonBook()
+  if (p.data.startsWith('0x715f8fe8')) return '0x' + word('1'); // seasonCount()
+  if (p.data.startsWith('0x6ebaeda9')) return '0x' + [word('0'), word(end.toString(16)), word(judge.slice(2)), word(KEYS.commit.slice(2)), word(CERT.slice(2))].join(''); // seasons(1)
+  if (p.data.startsWith('0xbcb39621')) return '0x' + word(now < end ? '1' : '0'); // currentSeason()
+  return null;
+}
+const withSeason = (hex) => {
+  const n = (hex.length - 2) / 64;
+  return n >= 22 ? hex : hex + '0'.repeat(64 * (21 - n)) + '1'.padStart(64, '0');
+};
+
 /** A fake chain for judgeRun: `fights` by "agent#number" as fightOf words, Started `logs`, nonces. */
 function fakeJudgeChain({ fights = {}, logs = [], pending = 5, mined = 5, now = 100000, latest = 10000, hall = null }, sent) {
   const word = (h) => String(h).replace(/^0x/, '').padStart(64, '0');
@@ -1016,12 +1035,12 @@ function fakeJudgeChain({ fights = {}, logs = [], pending = 5, mined = 5, now = 
     const p = q.params?.[0];
     switch (q.method) {
       case 'eth_call': {
-        if (p.data.startsWith('0x24627013')) return ok(KEYS.commit);
-        if (p.data.startsWith('0x32799e5d')) return ok(fights[`0x${p.data.slice(34, 74)}#${parseInt(p.data.slice(74), 16)}`] ?? '0x' + word('0').repeat(19));
+        const season = seasonAnswer(p, '0x70997970c51812dc3a010c7d01b50e0d17dc79c8', hall?.seasonEnd ?? 10 ** 12, now);
+        if (season) return ok(season);
+        if (p.data.startsWith('0x32799e5d')) return ok(withSeason(fights[`0x${p.data.slice(34, 74)}#${parseInt(p.data.slice(74), 16)}`] ?? '0x' + word('0').repeat(19)));
         if (p.data.startsWith('0xee5f8c8f')) return ok('0x' + word('3c'));
         if (hall && p.data.startsWith('0x748e1910')) return ok('0x' + word(hall.nextDrawAt.toString(16))); // nextDrawAt()
         if (hall && p.data.startsWith('0xb5c81661')) return ok('0x' + word(hall.count.toString(16))); // hallCount()
-        if (hall && p.data.startsWith('0xe757b20d')) return ok('0x' + word(hall.seasonEnd.toString(16))); // seasonEnd()
         if (hall && p.data.startsWith('0x9ef27b00')) return ok('0x' + word((hall.closedAt ?? 0).toString(16))); // closedAt() of the season's contract
         if (p.data.startsWith('0xef92e6ba') || p.data.startsWith('0x748e1910')) return ok('0x' + word('0'));
         return ok('0x' + word('70997970c51812dc3a010c7d01b50e0d17dc79c8')); // judge()
@@ -1124,8 +1143,8 @@ test('the Cloudflare judge keeps to 60 judgements an hour, counted on the chain'
       const p = q.params?.[0];
       switch (q.method) {
         case 'eth_call':
-          if (p.data.startsWith('0x24627013')) return ok(KEYS.commit); // secretCommit()
-          if (p.data.startsWith('0x32799e5d')) return ok(fight); // fightOf
+          if (seasonAnswer(p, addressOf(key), 10 ** 12, 100000)) return ok(seasonAnswer(p, addressOf(key), 10 ** 12, 100000));
+          if (p.data.startsWith('0x32799e5d')) return ok(withSeason(fight)); // fightOf
           if (p.data.startsWith('0xee5f8c8f')) return ok('0x' + word('3c')); // roundTime() = 60
           if (p.data.startsWith('0xef92e6ba')) return ok('0x' + word('0')); // pendingCutoff(): no draw sealed
           if (p.data.startsWith('0x748e1910')) return ok('0x' + word('0')); // nextDrawAt(): nobody registered
@@ -1186,18 +1205,18 @@ test("the audience sees a round's theme only once it has opened, for both fighte
   assert.equal((await ask(4, fakeChain({ round: 3 }))).status, 425, 'the next round is secret until its bell');
   // a match: if this fight is over, the opponent still fights round 3 of the same card: round 4 stays secret
   const over = fakeChain({ round: 13, clockRound: 3, opponent: { finishedAt: 0, clockAt: BELL, clockRound: 1, round: 3 } });
-  over.fightOf = async (who) => (who === B ? { seed: SEED, startedAt: 1, finishedAt: 0, clockAt: BELL, clockRound: 1, opponent: A, opponentNumber: 2, trapsCommit: '0x' + '77'.repeat(32) } : { seed: SEED, startedAt: 1, finishedAt: BELL + 100, clockAt: BELL, clockRound: 1, opponent: B, opponentNumber: 1, trapsCommit: '0x' + '77'.repeat(32) });
+  over.fightOf = async (who) => (who === B ? { seed: SEED, startedAt: 1, finishedAt: 0, clockAt: BELL, clockRound: 1, opponent: A, opponentNumber: 2, trapsCommit: '0x' + '77'.repeat(32), season: 1 } : { seed: SEED, startedAt: 1, finishedAt: BELL + 100, clockAt: BELL, clockRound: 1, opponent: B, opponentNumber: 1, trapsCommit: '0x' + '77'.repeat(32), season: 1 });
   assert.equal((await ask(4, over)).status, 425);
   assert.equal((await ask(3, over)).status, 200);
   // the first bell waits for the locked plan: no theme without it, even past the bell time
   assert.equal((await ask(1, fakeChain({ round: 1, trapsCommit: '0x' + '0'.repeat(64) }))).status, 425);
   // both gave up during the countdown: no round ever opened, so no theme, even after the fight
   const gaveUp = fakeChain({ round: 1, live: false });
-  gaveUp.fightOf = async (who) => ({ seed: SEED, startedAt: 1, finishedAt: BELL - 20, clockAt: BELL, clockRound: 1, opponent: who === B ? A : B, opponentNumber: who === B ? 2 : 1, trapsCommit: '0x' + '77'.repeat(32) });
+  gaveUp.fightOf = async (who) => ({ seed: SEED, startedAt: 1, finishedAt: BELL - 20, clockAt: BELL, clockRound: 1, opponent: who === B ? A : B, opponentNumber: who === B ? 2 : 1, trapsCommit: '0x' + '77'.repeat(32), season: 1 });
   assert.equal((await ask(1, gaveUp)).status, 425, 'given up before the first bell: nothing opened');
   // both stopped in round 3: rounds 1-3 opened, round 4 never did
   const stopped = fakeChain({ round: 4, live: false });
-  stopped.fightOf = async (who) => ({ seed: SEED, startedAt: 1, finishedAt: BELL + 2 * 70 + 30, clockAt: BELL, clockRound: 1, opponent: who === B ? A : B, opponentNumber: who === B ? 2 : 1, trapsCommit: '0x' + '77'.repeat(32) });
+  stopped.fightOf = async (who) => ({ seed: SEED, startedAt: 1, finishedAt: BELL + 2 * 70 + 30, clockAt: BELL, clockRound: 1, opponent: who === B ? A : B, opponentNumber: who === B ? 2 : 1, trapsCommit: '0x' + '77'.repeat(32), season: 1 });
   assert.equal((await ask(3, stopped)).status, 200);
   assert.equal((await ask(4, stopped)).status, 425, 'a round that never opened stays secret');
   // nowhere in the site's code
@@ -1313,4 +1332,27 @@ test('the treasurer\'s day keeps the order a real chain keeps: a stuck nonce is 
     assert.ok(d.retried.every((x) => x.nonce > d.pend.nonce), 'the retries come after the stuck payment');
     assert.ok(d.pReplAt < d.at[6] + 2, `seed ${s}: the stuck payment is settled before its retries are mined`);
   }
+});
+
+test('seasons: registration only while a season runs; a fight\'s pages come from its own season\'s secret', async () => {
+  const between = { ...fakeChain(), currentSeason: async () => 0 };
+  const closed = await handleFight(new URL(`https://x/join/${A}?name=x&model=y`), ENV, { chain: between });
+  assert.equal(closed.status, 410, 'no season running: no registration');
+  assert.match(await closed.text(), /No season is running now/);
+  // a fight of season 2: its pages come from season 2's secret (SECRET_2), never from season 1's
+  const K2 = arenaKeys('22'.repeat(32));
+  const locked2 = K2.trapsCommit(planOf(K2.cardSeed(SEED)).traps, K2.trapSalt(ARENA, SEED));
+  const chain = fakeChain({ commitment: K2.commitment(ARENA, A, 2), trapsCommit: locked2 });
+  const base = await chain.fight();
+  chain.fight = async () => ({ ...base, season: 2 });
+  chain.fightOf = async () => ({ ...base, season: 2 });
+  chain.season = async (n) => ({ start: 0, end: BELL + 10 ** 8, judge: ZERO_ADDR, secretCommit: n === 2 ? K2.commit : KEYS.commit, certificate: ZERO_ADDR });
+  const page = (env) => handleFight(new URL(`https://x/fight/${A}?format=md&key=${PAGE_KEY}&step=1`), env, { chain });
+  assert.equal((await page(ENV)).status, 503, 'only season 1\'s secret: no card of a season-2 fight');
+  const ok = await page({ ...ENV, SECRET_2: '22'.repeat(32) });
+  assert.equal(ok.status, 200);
+  assert.ok((await ok.text()).includes(K2.code(ARENA, A, 2, 3)), 'the code from season 2\'s secret');
+  // a season that ran another task set: its pages are not rebuilt by this server
+  const older = await handleFight(new URL(`https://x/card/${A}/2/1`), { ...ENV, SECRET_2: '22'.repeat(32), SEASONS: JSON.stringify({ 2: { plan: 10 } }) }, { chain });
+  assert.equal(older.status, 410);
 });

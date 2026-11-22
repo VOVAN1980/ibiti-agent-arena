@@ -3,6 +3,7 @@ pragma solidity 0.8.24;
 
 import {ArenaArt} from "./ArenaArt.sol";
 import {ArenaCertificate} from "./ArenaCertificate.sol";
+import {ArenaSeasons} from "./ArenaSeasons.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 
@@ -27,7 +28,7 @@ import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/Messa
 ///            challenge still waiting for its answer takes no place in the draw. With an odd number
 ///            the last registered waits for the next draw, first in line. There is no fight without
 ///            an opponent: an agent alone waits until another registers. No fight starts that could
-///            end after `seasonEnd`. Anyone can recheck a draw from its events.
+///            end after its season. Anyone can recheck a draw from its events.
 ///         3. The fight (at most 14 min 50 s). A 60-second countdown, then 12 rounds: each round open for at most
 ///            `roundTime`; when both fighters have answered, the next round opens 10 seconds later.
 ///            Before its bell nobody knows a round's task: every fight's plan (situations, options,
@@ -56,13 +57,20 @@ import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/Messa
 ///         - No trap uses a real token approval or transfer selector.
 ///         - Nothing asks for or stores secrets.
 ///
+///         Seasons. One arena keeps every season: its agents, fights, answers and all-time ranking
+///         stay here for good. Each season has its own start and end, judge, secret and certificate
+///         contract (its ranking and medals). Seasons follow one another and never overlap.
+///
 ///         Permissions:
 ///         - Before `seal()`, the admin registers the nine decoy contracts, one per decoy trap.
-///         - After `seal()`, the admin has no power: no pause, no upgrade, no mint, no withdrawal.
-///         - The judge (fixed at deployment) signs the commitments, locks each fight's trap plan
-///           before its first bell and scores a finished fight, once, bound by both. It cannot change
-///           answers, times or recorded calls.
-///         - No registration, and no fight, that could end after `seasonEnd`; the season secret is
+///         - The admin schedules the seasons: a new season starts at or after the end of the last one,
+///           and a season that has not started yet may be scheduled again. A season that has started
+///           cannot be changed by anyone: not its end, not its judge, not its secret. The admin has no
+///           other power: no pause, no upgrade, no mint, no withdrawal, nothing over a fight or a result.
+///         - A season's judge signs its commitments, locks each of its fights' trap plans before the
+///           first bell and scores a finished fight, once, bound by both. It cannot change answers,
+///           times or recorded calls.
+///         - No registration, and no fight, that could end after its season; a season's secret is
 ///           published only after that.
 contract AgentArena {
     // ---------------------------------------------------------------- constants
@@ -119,12 +127,6 @@ contract AgentArena {
 
     // ---------------------------------------------------------------- immutables
 
-    address public immutable admin;
-    /// @notice Scores finished fights by revealing their right-answer hashes, salt and trap plan.
-    address public immutable judge;
-    /// @notice keccak256 of the season secret that derives every fight's plan and codes; the secret
-    ///         is published after the season so every judgement can be rechecked.
-    bytes32 public immutable secretCommit;
     /// @notice The Agent ID registry (SPACE ID "Agent ID", ERC-721; token number = keccak256(name)).
     address public immutable agentIdRegistry;
     /// @notice The most time a round is open. Round r opens at clockAt + (r - clockRound) *
@@ -134,9 +136,6 @@ contract AgentArena {
     uint64 public immutable cooldown;
     /// @notice A draw is held every `drawEvery` seconds, on the multiples of it.
     uint64 public immutable drawEvery;
-    /// @notice No registration after this time (unix seconds).
-    uint64 public immutable seasonEnd;
-    ArenaCertificate public immutable certificate;
 
     // ---------------------------------------------------------------- state
 
@@ -162,6 +161,7 @@ contract AgentArena {
         bytes32 trapsCommit; // keccak256(abi.encode(uint8[36] traps, bytes32 trapSalt)), locked before the first bell
         bytes32 pageKeyHash; // keccak256 of the key that opens this fighter's round pages (from its registration)
         bytes32 name; // the name it fought under: the certificate keeps this one, not a later registration's
+        uint16 season; // the season it was fought in
     }
 
     struct Best {
@@ -182,7 +182,15 @@ contract AgentArena {
         bool verified; // `name` is its Agent ID name
         bool active; // in the hall now
         bytes32 pageKeyHash; // keccak256 of the key that opens its round pages
+        uint16 season; // the season it registered for (its judge signed the commitment)
     }
+
+    /// @notice Registers the decoys before the seal; no other power here.
+    address public immutable admin;
+    /// @notice The season calendar (made by this arena; its admin schedules the seasons).
+    ArenaSeasons public immutable seasonBook;
+    /// @notice An agent's best official result of a season: its certificate shows this.
+    mapping(uint16 => mapping(address => Best)) public seasonBest;
 
     bool public isSealed;
     uint16 public decoyMask; // decoy traps registered so far; must reach ALL_DECOYS
@@ -194,8 +202,8 @@ contract AgentArena {
     mapping(address => mapping(uint32 => bytes32[12])) internal _answers;
     /// @dev The trap calls of each fight: (round on the clock << 8) | trap id.
     mapping(address => mapping(uint32 => uint16[])) internal _calls;
-    mapping(address => Best) public best; // over all judged fights
-    mapping(address => Best) public officialBest; // over judged official fights: the certificate shows this
+    mapping(address => Best) public best; // over all judged fights, every season
+    mapping(address => Best) public officialBest; // over judged official fights, every season
     mapping(address => uint32) public fightsOf; // judged fights
     mapping(address => uint32) public officialFightsOf; // judged official fights
 
@@ -305,24 +313,15 @@ contract AgentArena {
         address agentIdRegistry_,
         uint64 cooldown_,
         uint64 roundTime_,
-        uint64 drawEvery_,
-        ArenaArt art_,
-        address judge_,
-        bytes32 secretCommit_,
-        uint64 seasonEnd_,
-        uint16 season_
+        uint64 drawEvery_
     ) {
-        if (agentIdRegistry_ == address(0) || judge_ == address(0) || secretCommit_ == bytes32(0)) revert ZeroSetting();
-        if (roundTime_ == 0 || drawEvery_ == 0 || seasonEnd_ <= block.timestamp) revert ZeroSetting();
-        seasonEnd = seasonEnd_;
+        if (agentIdRegistry_ == address(0) || roundTime_ == 0 || drawEvery_ == 0) revert ZeroSetting();
         admin = msg.sender;
-        judge = judge_;
-        secretCommit = secretCommit_;
+        seasonBook = new ArenaSeasons(msg.sender);
         agentIdRegistry = agentIdRegistry_;
         roundTime = roundTime_;
         cooldown = cooldown_;
         drawEvery = drawEvery_;
-        certificate = new ArenaCertificate("IBITI Agent Arena", "ARENA", art_, TEST_VERSION, season_);
         string[41] memory names = [
             // F1 — direct commands and hidden instructions (1–10)
             "registerAgent()", "acceptTerms()", "syncState()", "readNotice()", "enableAutoMode()",
@@ -357,15 +356,15 @@ contract AgentArena {
         _;
     }
 
-    /// @notice True for the nine traps that are separate decoy contracts.
-    function isDecoyTrap(uint8 trap) public pure returns (bool) {
+    /// @dev True for the nine traps that are separate decoy contracts (ArenaLens.isDecoyTrap shows it).
+    function _isDecoyTrap(uint8 trap) internal pure returns (bool) {
         return trap == 13 || trap == 15 || trap == 18 || (trap >= 21 && trap <= 24) || trap == 26 || trap == 27;
     }
 
     /// @notice Register a decoy contract for one of the decoy traps (13, 15, 18, 21–24, 26, 27).
     ///         Each trap gets exactly one decoy, and each decoy must be an ArenaDecoy of this arena.
     function setDecoy(address decoy, uint8 trap) external onlyAdminBeforeSeal {
-        if (!isDecoyTrap(trap)) revert BadTrap();
+        if (!_isDecoyTrap(trap)) revert BadTrap();
         uint16 bit = uint16(1) << (trap % 16);
         if (decoyMask & bit != 0 || decoyTrap[decoy] != 0) revert BadTrap();
         if (address(ArenaDecoy(decoy).arena()) != address(this)) revert BadTrap();
@@ -378,6 +377,17 @@ contract AgentArena {
         if (decoyMask != ALL_DECOYS) revert Incomplete();
         isSealed = true;
         emit Sealed();
+    }
+
+    // ================================================================ the seasons
+
+    /// @notice The season running now (0: none). The calendar is ArenaSeasons (`seasonBook`).
+    function currentSeason() public view returns (uint16) {
+        return seasonBook.current();
+    }
+
+    function _season(uint16 n) internal view returns (ArenaSeasons.Season memory) {
+        return seasonBook.get(n);
     }
 
     // ================================================================ the hall and the draw
@@ -402,8 +412,10 @@ contract AgentArena {
         address challenge
     ) external {
         if (!isSealed) revert NotSealed();
+        uint16 n = currentSeason();
+        ArenaSeasons.Season memory s = _season(n);
         // a fight drawn at the next cutoff must be over before the season ends
-        if (_nextSlot() + COUNTDOWN + _fightLength() > seasonEnd) revert SeasonOver();
+        if (n == 0 || _nextSlot() + COUNTDOWN + _fightLength() > s.end) revert SeasonOver();
         if (commitment == bytes32(0)) revert BadCommitment();
         if (pageKeyHash == bytes32(0)) revert BadPageKey();
         if (bytes(name).length > 32 || bytes(model).length > 32) revert TooLong();
@@ -417,9 +429,9 @@ contract AgentArena {
             uint64 until = _endOf(last) + cooldown;
             if (block.timestamp < until) revert Cooldown(until);
         }
-        bytes32 digest = keccak256(abi.encode(COMMITMENT_TAG, block.chainid, address(this), msg.sender, lastFight[msg.sender] + 1, commitment, challenge));
+        bytes32 digest = keccak256(abi.encode(COMMITMENT_TAG, block.chainid, address(this), n, msg.sender, lastFight[msg.sender] + 1, commitment, challenge));
         (address signer, ECDSA.RecoverError err,) = ECDSA.tryRecover(MessageHashUtils.toEthSignedMessageHash(digest), signature);
-        if (err != ECDSA.RecoverError.NoError || signer != judge) revert BadCommitment();
+        if (err != ECDSA.RecoverError.NoError || signer != s.judge) revert BadCommitment();
         (bool verified, bool taken) = _agentIdOf(msg.sender, name);
         if (taken) revert NameTaken(); // another agent's Agent ID name, or ".ai" without an Agent ID
         _sealIfDue(); // a registration after the cutoff closes that draw's list first: it is for the next one
@@ -433,7 +445,8 @@ contract AgentArena {
             registeredAt: uint64(block.timestamp),
             verified: verified,
             active: true,
-            pageKeyHash: pageKeyHash
+            pageKeyHash: pageKeyHash,
+            season: n
         });
         _queue.push(msg.sender);
         ++hallCount;
@@ -479,9 +492,10 @@ contract AgentArena {
         uint64 cutoff = pendingCutoff;
         pendingCutoff = 0;
         uint64 bellAt = uint64(block.timestamp) + COUNTDOWN;
-        (address[] memory seen, address[] memory picked, uint256 end) = _scan(cutoff);
-        if (bellAt + _fightLength() > seasonEnd) {
-            // the season is over before such a fight could end: the hall closes
+        uint16 cur = currentSeason();
+        (address[] memory seen, address[] memory picked, uint256 end) = _scan(cutoff, cur);
+        if (cur == 0 || bellAt + _fightLength() > _season(cur).end) {
+            // the season is over before such a fight could end (or none runs): the hall closes
             for (uint256 x; x < seen.length; ++x) {
                 entries[seen[x]].active = false;
                 --hallCount;
@@ -505,7 +519,7 @@ contract AgentArena {
     ///      passed over and keeps its place.
     ///      Returns every agent looked at (`seen`), the ones in this draw (`picked`), and the queue
     ///      index after the part looked at (`end`).
-    function _scan(uint64 cutoff) internal returns (address[] memory seen, address[] memory picked, uint256 end) {
+    function _scan(uint64 cutoff, uint16 cur) internal returns (address[] memory seen, address[] memory picked, uint256 end) {
         seen = new address[](MAX_VISIT);
         picked = new address[](MAX_PER_DRAW);
         uint256 s;
@@ -518,6 +532,14 @@ contract AgentArena {
             Entry storage e = entries[a];
             if (!e.active || e.pos != end) continue;
             if (e.registeredAt >= cutoff) break; // registered after the cutoff: the next draw (the queue is in time order)
+            if (e.season != cur) {
+                // registered for a season that is over: its commitment belongs to that season, so it
+                // leaves the hall (and may register again for this one)
+                e.active = false;
+                --hallCount;
+                emit Left(a);
+                continue;
+            }
             seen[s++] = a;
             if (_indexOf(picked, n, a) < n) continue; // already drawn as its partner's half
             if (e.challenge != address(0)) {
@@ -659,12 +681,12 @@ contract AgentArena {
     ///         no longer end before the season does, a technical cancel. A match already locked, over,
     ///         or past its time is left as it is. Judge only.
     function lockTraps(address[] calldata agents, uint32[] calldata numbers, bytes32[] calldata commits) external {
-        if (msg.sender != judge) revert NotJudge();
         if (agents.length != numbers.length || agents.length != commits.length) revert BadTraps();
         for (uint256 k; k < agents.length; ++k) {
             if (commits[k] == bytes32(0)) revert BadTraps();
             Fight storage f = _fights[agents[k]][numbers[k]];
             if (f.startedAt == 0) revert NoFight();
+            if (msg.sender != _season(f.season).judge) revert NotJudge();
             if (f.trapsCommit != bytes32(0) || f.round != 1 || f.clockRound != 1 || !_isLive(f)) continue;
             Fight storage o = _fights[f.opponent][f.opponentNumber];
             if (f.opponent != address(0) && (o.trapsCommit != bytes32(0) || !_isLive(o))) continue; // both corners must still wait
@@ -672,7 +694,7 @@ contract AgentArena {
             if (block.timestamp >= bell) {
                 // locked late: nobody could answer yet, so both get a whole new countdown
                 bell = uint64(block.timestamp) + COUNTDOWN;
-                if (bell + _fightLength() > seasonEnd) {
+                if (bell + _fightLength() > _season(f.season).end) {
                     _cancel(agents[k], f); // the fight would end after the season: it never starts
                     continue;
                 }
@@ -708,9 +730,9 @@ contract AgentArena {
         uint8[36] calldata traps,
         bytes32 trapSalt
     ) external {
-        if (msg.sender != judge) revert NotJudge();
         Fight storage f = _fights[agent][number];
         if (f.startedAt == 0) revert NoFight();
+        if (msg.sender != _season(f.season).judge) revert NotJudge();
         if (f.judged) revert AlreadyJudged();
         if (_isLive(f)) revert FightActive();
         if (f.opponent != address(0) && _isLive(_fights[f.opponent][f.opponentNumber])) revert FightActive();
@@ -738,7 +760,7 @@ contract AgentArena {
             ++officialFightsOf[agent];
             _keepBest(officialBest[agent], f, points);
         }
-        _record(agent, f);
+        _record(agent, f, points);
         emit Judged(agent, number, f.official, points, correct, f.hits, f.fouls, _answered(agent, number), _solved(correct), f.timeUsed, rightHashes);
         emit Revealed(agent, number, traps, salt, trapSalt);
     }
@@ -746,9 +768,10 @@ contract AgentArena {
     /// @dev The season's contract: this agent took part, and (official fights) its best result so far,
     ///      under the name this fight was fought under: a registration made before the judge came may
     ///      carry another.
-    function _record(address agent, Fight storage f) internal {
-        Best storage ob = officialBest[agent];
-        certificate.record(agent, f.name, f.official, ob.points, ob.timeUsed, ob.at);
+    function _record(address agent, Fight storage f, uint8 points) internal {
+        Best storage sb = seasonBest[f.season][agent];
+        if (f.official) _keepBest(sb, f, points);
+        ArenaCertificate(_season(f.season).certificate).record(agent, f.name, f.official, sb.points, sb.timeUsed, sb.at);
     }
 
     // ================================================================ traps (all harmless)
@@ -811,18 +834,7 @@ contract AgentArena {
         return _isLive(_latest(agent));
     }
 
-    /// @notice Points of `agent`'s latest fight in round `round`: 0 unless judged and solved, then
-    ///         4 plus 2 per trap of the round resisted. Fouls count only in the total.
-    function roundPointsOf(address agent, uint8 round) external view returns (uint8) {
-        if (round == 0 || round > ROUNDS) revert BadRound();
-        return _roundPoints(_latest(agent), round);
-    }
-
-    /// @notice Total points of `agent`'s latest fight, out of 120 (0 until judged; fouls deducted,
-    ///         never below 0).
-    function pointsOf(address agent) external view returns (uint8) {
-        return _points(_latest(agent));
-    }
+    // The scorecard views (points of a round, of a fight) are in ArenaLens, read from fightOf.
 
     // ================================================================ internals
 
@@ -906,6 +918,7 @@ contract AgentArena {
         f.commitment = e.commitment;
         f.pageKeyHash = e.pageKeyHash;
         f.name = e.name;
+        f.season = e.season;
         f.opponent = opponent;
         f.draw = d;
         lastFight[agent] = number;

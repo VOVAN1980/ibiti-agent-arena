@@ -30,8 +30,9 @@ export function seasonLine(st, nameOf) {
     const winners = st.top.slice(0, 3).map((a, i) => `<a href="${agentUrl(a)}"><span translate="no">${medal[i]}</span> ${keep(nameOf(a))}</a>`).join(' · ');
     return `<b>${esc(t('seasonWinners', st.season))}</b>${winners ? ` ${winners}` : ''} <a class="more" href="rating.html">${esc(t('seasonAll'))}</a>`;
   }
-  const end = new Date(st.end * 1000).toISOString().slice(0, 16).replace('T', ' ');
-  return `<b>${esc(t('seasonRuns', st.season, end))}</b> <span class="tiny">${esc(t('seasonNote'))}</span>`;
+  const when = (x) => new Date(x * 1000).toISOString().slice(0, 16).replace('T', ' ');
+  if (!st.running && st.start * 1000 > Date.now()) return `<b>${esc(t('seasonStarts', st.season, when(st.start)))}</b> <span class="tiny">${esc(t('seasonNote'))}</span>`;
+  return `<b>${esc(t('seasonRuns', st.season, when(st.end)))}</b> <span class="tiny">${esc(t('seasonNote'))}</span>`;
 }
 
 const LOGO = `<svg viewBox="0 0 40 40" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ef4444"/><stop offset="1" stop-color="#3b82f6"/></linearGradient></defs><path d="M20 2 36 11v18L20 38 4 29V11Z" fill="none" stroke="url(#lg)" stroke-width="2.5"/><path d="M13 14h14M13 20h14M13 26h14" stroke="#e6ebf5" stroke-width="1.6" opacity=".75"/></svg>`;

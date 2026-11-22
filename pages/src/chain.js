@@ -6,7 +6,10 @@ const SEL = {
   lastFight: '0x366f8e07', // lastFight(address)
   fightOf: '0x32799e5d', // fightOf(address,uint32)
   isLive: '0x50c116b8', // isLive(address)
-  secretCommit: '0x24627013', // secretCommit()
+  seasonBook: '0xfda7b9db', // seasonBook(): the arena's season calendar (ArenaSeasons)
+  currentSeason: '0xbcb39621', // currentSeason()
+  seasons: '0x6ebaeda9', // ArenaSeasons.seasons(uint16)
+  seasonCount: '0x715f8fe8', // ArenaSeasons.seasonCount()
   roundTime: '0xee5f8c8f', // roundTime()
   entries: '0xf29ee125', // entries(address)
   nextDrawAt: '0x748e1910', // nextDrawAt()
@@ -39,7 +42,10 @@ function words(hex) {
 const big = (w) => BigInt('0x' + w);
 
 export function makeChain({ rpc, arena, fetchFn }) {
-  const call = async (data) => (await rpcCall(rpc, 'eth_call', [{ to: arena, data }, 'latest'], fetchFn)).replace(/^0x/, '');
+  const callTo = async (to, data) => (await rpcCall(rpc, 'eth_call', [{ to, data }, 'latest'], fetchFn)).replace(/^0x/, '');
+  const call = (data) => callTo(arena, data);
+  let book = null; // the season calendar's address (immutable: read once)
+  const bookOf = async () => (book ??= '0x' + words(await call(SEL.seasonBook))[0].slice(24));
   return {
     /** The chain's clock: the timestamp of the latest block (what the contract compares with). */
     async now() {
@@ -75,6 +81,8 @@ export function makeChain({ rpc, arena, fetchFn }) {
         draw: Number(big(w[17] ?? '0')),
         trapsCommit: '0x' + (w[18] ?? '0'.repeat(64)), // the trap plan locked before the first bell (zero: none)
         pageKeyHash: '0x' + (w[19] ?? '0'.repeat(64)), // keccak256 of the fighter's page key
+        name: '0x' + (w[20] ?? '0'.repeat(64)), // the name it fought under
+        season: Number(big(w[21] ?? '0')), // the season it was fought in
       };
     },
     /** The agent's latest fight (all zero if it never fought). */
@@ -84,14 +92,25 @@ export function makeChain({ rpc, arena, fetchFn }) {
     async isLive(agent) {
       return big(words(await call(SEL.isLive + word(agent)))[0]) !== 0n;
     },
-    async secretCommit() {
-      return '0x' + words(await call(SEL.secretCommit))[0];
+    /** The season running now (0: none, between seasons). */
+    async currentSeason() {
+      return Number(big(words(await call(SEL.currentSeason))[0]));
+    },
+    /** The last season scheduled. */
+    async seasonCount() {
+      return Number(big(words(await callTo(await bookOf(), SEL.seasonCount))[0]));
+    },
+    /** A season's settings: its start and end, judge, keccak256 of its secret, certificate contract
+     *  (all zero for a season never scheduled). */
+    async season(n) {
+      const w = words(await callTo(await bookOf(), SEL.seasons + num(n)));
+      return { start: Number(big(w[0])), end: Number(big(w[1])), judge: '0x' + w[2].slice(24), secretCommit: '0x' + w[3], certificate: '0x' + w[4].slice(24) };
     },
     /** The agent's place in the waiting hall: entries(address) returns (name, model, commitment,
-     *  challenge, pos, waited, verified, active). */
+     *  challenge, pos, registeredAt, verified, active, pageKeyHash, season). */
     async entry(agent) {
       const w = words(await call(SEL.entries + word(agent)));
-      return { challenge: '0x' + w[3].slice(24), waited: Number(big(w[5])), registeredAt: Number(big(w[5])), verified: big(w[6]) !== 0n, active: big(w[7]) !== 0n, pageKeyHash: '0x' + (w[8] ?? '0'.repeat(64)) };
+      return { challenge: '0x' + w[3].slice(24), waited: Number(big(w[5])), registeredAt: Number(big(w[5])), verified: big(w[6]) !== 0n, active: big(w[7]) !== 0n, pageKeyHash: '0x' + (w[8] ?? '0'.repeat(64)), season: Number(big(w[9] ?? '0')) };
     },
     /** When the next draw may be held (0 before the first registration). */
     /** The answer hashes of a fight, round 1 first (zero: not answered). */

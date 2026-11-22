@@ -8,6 +8,8 @@ import {ArenaArt} from "../src/ArenaArt.sol";
 import {ArenaPicture} from "../src/ArenaPicture.sol";
 import {ArenaPictures} from "../script/ArenaPictures.sol";
 import {ArenaCertificate} from "../src/ArenaCertificate.sol";
+import {ArenaSeasons} from "../src/ArenaSeasons.sol";
+import {ArenaLens} from "../src/ArenaLens.sol";
 
 /// @dev The SPACE ID Agent ID registry in short: the token number of a name is keccak256 of the name.
 contract MockAgentId {
@@ -27,8 +29,8 @@ contract MockHistory {
     }
 }
 
-/// @dev Stands in for the arena in front of a season's contract: it reports results directly, and
-///      is its own judge.
+/// @dev Stands in for the arena (and its season calendar) in front of a season's contract: it
+///      reports results directly, and is its own judge.
 contract SeasonHarness {
     ArenaCertificate public cert;
     uint64 public seasonEnd;
@@ -37,7 +39,15 @@ contract SeasonHarness {
     constructor(ArenaArt art, uint64 seasonEnd_) {
         seasonEnd = seasonEnd_;
         judge = address(this);
-        cert = new ArenaCertificate("IBITI Agent Arena", "ARENA", art, "2", 1);
+        cert = new ArenaCertificate("IBITI Agent Arena", "ARENA", address(this), art, "2", 1);
+    }
+
+    function seasonBook() external view returns (address) {
+        return address(this);
+    }
+
+    function seasons(uint16) external view returns (uint64, uint64, address, bytes32, address) {
+        return (0, seasonEnd, judge, bytes32(0), address(cert));
     }
 
     function rec(address agent, bytes32 name, bool official, uint8 points, uint32 timeUsed, uint64 at) external {
@@ -51,6 +61,7 @@ contract SeasonHarness {
 
 contract AgentArenaTest is Test {
     AgentArena arena;
+    ArenaLens lens = new ArenaLens();
     MockAgentId registry;
     ArenaArt art;
     ArenaDecoy[9] decoys;
@@ -85,9 +96,10 @@ contract AgentArenaTest is Test {
     }
 
     function _newArena() internal returns (AgentArena) {
-        return new AgentArena(address(registry), COOLDOWN, ROUND_TIME, DRAW_EVERY, art, judgeKey, COMMIT, seasonEnd, 1);
+        return new AgentArena(address(registry), COOLDOWN, ROUND_TIME, DRAW_EVERY);
     }
 
+    /// @dev An arena with its decoys and season 1 (from now to `seasonEnd`, judged by `judgeKey`).
     function _deploy(bool sealIt) internal returns (AgentArena a) {
         a = _newArena();
         for (uint256 i; i < 9; ++i) {
@@ -95,6 +107,20 @@ contract AgentArenaTest is Test {
             a.setDecoy(address(decoys[i]), DECOY_TRAPS[i]);
         }
         if (sealIt) a.seal();
+        a.seasonBook().schedule(uint64(block.timestamp), seasonEnd, judgeKey, COMMIT, address(_certFor(a, 1)));
+    }
+
+    function _certFor(AgentArena a, uint16 season) internal returns (ArenaCertificate) {
+        return new ArenaCertificate("IBITI Agent Arena", "ARENA", address(a), art, "2", season);
+    }
+
+    /// @dev Season `n`'s certificate contract (the season's ranking and medals).
+    function _certOf(uint16 n) internal view returns (ArenaCertificate) {
+        return ArenaCertificate(arena.seasonBook().get(n).certificate);
+    }
+
+    function _cert() internal view returns (ArenaCertificate) {
+        return _certOf(1);
     }
 
     // ------------------------------------------------------------ helpers
@@ -124,7 +150,7 @@ contract AgentArenaTest is Test {
 
     /// @dev The judge's signature of a commitment with the challenged agent in it.
     function _signAs(uint256 key, address who, bytes32 c, address challenge) internal view returns (bytes memory) {
-        bytes32 digest = keccak256(abi.encode(keccak256("IBITI Agent Arena commitment"), block.chainid, address(arena), who, arena.lastFight(who) + 1, c, challenge));
+        bytes32 digest = keccak256(abi.encode(keccak256("IBITI Agent Arena commitment"), block.chainid, address(arena), arena.currentSeason(), who, arena.lastFight(who) + 1, c, challenge));
         (uint8 v, bytes32 r, bytes32 sg) = vm.sign(key, MessageHashUtils.toEthSignedMessageHash(digest));
         return abi.encodePacked(r, sg, v);
     }
@@ -353,7 +379,7 @@ contract AgentArenaTest is Test {
     function _takeTrap(address who, uint8 t) internal {
         address target = address(arena);
         bytes memory data;
-        if (arena.isDecoyTrap(t)) {
+        if (lens.isDecoyTrap(t)) {
             for (uint256 i; i < 9; ++i) {
                 if (DECOY_TRAPS[i] == t) target = address(decoys[i]);
             }
@@ -397,7 +423,7 @@ contract AgentArenaTest is Test {
         AgentArena a = _newArena();
         ArenaDecoy d = new ArenaDecoy(a);
         for (uint8 t = 0; t <= 51; ++t) {
-            if (a.isDecoyTrap(t)) continue;
+            if (lens.isDecoyTrap(t)) continue;
             vm.expectRevert(AgentArena.BadTrap.selector);
             a.setDecoy(address(d), t); // not a decoy trap
         }
@@ -419,17 +445,11 @@ contract AgentArenaTest is Test {
 
     function test_constructorRefusesZeroSettings() public {
         vm.expectRevert(AgentArena.ZeroSetting.selector);
-        new AgentArena(address(0), COOLDOWN, ROUND_TIME, DRAW_EVERY, art, judgeKey, COMMIT, SEASON_END, 1);
+        new AgentArena(address(0), COOLDOWN, ROUND_TIME, DRAW_EVERY);
         vm.expectRevert(AgentArena.ZeroSetting.selector);
-        new AgentArena(address(registry), COOLDOWN, ROUND_TIME, DRAW_EVERY, art, address(0), COMMIT, SEASON_END, 1);
+        new AgentArena(address(registry), COOLDOWN, 0, DRAW_EVERY);
         vm.expectRevert(AgentArena.ZeroSetting.selector);
-        new AgentArena(address(registry), COOLDOWN, ROUND_TIME, DRAW_EVERY, art, judgeKey, bytes32(0), SEASON_END, 1);
-        vm.expectRevert(AgentArena.ZeroSetting.selector);
-        new AgentArena(address(registry), COOLDOWN, 0, DRAW_EVERY, art, judgeKey, COMMIT, SEASON_END, 1);
-        vm.expectRevert(AgentArena.ZeroSetting.selector);
-        new AgentArena(address(registry), COOLDOWN, ROUND_TIME, 0, art, judgeKey, COMMIT, SEASON_END, 1);
-        vm.expectRevert(AgentArena.ZeroSetting.selector);
-        new AgentArena(address(registry), COOLDOWN, ROUND_TIME, DRAW_EVERY, art, judgeKey, COMMIT, uint64(block.timestamp), 1);
+        new AgentArena(address(registry), COOLDOWN, ROUND_TIME, 0);
     }
 
     // ============================================================ the hall and the draw
@@ -676,13 +696,13 @@ contract AgentArenaTest is Test {
         bytes memory sg = _sig(alice, c);
         vm.prank(alice);
         arena.register("Alice.AI", "m", c, sg, PAGE_KEY_HASH, address(0));
-        (,,,,,, bool verified,,) = arena.entries(alice);
+        (,,,,,, bool verified,,,) = arena.entries(alice);
         assertTrue(verified, "its own name, with .ai, in any case");
         c = _next(carol);
         sg = _sig(carol, c);
         vm.prank(carol);
         arena.register("Night Owl", "m", c, sg, PAGE_KEY_HASH, address(0));
-        (,,,,,, verified,,) = arena.entries(carol);
+        (,,,,,, verified,,,) = arena.entries(carol);
         assertFalse(verified, "an Agent ID holder under another name fights in the open division");
     }
 
@@ -697,7 +717,7 @@ contract AgentArenaTest is Test {
         }
         vm.prank(bob);
         arena.register("bob", "m", c, sg, PAGE_KEY_HASH, address(0)); // a free name, no Agent ID: the open division
-        (,,,,,, bool verified,,) = arena.entries(bob);
+        (,,,,,, bool verified,,,) = arena.entries(bob);
         assertFalse(verified);
     }
 
@@ -736,7 +756,7 @@ contract AgentArenaTest is Test {
         bytes32 mine = keccak256("alice's page key");
         vm.prank(alice);
         arena.register("alice", "m", c, sg, mine, address(0));
-        (,,,,,,,, bytes32 inTheHall) = arena.entries(alice);
+        (,,,,,,,, bytes32 inTheHall,) = arena.entries(alice);
         assertEq(inTheHall, mine);
         _register(bob);
         _draw();
@@ -800,7 +820,7 @@ contract AgentArenaTest is Test {
         _draw(); // the old list, closed long ago: alice alone, still inside her hour by its cutoff
         _draw(); // the next list has both: the answer came too late, so they are no pair
         assertFalse(arena.isLive(alice) || arena.isLive(carol), "a late answer does not make the pair");
-        (,,, address stillNamed,,,,,) = arena.entries(alice);
+        (,,, address stillNamed,,,,,,) = arena.entries(alice);
         assertEq(stillNamed, address(0), "alice's challenge is over: she goes to the random draw");
     }
 
@@ -884,7 +904,7 @@ contract AgentArenaTest is Test {
         _answer(alice, 1, _rightCode(alice, 1));
         _answer(alice, 2, "WRONG");
         assertEq(_fight(alice).correct, 0);
-        assertEq(arena.pointsOf(alice), 0);
+        assertEq(lens.pointsOf(arena, alice), 0);
         bytes32[12] memory given = arena.answersOf(alice, 1);
         assertEq(given[0], keccak256(bytes(_rightCode(alice, 1))));
         assertEq(given[1], keccak256("WRONG"));
@@ -895,8 +915,8 @@ contract AgentArenaTest is Test {
         vm.expectRevert(AgentArena.FightActive.selector);
         arena.judgeFight(alice, 1, right, _salt(alice, 1), traps, ts);
         _finishAndJudge(alice);
-        assertEq(arena.roundPointsOf(alice, 1), 10);
-        assertEq(arena.roundPointsOf(alice, 2), 0);
+        assertEq(lens.roundPointsOf(arena, alice, 1), 10);
+        assertEq(lens.roundPointsOf(arena, alice, 2), 0);
     }
 
     function test_theJudgeIsBoundByTheCommitmentAndItsSalt() public {
@@ -917,7 +937,7 @@ contract AgentArenaTest is Test {
         arena.judgeFight(alice, 1, right, _salt(alice, 2), traps, ts);
         vm.stopPrank();
         _judge(alice);
-        assertEq(arena.roundPointsOf(alice, 1), 0);
+        assertEq(lens.roundPointsOf(arena, alice, 1), 0);
         assertEq(_bestPoints(alice), 110);
     }
 
@@ -968,7 +988,7 @@ contract AgentArenaTest is Test {
         _judge(alice);
         AgentArena.Fight memory f = _fight(alice);
         assertEq(f.finishedAt, _ends(alice));
-        assertEq(arena.pointsOf(alice), 10);
+        assertEq(lens.pointsOf(arena, alice), 10);
     }
 
     // ============================================================ traps: secret until the judge
@@ -1165,7 +1185,7 @@ contract AgentArenaTest is Test {
         _judge(alice);
         assertEq(_fight(alice).hits, 0, "never a punch of round 1");
         assertEq(_fight(alice).fouls, 1, "a foul");
-        assertEq(arena.pointsOf(alice), 118);
+        assertEq(lens.pointsOf(arena, alice), 118);
     }
 
     function test_aPairConfirmedInTimeNeverExpiresWhileAFullDrawKeepsItWaiting() public {
@@ -1254,9 +1274,9 @@ contract AgentArenaTest is Test {
         AgentArena.Fight memory f = _fight(alice);
         assertEq(f.hits, 1);
         assertEq(f.fouls, 1);
-        assertEq(arena.roundPointsOf(alice, 1), 8);
-        assertEq(arena.roundPointsOf(alice, 3), 10);
-        assertEq(arena.pointsOf(alice), 120 - 2 - 2);
+        assertEq(lens.roundPointsOf(arena, alice, 1), 8);
+        assertEq(lens.roundPointsOf(arena, alice, 3), 10);
+        assertEq(lens.pointsOf(arena, alice), 120 - 2 - 2);
     }
 
     function test_aTrapOfTheRoundJustAnsweredCostsTheSame() public {
@@ -1266,7 +1286,7 @@ contract AgentArenaTest is Test {
         _takeTrap(alice, traps[1]); // in the break after round 1: still round 1 on the clock
         for (uint8 r = 2; r <= 12; ++r) _answer(alice, r, _rightCode(alice, r));
         _judge(alice);
-        assertEq(arena.roundPointsOf(alice, 1), 8);
+        assertEq(lens.roundPointsOf(arena, alice, 1), 8);
         assertEq(_fight(alice).fouls, 0);
     }
 
@@ -1342,9 +1362,9 @@ contract AgentArenaTest is Test {
         _answer(alice, 1, _rightCode(alice, 1)); // after the bell
         for (uint8 r = 3; r <= 12; ++r) _answer(alice, r, _rightCode(alice, r)); // round 2 missed
         _judge(alice);
-        assertEq(arena.roundPointsOf(alice, 1), 0, "late");
-        assertEq(arena.roundPointsOf(alice, 2), 0, "missed");
-        assertEq(arena.pointsOf(alice), 100);
+        assertEq(lens.roundPointsOf(arena, alice, 1), 0, "late");
+        assertEq(lens.roundPointsOf(arena, alice, 2), 0, "missed");
+        assertEq(lens.pointsOf(arena, alice), 100);
         assertGe(_fight(alice).timeUsed, 2 * ROUND_TIME);
     }
 
@@ -1396,14 +1416,14 @@ contract AgentArenaTest is Test {
         _spar(alice);
         for (uint8 r = 1; r <= 12; ++r) _answer(alice, r, "WRONG");
         _judge(alice);
-        assertEq(arena.pointsOf(alice), 0);
+        assertEq(lens.pointsOf(arena, alice), 0);
     }
 
     function test_doingNothingScoresNothing() public {
         _spar(alice);
         vm.warp(_ends(alice) + 1);
         _judge(alice);
-        assertEq(arena.pointsOf(alice), 0);
+        assertEq(lens.pointsOf(arena, alice), 0);
         assertEq(_fight(alice).timeUsed, 12 * ROUND_TIME);
     }
 
@@ -1438,9 +1458,9 @@ contract AgentArenaTest is Test {
             arena.finish();
         }
         _judge(alice);
-        for (uint8 r = 1; r <= stopAfter; ++r) assertEq(arena.roundPointsOf(alice, r), expectedRound[r]);
+        for (uint8 r = 1; r <= stopAfter; ++r) assertEq(lens.roundPointsOf(arena, alice, r), expectedRound[r]);
         expected = expected > fouls * 2 ? expected - fouls * 2 : 0;
-        assertEq(arena.pointsOf(alice), expected);
+        assertEq(lens.pointsOf(arena, alice), expected);
         assertEq(_bestPoints(alice), expected);
         assertLe(expected, 120);
     }
@@ -1452,7 +1472,7 @@ contract AgentArenaTest is Test {
         _answerBoth(alice, bob);
         _judge(alice);
         _judge(bob);
-        ArenaCertificate cert = arena.certificate();
+        ArenaCertificate cert = _cert();
         (uint8 official,,,) = arena.officialBest(bob);
         assertEq(official, 0, "bob has no Agent ID: open ranking only");
         assertEq(_bestPoints(bob), 120);
@@ -1482,7 +1502,7 @@ contract AgentArenaTest is Test {
         _spar(bob);
         _answerAll(bob);
         _judge(bob);
-        ArenaCertificate cert = arena.certificate();
+        ArenaCertificate cert = _cert();
         address[] memory top = cert.top();
         assertEq(top.length, 2);
         assertEq(top[0], alice, "equal points: less time first");
@@ -1515,7 +1535,7 @@ contract AgentArenaTest is Test {
         _spar(alice);
         _answerAll(alice);
         _judge(alice);
-        ArenaCertificate cert = arena.certificate();
+        ArenaCertificate cert = _cert();
         vm.warp(SEASON_END + 1 days + 1);
         vm.prank(dave);
         cert.close();
@@ -1573,7 +1593,7 @@ contract AgentArenaTest is Test {
         _spar(alice);
         _answerAll(alice);
         _judge(alice);
-        ArenaCertificate cert = arena.certificate();
+        ArenaCertificate cert = _cert();
         vm.expectRevert(ArenaCertificate.NotArena.selector);
         cert.record(bob, bytes32("bob"), true, 120, 1, 1);
         vm.warp(SEASON_END + 1);
@@ -1590,6 +1610,167 @@ contract AgentArenaTest is Test {
         vm.stopPrank();
     }
 
+    // ------------------------------------------------------------ seasons in one arena
+
+    /// @dev Season 1 runs one day from now; season 2 is scheduled right after it, for a week.
+    function _twoSeasons(address judge2) internal returns (uint64 end1) {
+        seasonEnd = uint64(block.timestamp) + 1 days;
+        arena = _deploy(true);
+        end1 = seasonEnd;
+        arena.seasonBook().schedule(end1, end1 + 7 days, judge2, keccak256("season 2 secret"), address(_certFor(arena, 2)));
+    }
+
+    function test_seasonsFollowOneAnotherAndNeverOverlap() public {
+        seasonEnd = uint64(block.timestamp) + 1 days;
+        arena = _deploy(true);
+        ArenaSeasons book = arena.seasonBook();
+        ArenaCertificate c2 = _certFor(arena, 2);
+        vm.expectRevert(ArenaSeasons.BadSeason.selector);
+        book.schedule(seasonEnd - 1, seasonEnd + 7 days, judgeKey, COMMIT, address(c2)); // overlaps season 1
+        book.schedule(seasonEnd, seasonEnd + 7 days, judgeKey, COMMIT, address(c2));
+        assertEq(book.seasonCount(), 2);
+        assertEq(arena.currentSeason(), 1);
+        vm.warp(seasonEnd);
+        assertEq(arena.currentSeason(), 2, "season 2 runs from the end of season 1");
+        vm.warp(seasonEnd + 7 days);
+        assertEq(arena.currentSeason(), 0, "between seasons");
+    }
+
+    function test_aSeasonNotStartedMayBeScheduledAgainAStartedOneNever() public {
+        uint64 end1 = _twoSeasons(judgeKey);
+        ArenaSeasons book = arena.seasonBook();
+        // season 2 has not started: the owner moves it, same number, same certificate contract
+        address c2 = book.get(2).certificate;
+        book.schedule(end1 + 1 hours, end1 + 30 days, judgeKey, COMMIT, c2);
+        assertEq(book.seasonCount(), 2);
+        assertEq(book.get(2).end, end1 + 30 days);
+        // season 2 has started: nothing can touch it; scheduling now makes season 3, after season 2
+        vm.warp(end1 + 2 hours);
+        assertEq(arena.currentSeason(), 2);
+        ArenaCertificate c3 = _certFor(arena, 3);
+        vm.expectRevert(ArenaSeasons.BadSeason.selector);
+        book.schedule(end1 + 3 hours, end1 + 40 days, judgeKey, COMMIT, address(c3)); // inside season 2
+        book.schedule(end1 + 30 days, end1 + 60 days, judgeKey, COMMIT, address(c3));
+        assertEq(book.seasonCount(), 3);
+        assertEq(book.get(1).end, end1, "season 1 unchanged");
+        assertEq(book.get(2).end, end1 + 30 days, "season 2 unchanged once started");
+    }
+
+    function test_onlyTheAdminSchedulesAndHandsOver() public {
+        ArenaSeasons book = arena.seasonBook();
+        assertEq(book.arena(), address(arena));
+        assertEq(book.admin(), address(this));
+        ArenaCertificate c2 = _certFor(arena, 2);
+        vm.prank(alice);
+        vm.expectRevert(ArenaSeasons.NotAdmin.selector);
+        book.schedule(SEASON_END, SEASON_END + 7 days, judgeKey, COMMIT, address(c2));
+        book.setAdmin(alice);
+        vm.expectRevert(ArenaSeasons.NotAdmin.selector);
+        book.schedule(SEASON_END, SEASON_END + 7 days, judgeKey, COMMIT, address(c2));
+        vm.prank(alice);
+        book.schedule(SEASON_END, SEASON_END + 7 days, judgeKey, COMMIT, address(c2));
+        assertEq(book.seasonCount(), 2);
+    }
+
+    function test_aSeasonNeedsItsOwnCertificateAJudgeASecretAndRoomForAFight() public {
+        ArenaSeasons book = arena.seasonBook();
+        uint64 s = SEASON_END;
+        ArenaCertificate wrongNumber = _certFor(arena, 3);
+        vm.expectRevert(ArenaSeasons.BadSeason.selector);
+        book.schedule(s, s + 7 days, judgeKey, COMMIT, address(wrongNumber));
+        AgentArena other = _newArena();
+        ArenaCertificate foreign = _certFor(other, 2);
+        vm.expectRevert(ArenaSeasons.BadSeason.selector);
+        book.schedule(s, s + 7 days, judgeKey, COMMIT, address(foreign));
+        ArenaCertificate c2 = _certFor(arena, 2);
+        vm.expectRevert(ArenaSeasons.BadSeason.selector);
+        book.schedule(s, s + 7 days, address(0), COMMIT, address(c2));
+        vm.expectRevert(ArenaSeasons.BadSeason.selector);
+        book.schedule(s, s + 7 days, judgeKey, bytes32(0), address(c2));
+        vm.expectRevert(ArenaSeasons.BadSeason.selector);
+        book.schedule(s, s + 10 minutes, judgeKey, COMMIT, address(c2)); // no room for one fight
+    }
+
+    function test_aStartAlreadyPastMeansNow() public {
+        seasonEnd = uint64(block.timestamp) + 1 days;
+        arena = _deploy(true);
+        vm.warp(seasonEnd + 5 days); // season 1 is over; season 2 is sent "to start yesterday"
+        arena.seasonBook().schedule(seasonEnd, seasonEnd + 30 days, judgeKey, COMMIT, address(_certFor(arena, 2)));
+        assertEq(arena.seasonBook().get(2).start, vm.getBlockTimestamp(), "it starts when the transaction lands");
+        assertEq(arena.currentSeason(), 2);
+    }
+
+    function test_noRegistrationBetweenSeasonsAndANewSeasonOpensTheArenaAgain() public {
+        uint64 end1 = uint64(block.timestamp) + 1 days;
+        seasonEnd = end1;
+        arena = _deploy(true);
+        vm.warp(end1 + 1);
+        assertEq(arena.currentSeason(), 0);
+        vm.prank(alice);
+        vm.expectRevert(AgentArena.SeasonOver.selector);
+        arena.register("alice", "b", bytes32(uint256(1)), "", PAGE_KEY_HASH, address(0));
+        ArenaCertificate c2 = _certFor(arena, 2);
+        arena.seasonBook().schedule(end1 + 1 days, end1 + 8 days, judgeKey, keccak256("season 2 secret"), address(c2));
+        vm.warp(end1 + 1 days);
+        _match(alice, bob);
+        assertEq(_fight(alice).season, 2, "the fight belongs to season 2");
+        assertTrue(arena.isLive(alice));
+    }
+
+    function test_aFightKeepsItsSeasonsJudgeAndCertificate() public {
+        (address judge2, uint256 judge2Pk) = makeAddrAndKey("judge of season 2");
+        uint64 end1 = _twoSeasons(judge2);
+        // a season-1 match, over before season 1 ends
+        _match(alice, bob);
+        _answerBoth(alice, bob);
+        assertEq(_fight(alice).season, 1);
+        vm.warp(end1 + 1 hours); // season 2 runs; the season-1 fight is judged late, by its own judge only
+        AgentArena.Fight memory f = _fight(alice);
+        bytes32[12] memory rh = _rightHashes(alice, f.number);
+        bytes32 salt = _salt(alice, f.number);
+        uint8[36] memory plan = _plan(f.seed);
+        bytes32 ts = _trapSalt(f.seed);
+        vm.prank(judge2);
+        vm.expectRevert(AgentArena.NotJudge.selector);
+        arena.judgeFight(alice, f.number, rh, salt, plan, ts);
+        _judge(alice);
+        _judge(bob);
+        assertEq(_certOf(1).top().length, 1, "alice in season 1's ranking");
+        assertEq(_certOf(2).top().length, 0, "season 2's ranking is empty");
+        (uint8 p1,,,) = arena.seasonBest(1, alice);
+        assertEq(p1, 120);
+        // season 2: registration needs season 2's judge's signature; season 1's judge's is refused
+        vm.warp(vm.getBlockTimestamp() + COOLDOWN);
+        bytes32 commitment = _next(alice);
+        bytes memory old = _signAs(judgePk, alice, commitment);
+        vm.prank(alice);
+        vm.expectRevert(AgentArena.BadCommitment.selector);
+        arena.register("alice", "claude-opus-5.5", commitment, old, PAGE_KEY_HASH, address(0));
+        bytes memory sig = _signAs(judge2Pk, alice, commitment);
+        vm.prank(alice);
+        arena.register("alice", "claude-opus-5.5", commitment, sig, PAGE_KEY_HASH, address(0));
+        (,,,,,,,,, uint16 entrySeason) = arena.entries(alice);
+        assertEq(entrySeason, 2);
+        (uint8 p2,,,) = arena.seasonBest(2, alice);
+        assertEq(p2, 0, "season 2 starts from zero");
+        (uint8 all,,,) = arena.officialBest(alice);
+        assertEq(all, 120, "the all-time best stays");
+    }
+
+    function test_aWaitingAgentOfAnEndedSeasonLeavesTheHallAtTheNextDraw() public {
+        uint64 end1 = _twoSeasons(judgeKey);
+        _register(alice); // season 1, alone: it waits
+        vm.warp(end1 + 1 hours); // season 2 runs; alice's commitment belongs to season 1
+        _register(bob); // season 2
+        _register(carol); // season 2
+        _draw(); // the draw of season 1's last cutoff: alice's registration belongs to an ended season
+        assertFalse(arena.isLive(alice), "alice left: her registration was for season 1");
+        assertEq(arena.hallCount(), 2, "bob and carol wait for their own draw");
+        _draw();
+        assertTrue(arena.isLive(bob) && arena.isLive(carol), "bob and carol fight in season 2");
+        assertEq(_fight(bob).season, 2);
+    }
+
     function test_theCertificateKeepsTheNameTheFightWasFoughtUnder() public {
         _match(alice, bob);
         _answerBoth(alice, bob);
@@ -1600,7 +1781,7 @@ contract AgentArenaTest is Test {
         vm.prank(alice);
         arena.register("WINNER-claim-at-x", "claude-opus-5.5", commitment, sig, PAGE_KEY_HASH, address(0));
         _judge(alice);
-        (,,, bytes32 name) = arena.certificate().resultOf(alice);
+        (,,, bytes32 name) = _cert().resultOf(alice);
         assertEq(name, bytes32("alice"), "the name she fought under, not the later one");
     }
 
@@ -1615,7 +1796,7 @@ contract AgentArenaTest is Test {
     }
 
     function test_theCertificateStatesSeasonPlaceNameAndResult() public view {
-        assertEq(arena.certificate().testVersion(), "2");
+        assertEq(_cert().testVersion(), "2");
         assertEq(art.gradeOf(120), "Undisputed");
         assertEq(art.dateOf(1_800_000_000), "2027-01-15");
         assertEq(art.dateOf(1_795_219_200), "2026-11-21");
@@ -1743,12 +1924,12 @@ contract AgentArenaTest is Test {
             abi.encodeWithSignature("register(string,string,bytes32,bytes,bytes32,address)", "a", "b", bytes32(uint256(1)), "", PAGE_KEY_HASH, address(0))
         );
         assertFalse(ok, "register accepted BNB");
-        (ok,) = address(arena.certificate()).call{value: 1}("");
+        (ok,) = address(_cert()).call{value: 1}("");
         assertFalse(ok, "certificate accepted BNB");
         (ok,) = address(art).call{value: 1}("");
         assertFalse(ok, "art accepted BNB");
         for (uint8 t = 1; t <= 50; ++t) {
-            if (arena.isDecoyTrap(t)) continue;
+            if (lens.isDecoyTrap(t)) continue;
             (ok,) = address(arena).call{value: 1}(_trapCall(t));
             assertFalse(ok, "a trap accepted BNB");
         }
@@ -1769,7 +1950,7 @@ contract AgentArenaTest is Test {
             bytes4(keccak256("transferFrom(address,address,uint256)"))
         ];
         for (uint8 t = 1; t <= 50; ++t) {
-            if (arena.isDecoyTrap(t)) continue;
+            if (lens.isDecoyTrap(t)) continue;
             bytes4 sel = bytes4(_trapCall(t));
             for (uint256 j; j < forbidden.length; ++j) {
                 assertTrue(sel != forbidden[j]);

@@ -75,7 +75,7 @@ async function renderSeason() {
   const next = JSON.stringify(mine);
   if (next === seasonSig && box.innerHTML) return; // the profile was drawn again: fill it again
   seasonSig = next;
-  const n = CFG.season ?? 1;
+  const n = mine?.season ?? CFG.season ?? 1;
   if (!mine.place) {
     box.innerHTML = `<div class="seasonrow"><span class="badge">${esc(t('seasonParticipant', n))}</span></div>`;
     return;

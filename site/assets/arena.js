@@ -65,9 +65,35 @@ export async function chainNow() {
   return parseInt((await rpc('eth_getBlockByNumber', ['latest', false])).timestamp, 16);
 }
 
-/** A number setting of the arena: 'drawEvery', 'roundTime', 'cooldown' or 'seasonEnd' (seconds). */
+/** A number setting of the arena: 'drawEvery', 'roundTime', 'cooldown' or 'seasonEnd' (seconds; the
+ *  end of the season running now, or of the last one scheduled). */
 export async function arenaSetting(name) {
+  if (name === 'seasonEnd' && !CFG.archived) return (await seasonNow())?.end ?? 0;
   return num(words(await rpc('eth_call', [{ to: CFG.arena, data: SEL[name] }, 'latest']))[0]);
+}
+
+// ------------------------------------------------------------------ the season calendar (ArenaSeasons)
+
+const BOOK = { seasonBook: '0xfda7b9db', current: '0x9fa6a6e3', seasonCount: '0x715f8fe8', seasons: '0x6ebaeda9' };
+let bookAt = null;
+const bookCall = async (data) => {
+  bookAt ??= CFG.seasonBook || addrOf(words(await rpc('eth_call', [{ to: CFG.arena, data: BOOK.seasonBook }, 'latest']))[0]);
+  return words(await rpc('eth_call', [{ to: bookAt, data }, 'latest']));
+};
+let nowRead = null;
+/** The season running now, or else the last one scheduled (ended, or not started yet): its number,
+ *  start, end and certificate contract, and whether it runs now. Null before the first season. */
+export async function seasonNow() {
+  if (nowRead && Date.now() - nowRead.read < 15000) return nowRead.s;
+  const cur = num((await bookCall(BOOK.current))[0] ?? '0');
+  const n = cur || num((await bookCall(BOOK.seasonCount))[0] ?? '0');
+  let s = null;
+  if (n) {
+    const w = await bookCall(BOOK.seasons + BigInt(n).toString(16).padStart(64, '0'));
+    s = { n, start: num(w[0]), end: num(w[1]), certificate: addrOf(w[4]), running: cur !== 0 };
+  }
+  nowRead = { read: Date.now(), s };
+  return s;
 }
 
 /** One fight from the contract (fightOf), for the clock of a live fight. */
@@ -412,27 +438,35 @@ export const arenaQuery = () => (CFG.archived ? `&arena=${CFG.arena}` : '');
 // ------------------------------------------------------------------ the season: its ranking, close and certificates
 
 const SEASON = { top: '0xfe6dcdba', closedAt: '0x9ef27b00', participants: '0x6c4470fb', tookPart: '0x6b067159', placeOf: '0x222d825b', tokenURI: '0xc87b56dd' };
-const seasonCall = async (data) => words(await rpc('eth_call', [{ to: CFG.certificate, data }, 'latest']));
+/** The season shown: the one running now, or the last one scheduled (an earlier arena: its own). */
+async function shownSeason() {
+  if (CFG.archived) return CFG.certificate ? { n: CFG.season ?? 1, start: 0, end: await arenaSetting('seasonEnd'), certificate: CFG.certificate, running: false } : null;
+  return seasonNow();
+}
+const seasonCall = async (cert, data) => words(await rpc('eth_call', [{ to: cert, data }, 'latest']));
 let seasonRead = null;
-/** The season now: its number, its end, when it was closed (0: open), its first places (final once
- *  closed) and how many agents took part. Null if this arena has no season contract. */
+/** The season now: its number, start and end, whether it runs now, when it was closed (0: open), its
+ *  first places (final once closed) and how many agents took part. Null before the first season. */
 export async function seasonState() {
-  if (!CFG.certificate) return null;
   if (seasonRead && Date.now() - seasonRead.read < 15000) return seasonRead;
-  const [topW, closedW, partW, end] = await Promise.all([seasonCall(SEASON.top), seasonCall(SEASON.closedAt), seasonCall(SEASON.participants), arenaSetting('seasonEnd')]);
-  seasonRead = { read: Date.now(), season: CFG.season ?? 1, end, closedAt: num(closedW[0] ?? '0'), participants: num(partW[0] ?? '0'), top: topW.slice(2, 2 + num(topW[1] ?? '0')).map(addrOf) };
+  const s = await shownSeason();
+  if (!s) return null;
+  const [topW, closedW, partW] = await Promise.all([seasonCall(s.certificate, SEASON.top), seasonCall(s.certificate, SEASON.closedAt), seasonCall(s.certificate, SEASON.participants)]);
+  seasonRead = { read: Date.now(), season: s.n, start: s.start, end: s.end, running: s.running, closedAt: num(closedW[0] ?? '0'), participants: num(partW[0] ?? '0'), top: topW.slice(2, 2 + num(topW[1] ?? '0')).map(addrOf) };
   return seasonRead;
 }
-/** An agent in the season: its place (0 until the close, and for places past the tenth) and whether it took part. */
+/** An agent in the season shown: its place (0 until the close, and for places past the tenth) and whether it took part. */
 export async function seasonOf(agent) {
-  if (!CFG.certificate) return null;
-  const [p, tp] = await Promise.all([seasonCall(SEASON.placeOf + pad(agent)), seasonCall(SEASON.tookPart + pad(agent))]);
-  return { place: num(p[0] ?? '0'), tookPart: big(tp[0] ?? '0') !== 0n };
+  const s = await shownSeason();
+  if (!s) return null;
+  const [p, tp] = await Promise.all([seasonCall(s.certificate, SEASON.placeOf + pad(agent)), seasonCall(s.certificate, SEASON.tookPart + pad(agent))]);
+  return { season: s.n, place: num(p[0] ?? '0'), tookPart: big(tp[0] ?? '0') !== 0n };
 }
-/** The picture of an agent's season certificate, as the contract draws it (a data: URL), or null. */
+/** The picture of an agent's certificate of the season shown, as the contract draws it (a data: URL), or null. */
 export async function certificatePicture(agent) {
   try {
-    const hex = (await rpc('eth_call', [{ to: CFG.certificate, data: SEASON.tokenURI + pad(agent) }, 'latest'])).replace(/^0x/, '');
+    const s = await shownSeason();
+    const hex = (await rpc('eth_call', [{ to: s.certificate, data: SEASON.tokenURI + pad(agent) }, 'latest'])).replace(/^0x/, '');
     const bytes = (h) => Uint8Array.from((h.match(/../g) ?? []).map((x) => parseInt(x, 16)));
     const uri = new TextDecoder().decode(bytes(hex.slice(128, 128 + parseInt(hex.slice(64, 128), 16) * 2)));
     const json = new TextDecoder().decode(Uint8Array.from(atob(uri.split(',')[1]), (c) => c.charCodeAt(0)));

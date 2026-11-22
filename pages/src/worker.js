@@ -91,9 +91,8 @@ function openedUpTo(f, now, roundTime) {
 
 /** The audience's view of a round: its theme, never before its bell. A match is fought on one card,
  *  so a round counts as opened only once it has opened for both fighters (or their fights are over). */
-async function task(url, env, chain, agent, number, round) {
+async function task(url, env, chain, keys, agent, number, round) {
   if (!(round >= 1 && round <= 12)) return json(404, { error: 'no such round' });
-  const keys = arenaKeys(env.SECRET);
   const f = await chain.fightOf(agent, number);
   if (f.startedAt === 0) return json(404, { error: 'no such fight' });
   const roundTime = await roundTimeOf(chain, env.ARENA);
@@ -280,20 +279,20 @@ export async function handleFight(url, env, deps = {}) {
     return text(410, 'This arena ran an earlier task set and is closed to new fights on this server. A new season arena runs the current tasks.');
   }
 
-  let keys;
-  try {
-    keys = arenaKeys(env.SECRET);
-  } catch {
-    return text(500, 'The arena is not configured: the season secret is missing.');
-  }
   const chain = deps.chain ?? makeChain({ rpc: env.RPC_URL, arena });
-  if ((await chain.secretCommit()).toLowerCase() !== keys.commit.toLowerCase()) {
-    return old ? json(409, { error: "this server does not hold that arena's secret" }) : text(500, 'The arena is not configured: this server\'s secret does not match the arena.');
-  }
   // the deck it draws from: the red ring's season deck, or the green ring's workshop
   const deck = (old ? old.deck : env.DECK) ?? 'season';
+  let keys;
+  if (t) {
+    // a fight's pages come from its season's secret, rebuilt only by a server of its season's task set
+    const fx = await chain.fightOf(t[2].toLowerCase(), Number(t[3]));
+    if (fx.startedAt === 0) return json(404, { error: 'no such fight' });
+    if (planSetOf(env, fx.season) !== PLAN_VERSION) return json(410, { error: 'this season ran an earlier task set: its round pages are not rebuilt by this server', set: planSetOf(env, fx.season) });
+    keys = await seasonKeys(env, chain, fx.season);
+    if (!keys) return json(409, { error: "this server does not hold that season's secret", season: fx.season });
+  }
   if (t && t[1] === 'plan') return fightPlan(url, { ...env, DECK: deck }, chain, keys, arena, t[2].toLowerCase(), Number(t[3]));
-  if (t && t[1] === 'task') return task(url, { ...env, ARENA: arena, DECK: deck }, chain, t[2].toLowerCase(), Number(t[3]), Number(t[4]));
+  if (t && t[1] === 'task') return task(url, { ...env, ARENA: arena, DECK: deck }, chain, keys, t[2].toLowerCase(), Number(t[3]), Number(t[4]));
   if (t) {
     const decoys = old ? old.decoys : typeof env.DECOYS === 'string' ? JSON.parse(env.DECOYS) : env.DECOYS;
     return juryCard(url, { ...env, DECK: deck }, chain, keys, arena, decoys, t[2].toLowerCase(), Number(t[3]), Number(t[4]), env.SITE_URL ?? url.origin);
@@ -302,7 +301,15 @@ export async function handleFight(url, env, deps = {}) {
 
   const chainId = Number(env.CHAIN_ID ?? 56);
   const site = env.SITE_URL ?? url.origin;
-  if (m[1] === 'join') return join(url, env, chain, keys, agent, chainId, site);
+  if (m[1] === 'join') {
+    // a registration is for the season running now, signed for it, with its secret
+    const n = await chain.currentSeason();
+    if (!n) return text(410, 'No season is running now: registration opens when the next season starts. Its dates are on the site.');
+    if (planSetOf(env, n) !== PLAN_VERSION) return text(410, 'This season runs another task set than this server: it is closed to new fights here.');
+    keys = await seasonKeys(env, chain, n);
+    if (!keys) return text(500, "The arena is not configured: this server does not hold the running season's secret.");
+    return join(url, env, chain, keys, n, agent, chainId, site);
+  }
 
   // the page key: in the link (an agent's page reader may not send headers), or the header
   const header = /^Key\s+(\S+)\s*$/i.exec(deps.authorization ?? '');
@@ -346,6 +353,10 @@ export async function handleFight(url, env, deps = {}) {
   }
   if (!keyHash || keyHash !== f.pageKeyHash.toLowerCase()) return denied();
   if (f.round < 1 || f.round > 12) return text(410, `All 12 rounds are answered. The scorecard, with the judge's verdict once both fights are judged: ${site}/match.html?arena=${env.ARENA}&a=${agent}&n=${f.number}`);
+  // the live fight's season: its secret makes its pages
+  if (planSetOf(env, f.season) !== PLAN_VERSION) return text(410, "This fight's season runs another task set than this server, so it shows no card. Call finish() and tell the arena's team.");
+  keys = await seasonKeys(env, chain, f.season);
+  if (!keys) return text(503, "This server does not hold this fight's season secret, so it shows no card. Do not answer; tell your owner and the arena's team.");
   if (f.commitment.toLowerCase() !== keys.commitment(env.ARENA, agent, f.number).toLowerCase()) {
     return text(409, "This fight does not carry this server's commitment, so this server cannot show its pages. Call finish() and tell the arena's team.");
   }
@@ -401,6 +412,36 @@ export async function handleFight(url, env, deps = {}) {
   return new Response(card.html, { headers: { ...HEADERS, 'content-type': 'text/html; charset=utf-8' } });
 }
 
+/** The settings of each season this server knows, from SEASONS: { "<n>": { "plan": <task set> } }. */
+function seasonsConf(env) {
+  let s = env.SEASONS ?? {};
+  if (typeof s === 'string') {
+    try {
+      s = JSON.parse(s);
+    } catch {
+      s = {};
+    }
+  }
+  return s && typeof s === 'object' ? s : {};
+}
+
+/** The task set season `n` ran with (its pages are rebuilt only by a server of that set). */
+const planSetOf = (env, n) => Number(seasonsConf(env)[n]?.plan ?? env.PLAN_VERSION ?? PLAN_VERSION);
+
+/** Season `n`'s keys, from its secret (SECRET_<n>, or SECRET), checked against the secret's hash in the
+ *  season calendar; null if this server does not hold that season's secret. */
+async function seasonKeys(env, chain, n) {
+  const secret = env[`SECRET_${n}`] ?? env.SECRET;
+  if (!n || !secret) return null;
+  let keys;
+  try {
+    keys = arenaKeys(secret);
+  } catch {
+    return null;
+  }
+  return (await chain.season(n)).secretCommit.toLowerCase() === keys.commit.toLowerCase() ? keys : null;
+}
+
 /** The deck this arena's fights draw from: "season" (the red ring, the default) or "workshop". */
 const deckOf = (env) => env.DECK ?? 'season';
 
@@ -408,7 +449,7 @@ const deckOf = (env) => env.DECK ?? 'season';
 const challengesOpen = (env) => env.CHALLENGES === 'open';
 
 /** The agent's registration, ready to preview with its wallet, and its page key. */
-function join(url, env, chain, keys, agent, chainId, site) {
+function join(url, env, chain, keys, season, agent, chainId, site) {
   return (async () => {
     if (!env.JUDGE_KEY) return text(500, 'The arena is not configured: the judge key is missing.');
     const name = (url.searchParams.get('name') ?? '').trim();
@@ -421,7 +462,7 @@ function join(url, env, chain, keys, agent, chainId, site) {
     if (challenge && !/^0x[0-9a-f]{40}$/.test(challenge)) return text(400, 'challenge=<the wallet address of the agent you challenge>, or leave it out for the draw.');
     const fight = (await chain.lastFight(agent)) + 1;
     const commitment = keys.commitment(env.ARENA, agent, fight);
-    const signature = signCommitment(env.JUDGE_KEY, chainId, env.ARENA, agent, fight, commitment, challenge || '0x0');
+    const signature = signCommitment(env.JUDGE_KEY, chainId, env.ARENA, season, agent, fight, commitment, challenge || '0x0');
     const pageKey = [...crypto.getRandomValues(new Uint8Array(32))].map((b) => b.toString(16).padStart(2, '0')).join('');
     const pageKeyHash = keccak256(pageKey);
     return json(200, {

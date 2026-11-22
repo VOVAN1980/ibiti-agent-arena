@@ -33,7 +33,15 @@ const VIEWS = new Set([
   '0xef92e6ba', // pendingCutoff()
   '0xee5f8c8f', // roundTime()
   '0x787a08a6', // cooldown()
-  '0xe757b20d', // seasonEnd()
+  '0xe757b20d', // seasonEnd() (an earlier arena's)
+  '0xfda7b9db', // seasonBook()
+  '0xbcb39621', // currentSeason()
+]);
+// the season calendar (ArenaSeasons): what the site reads of it
+const BOOK_VIEWS = new Set([
+  '0x9fa6a6e3', // current()
+  '0x715f8fe8', // seasonCount()
+  '0x6ebaeda9', // seasons(uint16)
 ]);
 // the season's contract (the ranking, the close, the certificates): what the site reads of it
 const SEASON_VIEWS = new Set([
@@ -47,6 +55,19 @@ const SEASON_VIEWS = new Set([
   '0xc87b56dd', // tokenURI(uint256)
 ]);
 const MAX_BODY = 4096;
+
+/** The certificate contract of every season of this arena, from SEASONS ({ "<n>": { "certificate" } }). */
+function seasonCertificates(env) {
+  let s = env.SEASONS ?? {};
+  if (typeof s === 'string') {
+    try {
+      s = JSON.parse(s);
+    } catch {
+      s = {};
+    }
+  }
+  return Object.values(s ?? {}).map((x) => x?.certificate).filter((x) => /^0x[0-9a-fA-F]{40}$/.test(x ?? ''));
+}
 
 /** Earlier arenas of this site (their fights stay readable by links that name them). */
 function archive(env) {
@@ -109,7 +130,9 @@ export function siteConfig(env) {
     deployBlock: Number(env.DEPLOY_BLOCK ?? 0),
     blocksPerWeek: Number(env.BLOCKS_PER_WEEK ?? 604800),
     pollMs: 2000,
-    // the season: its number, its contract (the ranking, the close, the certificates)
+    // the season calendar (the site reads the season running now from it); an earlier arena of this
+    // site has its own season number and certificate contract in `archive`
+    seasonBook: env.SEASON_BOOK ?? null,
     season: Number(env.SEASON ?? 1),
     certificate: env.CERTIFICATE ?? null,
     // a season arena draws every fight at random: no challenges (CHALLENGES "open" only elsewhere)
@@ -147,16 +170,17 @@ async function rpc(request, env) {
   const arena = String(env.ARENA).toLowerCase();
   const old = archive(env);
   const arenas = new Set([arena, ...old.map((x) => x.arena.toLowerCase())]);
-  const seasons = new Set([env.CERTIFICATE, ...old.map((x) => x.certificate)].filter(Boolean).map((x) => String(x).toLowerCase()));
+  const seasons = new Set([env.CERTIFICATE, ...seasonCertificates(env), ...old.map((x) => x.certificate)].filter(Boolean).map((x) => String(x).toLowerCase()));
+  const book = env.SEASON_BOOK ? String(env.SEASON_BOOK).toLowerCase() : null;
   const p0 = Array.isArray(q.params) ? q.params[0] : undefined;
   let params = q.params ?? []; // what goes to the node: rebuilt from the checked fields only
   if (q.method === 'eth_call') {
     const to = String(p0?.to ?? '').toLowerCase();
-    if (!arenas.has(to) && !seasons.has(to)) return refuse('this arena only');
+    if (!arenas.has(to) && !seasons.has(to) && to !== book) return refuse('this arena only');
     // a known view, its arguments, at the latest block: no sender, gas, value or state override
     const data = String(p0.data ?? p0.input ?? '');
     if (Object.keys(p0).some((k) => !['to', 'data', 'input'].includes(k)) || q.params.length > 2 || (q.params.length === 2 && q.params[1] !== 'latest')) return refuse('a plain call of a view');
-    if (!/^0x[0-9a-fA-F]{8}([0-9a-fA-F]{64}){0,2}$/.test(data) || !(seasons.has(to) ? SEASON_VIEWS : VIEWS).has(data.slice(0, 10).toLowerCase())) return refuse('the views the site reads only');
+    if (!/^0x[0-9a-fA-F]{8}([0-9a-fA-F]{64}){0,2}$/.test(data) || !(to === book ? BOOK_VIEWS : seasons.has(to) ? SEASON_VIEWS : VIEWS).has(data.slice(0, 10).toLowerCase())) return refuse('the views the site reads only');
     params = [{ to, data }, 'latest'];
   }
   if (q.method === 'eth_getLogs') {

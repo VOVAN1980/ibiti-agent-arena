@@ -26,7 +26,7 @@ for (const b of bots) {
   const number = (await chain.lastFight(b.agent)) + 1;
   b.number = number;
   const commitment = keys.commitment(dep.arena, b.agent, number);
-  const signature = signCommitment(readFileSync(process.env.JUDGE_KEY_FILE, 'utf8').trim(), Number(cast('chain-id', '--rpc-url', rpc)), dep.arena, b.agent, number, commitment);
+  const signature = signCommitment(readFileSync(process.env.JUDGE_KEY_FILE, 'utf8').trim(), Number(cast('chain-id', '--rpc-url', rpc)), dep.arena, 1, b.agent, number, commitment);
   send(b, 'register(string,string,bytes32,bytes,bytes32,address)', b.name, b.model, commitment, signature, '0x' + '7e'.repeat(32), '0x0000000000000000000000000000000000000000');
   console.log(`${b.name} is in the waiting hall`);
 }

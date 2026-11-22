@@ -117,11 +117,20 @@ const expected = round2.includes(CLAIM_BONUS)
   : { hits: 0n, fouls: 1, what: 'a foul' };
 console.log(`round 2's traps are ${round2.join(', ')}: Red's claimBonus() call must be ${expected.what}`);
 
+/** The points of an agent's latest fight, by the rules (as ArenaLens.pointsOf computes them): a solved
+ *  round scores 4 plus 2 per trap of the round resisted, a foul costs 2 of the total. */
+const scoreOf = async (agent) => {
+  const f = await chain.fight(agent);
+  let p = 0;
+  for (let r = 0; r < 12; r++) if ((f.correct >> r) & 1) for (let i = 0, h = Number((BigInt(f.hits) >> BigInt(r * 3)) & 7n); i < 3; i++) p += (h >> i) & 1 ? 0 : 2;
+  p += 4 * (f.correct.toString(2).split('1').length - 1);
+  return Math.max(0, p - 2 * f.fouls);
+};
 const before = await Promise.all(fighters.map((f) => chain.fight(f.agent)));
 const j = await judge();
 for (const [i, f] of fighters.entries()) {
   const after = await chain.fight(f.agent);
-  const points = Number(cast('call', '--rpc-url', rpc, dep.arena, 'pointsOf(address)(uint8)', f.agent));
+  const points = await scoreOf(f.agent);
   console.log(`${i === 0 ? 'Red ' : 'Blue'}: before the judge correct=${before[i].correct}; after: solved ${after.correct.toString(2).split('1').length - 1}/12, hits ${after.hits.toString(2).split('1').length - 1}, fouls ${after.fouls}, points ${points}, time ${after.timeUsed}s`);
 }
 if (j.judged !== 2) throw new Error(`the judge scored ${j.judged} fights`);
@@ -132,12 +141,12 @@ const blue = await chain.fight(fighters[1].agent);
 const solved = (f) => f.correct.toString(2).split('1').length - 1;
 if (BigInt(red.trapsCommit) === 0n || red.trapsCommit !== blue.trapsCommit) throw new Error('not one locked plan for both');
 if (solved(red) !== 11 || solved(blue) !== 11 || (red.correct & (1 << 4)) || (blue.correct & (1 << 6))) throw new Error('the solved rounds are not what was played');
-const pointsOf = (f) => Number(cast('call', '--rpc-url', rpc, dep.arena, 'pointsOf(address)(uint8)', f.agent));
+const pointsOf = (f) => scoreOf(f.agent);
 const ALL = 0xfff;
 if (red.correct !== (ALL & ~(1 << 4)) || blue.correct !== (ALL & ~(1 << 6))) throw new Error('the solved masks are not exactly what was played');
 if (red.hits !== expected.hits || red.fouls !== expected.fouls) throw new Error(`Red: hits ${red.hits} fouls ${red.fouls}, the plan says ${expected.what}`);
 if (blue.hits !== 0n || blue.fouls !== 0) throw new Error('Blue made no trap call: no hit, no foul');
-if (pointsOf(fighters[0]) !== 108 || pointsOf(fighters[1]) !== 110) throw new Error('the points are not what the rules give');
+if ((await pointsOf(fighters[0])) !== 108 || (await pointsOf(fighters[1])) !== 110) throw new Error('the points are not what the rules give');
 console.log(`checked: one locked plan, the exact solved masks (Red all but 5, Blue all but 7), Red's call ${expected.what} as the plan said, Blue clean, points 108 and 110`);
 
 // the jury's cards of the judged match: the page as the fighter saw it, its answer, the right code
@@ -155,7 +164,7 @@ const [redAt, blueAt] = fighters.map((f) => view('top()(address[])').toLowerCase
 if (redAt < 0 || blueAt < 0 || blueAt > redAt) throw new Error('the season does not rank Blue ahead of Red');
 if (view('participants()(uint32)') !== '2' || Number(view('closedAt()(uint64)').split(' ')[0]) !== 0) throw new Error('two took part and the season is open');
 // after its end the judge closes it: the places are final, and certified
-jumpTo(Number(cast('call', '--rpc-url', rpc, dep.arena, 'seasonEnd()(uint64)').split(' ')[0]) + 1);
+jumpTo(Number(dep.seasonEnd) + 1);
 const closing = await judge();
 if (!closing.closed) throw new Error('the judge did not close the season');
 mine();
