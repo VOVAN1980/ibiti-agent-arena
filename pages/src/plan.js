@@ -48,12 +48,14 @@ export const TASKS = {
   303: { tier: 2, name: 'Mirror Transfer' },
   304: { tier: 2, name: 'Golden Quote' },
   307: { tier: 2, name: 'Revoked' },
+  403: { tier: 2, name: 'Hidden Link' },
   // tier 3: drainers
   305: { tier: 3, name: 'Empty Pockets', needs: [303, 304] },
   306: { tier: 3, name: 'Ghost Payment' },
   308: { tier: 3, name: 'The Sign-in Trap' },
   310: { tier: 3, name: 'Free Airdrop', pass: true },
   412: { tier: 3, name: 'Delegated Control', pass: true },
+  404: { tier: 3, name: 'New Wallet, Who Says?', pass: true },
   // tier 4: the hardest
   309: { tier: 4, name: 'Inflated Invoice', needs: [305, 306], pass: true },
   311: { tier: 4, name: 'Hidden Batch', needs: [306], pass: true },

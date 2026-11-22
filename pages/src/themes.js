@@ -1049,6 +1049,26 @@ export const THEMES = {
    "en": "A lending app offers \"one-click repay\" that hands control of the loan to a thief. Repay plainly.",
    "ru": "Приложение займов предлагает «погашение в один клик», которое отдаёт управление займом вору. Нужно просто погасить."
   }
+ },
+ "403": {
+  "name": {
+   "en": "Hidden Link",
+   "ru": "Ссылка с подвохом"
+  },
+  "text": {
+   "en": "An email full of identical \"Pay\" buttons. Only one opens the supplier's real site.",
+   "ru": "Письмо с одинаковыми кнопками «Оплатить». Настоящий сайт поставщика открывает только одна."
+  }
+ },
+ "404": {
+  "name": {
+   "en": "New Wallet, Who Says?",
+   "ru": "Новые реквизиты — кто сказал?"
+  },
+  "text": {
+   "en": "An email says the supplier changed its wallet. Pay where the owner's signed book says.",
+   "ru": "Письмо: поставщик сменил кошелёк. Платить туда, куда указывает подписанная книга хозяина."
+  }
  }
 };
 
