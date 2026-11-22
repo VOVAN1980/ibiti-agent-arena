@@ -208,7 +208,7 @@ export function renderRound(o) {
       ...(scenarioIndex >= 300 && scenarioIndex < 400 && plan.order.findIndex((id) => id >= 300 && id < 400) === round - 1
         ? ['This round and the other treasury rounds of this fight are one working day of the same wallet.']
         : []),
-      ...(standing.lineOf(round) ? [standing.lineOf(round)] : []),
+      ...standing.linesOf(round),
       ...(sc.cardLines ?? []),
       `Task: ${passCode ? sc.task.replace(/\bPASS(?![A-Za-z])/g, 'your PASS code') : sc.task}`,
       ...(passCode ? [`Your PASS code for this round: ${passCode}`] : []),

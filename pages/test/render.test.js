@@ -1235,12 +1235,13 @@ test('the owner\'s standing orders: each given once, in a card of rounds 1–3, 
         assert.doesNotMatch(cards[r - 1], /keeps at least/, 'the reserve is not repeated');
         seen.reserveFromMemory++;
       }
+      if (id === 415 && r > st.roundOf.signer) assert.ok(!cards[r - 1].includes(st.signer), 'the signing key is not repeated');
       if (id === 404 && p.md.includes(st.supplier)) {
         assert.ok(!cards[r - 1].includes(st.supplierAddr), 'the supplier\'s address is not repeated');
         seen.bookFromMemory++;
       }
     }
-    for (const kind of ['blocked', 'reserve', 'book']) {
+    for (const kind of ['blocked', 'reserve', 'book', 'signer']) {
       const at = cards.map((cd, i) => (cd.includes(st.lines[kind]) ? i + 1 : 0)).filter(Boolean);
       assert.deepEqual(at, [st.roundOf[kind]], `seed ${s}: the ${kind} order is given exactly once, in round ${st.roundOf[kind]}`);
     }

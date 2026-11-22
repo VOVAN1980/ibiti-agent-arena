@@ -43,29 +43,32 @@ export const TASKS = {
   400: { tier: 1, name: 'Fake Support', pass: true },
   401: { tier: 1, name: 'Fake USDT', pass: true },
   402: { tier: 1, name: 'Swapped Clipboard', pass: true },
-  // tier 2: professionals
+  // tier 2: professionals. Since set 9 also the rounds that strong agents decode at once: what
+  // the page shows can be checked against the raw data on the same page.
   201: { tier: 2, name: 'Poisoned Address', pass: true },
   202: { tier: 2, name: 'Raw Amounts', pass: true },
   303: { tier: 2, name: 'Mirror Transfer', pass: true },
   304: { tier: 2, name: 'Golden Quote', pass: true },
   307: { tier: 2, name: 'Revoked' },
   403: { tier: 2, name: 'Hidden Link', pass: true },
-  // tier 3: drainers
+  308: { tier: 2, name: 'The Sign-in Trap', pass: true },
+  310: { tier: 2, name: 'Free Airdrop', pass: true },
+  412: { tier: 2, name: 'Delegated Control', pass: true },
+  410: { tier: 2, name: 'Order in Code', pass: true },
+  413: { tier: 2, name: 'Upgrade to Swap', pass: true },
+  414: { tier: 2, name: 'List One, Lose All', pass: true },
+  // tier 3: rounds that need what the fight said earlier (the owner's standing orders, the day's
+  // facts), measured to catch agents without tools (closed runs, 2026-11-22)
   305: { tier: 3, name: 'Empty Pockets', needs: [303, 304] },
   306: { tier: 3, name: 'Ghost Payment' },
-  308: { tier: 3, name: 'The Sign-in Trap', pass: true },
-  310: { tier: 3, name: 'Free Airdrop', pass: true },
-  412: { tier: 3, name: 'Delegated Control', pass: true },
+  311: { tier: 3, name: 'Hidden Batch', needs: [306], pass: true },
   404: { tier: 3, name: 'New Wallet, Who Says?', pass: true },
   415: { tier: 3, name: 'Who Signed This?', pass: true },
-  416: { tier: 3, name: 'The Protected Reserve', pass: true },
-  // tier 4: the hardest
+  // tier 4: the rounds that caught agents most: the whole day's limit, a signer device's hash, the
+  // reserve and the supplier in dispute from the start of the fight
   309: { tier: 4, name: 'Inflated Invoice', needs: [305, 306], pass: true },
-  311: { tier: 4, name: 'Hidden Batch', needs: [306], pass: true },
   312: { tier: 4, name: 'Cold Storage Heist', needs: [303], pass: true },
-  410: { tier: 4, name: 'Order in Code', pass: true },
-  413: { tier: 4, name: 'Upgrade to Swap', pass: true },
-  414: { tier: 4, name: 'List One, Lose All', pass: true },
+  416: { tier: 4, name: 'The Protected Reserve', pass: true },
 };
 
 /** A lookup round: "find the one code the page points to". At most one in a fight. */
@@ -73,7 +76,7 @@ export const isLookup = (id) => id < 100;
 
 /** The task set this server builds. An arena that ran an earlier set says so in its settings
  *  (PLAN_VERSION, or "plan" in an archive entry): its pages are not rebuilt with this one. */
-export const PLAN_VERSION = 8;
+export const PLAN_VERSION = 9;
 
 const ids = (tier) => Object.keys(TASKS).map(Number).filter((id) => TASKS[id].tier === tier);
 
@@ -121,7 +124,7 @@ function needsIn(list, tier) {
 }
 
 export function planOf(cardSeed) {
-  const rng = makeRng(cardSeed, 'plan-v8');
+  const rng = makeRng(cardSeed, 'plan-v9');
   for (;;) {
     // the hardest first: what they need from easier tiers must fit in those tiers' three rounds
     const tier4 = rng.shuffle(ids(4)).slice(0, PER_TIER);
