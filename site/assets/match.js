@@ -658,11 +658,41 @@ function cardHtml(side, f, got) {
   return `<div class="jcard">${head}
     <div class="jrow"><span>${esc(t('cardAnswered'))}</span><b class="${c.answer.state === 'right' ? 'ok' : 'no'}">${esc(t(word))}</b>${c.answer.sent && c.answer.state !== 'right' ? ` <code translate="no">${esc(c.answer.sent)}</code>` : ''} · <b translate="no">${c.points} / 10</b></div>
     <div class="jrow"><span>${esc(t('cardRight'))}</span><code translate="no">${esc(c.answer.right)}</code>${c.answer.pass ? ' · PASS' : ''}</div>
+    ${explainHtml(c)}
     ${c.why ? `<div class="jrow"><span>${esc(t('cardWhy'))}</span><i>${esc(c.why)}</i></div>` : ''}
     ${c.stake ? `<div class="jrow"><span>${esc(t('cardStake'))}</span>${esc(c.stake)}</div>` : ''}
     <div class="jrow"><span>${esc(t('cardTraps'))}</span>${c.traps.map((x) => `<code translate="no" class="${x.taken ? 'no' : ''}">${esc(x.call ?? trapName(x.id))}${x.taken ? ' ✗' : ''}</code>`).join(' ')}</div>
     <details><summary>${esc(t('cardPage'))}</summary><pre class="cardpage" translate="no">${esc(c.page)}</pre></details></div>`;
 }
+/** In plain words: why the answer is right or wrong, and the line it chose beside the right one, the
+ *  differences marked. */
+function explainHtml(c) {
+  const a = c.answer;
+  const isCode = (x) => /^[A-HJ-KM-NP-Z2-9]{4}(?:-[A-HJ-KM-NP-Z2-9]{4}){3}/.test(x.replace(/[\u200b\u00ad\u2060]/g, ''));
+  let say;
+  if (a.state === 'none' || a.state === 'unjudged') say = t('whyNone');
+  else if (a.state === 'late') say = t('whyLate');
+  else if (a.state === 'right') say = a.pass ? t('whyRightPass') : t('whyRight');
+  else if (a.invisible) say = t('whyInvisible');
+  else if (a.sentPass) say = t('whyWrongPass');
+  else if (a.pass && a.sent) say = t('whyWrongNotPass');
+  else if (!a.sent || !c.picked) say = t('whyNotOnPage');
+  else if (c.picked.cells && c.rightPlace?.cells) say = t('whyWrongPick');
+  else say = t('whyWrongLure');
+  const place = (p, kind, other) => {
+    if (!p) return '';
+    if (p.text) return `<div class="jline ${kind}">${esc(p.text)}</div>`;
+    // a row of a table as "column: value" lines (readable on a phone too); a value that differs between
+    // what it chose and what was right is marked on both
+    return `<div class="jrec ${kind}" translate="no">${p.cells.map((x, i) => `<div><span>${esc(p.header?.[i] ?? '')}</span><b class="${other?.cells && other.cells[i] !== x && !isCode(x) ? 'diff' : ''}">${esc(x)}</b></div>`).join('')}</div>`;
+  };
+  const showPick = a.state !== 'right' && c.picked;
+  return `<div class="jwhy ${a.state === 'right' ? 'ok' : 'no'}"><b>${esc(t('cardWhyTitle'))}</b><p>${esc(say)}</p>
+    ${showPick ? `<div class="jlabel">${esc(t('cardPicked'))}</div>${place(c.picked, 'no', c.rightPlace)}` : ''}
+    ${c.rightPlace ? `<div class="jlabel">${esc(t(a.state === 'right' ? 'cardItChose' : 'cardShouldHave'))}</div>${place(c.rightPlace, 'ok', showPick ? c.picked : null)}` : ''}
+  </div>`;
+}
+
 $('#rounds').addEventListener('click', (e) => {
   const round = Number(e.target.closest?.('[data-card]')?.dataset.card);
   const b = findBout();

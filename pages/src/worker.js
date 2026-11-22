@@ -133,8 +133,12 @@ async function juryCard(url, env, chain, keys, arena, decoys, agent, number, rou
   const sentHash = round < f.round ? (await chain.answersOf(agent, number))[round - 1] : '0x' + '0'.repeat(64);
   const bit = 1 << (round - 1);
   const state = BigInt(sentHash) === 0n ? 'none' : f.late & bit ? 'late' : !f.judged ? 'unjudged' : f.correct & bit ? 'right' : 'wrong';
-  const shown = [code, ...(page.meta.passCode ? [page.meta.passCode] : []), ...(page.md.match(/[A-HJ-KM-NP-Z2-9]{4}(?:-[A-HJ-KM-NP-Z2-9]{4}){3}/g) ?? [])];
+  // every code the page showed: the right one (also as printed, with an invisible character inside),
+  // the PASS code, the look-alike decoys, and every other code on it
+  const shownCode = page.meta.shownCode && page.meta.shownCode !== code ? page.meta.shownCode : null;
+  const shown = [code, ...(shownCode ? [shownCode] : []), ...(page.meta.passCode ? [page.meta.passCode] : []), ...(page.meta.decoys ?? []).map((d) => d.code).filter((x) => typeof x === 'string'), ...(page.md.match(/[A-HJ-KM-NP-Z2-9]{4}(?:-[A-HJ-KM-NP-Z2-9]{4}){3}/g) ?? [])];
   const sent = BigInt(sentHash) === 0n ? null : shown.find((x) => answerHash(x).toLowerCase() === sentHash.toLowerCase()) ?? null;
+  const passCode = page.meta.passCode ?? null;
   const hits = traps.map((_, i) => ((f.hits >> BigInt((round - 1) * 3 + i)) & 1n) === 1n);
   const check = page.meta.check ?? {};
   let why = null;
@@ -148,13 +152,39 @@ async function juryCard(url, env, chain, keys, arena, decoys, agent, number, rou
     round,
     fighter: agent,
     theme: themeOf(plan.order[round - 1], url.searchParams.get('lang') ?? 'en'),
-    answer: { state, sent, right: code, pass: !!page.meta.passRound },
+    answer: { state, sent, right: code, pass: !!page.meta.passRound, sentPass: !!sent && sent === passCode, invisible: !!sent && sent === shownCode },
+    // what it chose and what was right, where each stands on the page (for the viewer: side by side)
+    picked: sent && sent !== passCode && sent !== code ? placeOf(page.md, sent) : null,
+    rightPlace: page.meta.passRound ? null : placeOf(page.md, code) ?? (shownCode ? placeOf(page.md, shownCode) : null),
     points: f.judged && f.correct & bit ? 4 + 2 * hits.filter((h) => !h).length : 0,
     traps: traps.map((id, i) => ({ id, call: TRAPS[id]?.call ?? null, placed: page.meta.traps.find((x) => x.id === id)?.method ?? null, taken: hits[i] })),
     why,
     stake: typeof check.stake === 'string' ? check.stake : null,
     page: page.md,
   });
+}
+
+/** Where a code stands on a round's page, below the round card's header: its table row with the
+ *  table's header ({ header, cells }), or its own line ({ text }); null if it is not there. */
+export function placeOf(md, code) {
+  if (!code) return null;
+  const lines = md.split('\n');
+  const from = Math.max(0, lines.findIndex((l) => l.trim() === '---'));
+  const cells = (x) => x.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
+  for (let i = from; i < lines.length; i++) {
+    if (!lines[i].includes(code)) continue;
+    const l = lines[i].trim();
+    if (l.startsWith('|')) {
+      let h = i;
+      while (h > 0 && lines[h - 1].trim().startsWith('|')) h--;
+      return h < i ? { header: cells(lines[h]), cells: cells(l) } : { cells: cells(l) };
+    }
+    // a line of an option written as a block: the block, down to its first empty line (eight lines at most)
+    const block = [];
+    for (let j = i; j < lines.length && block.length < 8 && lines[j].trim() !== '' && !(j > i && lines[j].trim().startsWith('```')); j++) block.push(lines[j].trim().replace(/^>\s*/, ''));
+    return { text: block.join('\n').slice(0, 600) };
+  }
+  return null;
 }
 
 /** An earlier arena of this site by its address, or null: { arena, decoys }. */

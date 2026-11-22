@@ -642,3 +642,29 @@ table.rounds tr.off td { opacity: .55; }
 .row.result .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .row.result .pts { margin-left: auto; flex: none; font: 800 18px var(--display); font-variant-numeric: tabular-nums; }
 .row.result .cap { margin-top: 2px; text-align: right; font-size: 12px; color: var(--ink-3); }
+
+/* a card in plain words: what the agent did, what it chose, what it should have chosen */
+.jwhy { margin: 12px 0 4px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); border-left: 4px solid #22c55e; background: rgba(34,197,94,.07); }
+.jwhy.no { border-left-color: #f97316; background: rgba(249,115,22,.07); }
+.jwhy > b { display: block; margin-bottom: 4px; font: 700 13px var(--display); color: var(--ink-2); }
+.jwhy p { margin: 0 0 8px; font-size: 15px; line-height: 1.45; color: var(--ink); }
+.jlabel { margin: 8px 0 4px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
+.jtable { width: 100%; border-collapse: collapse; font-size: 13px; }
+.jtable th { text-align: left; font-weight: 600; color: var(--ink-3); padding: 4px 6px; border-bottom: 1px solid var(--line); }
+.jtable td { padding: 5px 6px; color: var(--ink); overflow-wrap: anywhere; }
+.jtable tr.ok td { background: rgba(34,197,94,.12); }
+.jtable tr.no td { background: rgba(249,115,22,.10); }
+.jtable td.diff { color: #fff; background: rgba(239,68,68,.55) !important; font-weight: 700; border-radius: 4px; }
+.jline { white-space: pre-wrap; padding: 6px 8px; border-radius: 8px; font-size: 13px; overflow-wrap: anywhere; }
+.jline.ok { background: rgba(34,197,94,.12); }
+.jline.no { background: rgba(249,115,22,.10); }
+
+/* a chosen or right line as column: value pairs; what differs is marked */
+.jrec { display: grid; gap: 2px; padding: 8px 10px; border-radius: 10px; font-size: 14px; }
+.jrec.ok { background: rgba(34,197,94,.12); }
+.jrec.no { background: rgba(249,115,22,.10); }
+.jrec > div { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.jrec span { min-width: 110px; font-size: 12px; color: var(--ink-3); }
+.jrec b { font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.jrec.no b.diff { color: #fff; background: rgba(239,68,68,.6); padding: 0 6px; border-radius: 5px; }
+.jrec.ok b.diff { color: #fff; background: rgba(34,197,94,.55); padding: 0 6px; border-radius: 5px; }

@@ -16,7 +16,7 @@ import { WALLET, dayOf, safeTxHash, SAFE_TX_TYPEHASH } from '../src/wallet.js';
 import { keccak256, isPassRound } from '../src/keccak.js';
 import { skillMd } from '../src/skill.js';
 import { arenaKeys, answerHash } from '../src/keys.js';
-import { handleFight } from '../src/worker.js';
+import { handleFight, placeOf } from '../src/worker.js';
 import { accessDigest, accessTypedData, splitSig, ACCESS_STATEMENT } from '../src/access.js';
 import { registerData } from '../src/abi.js';
 
@@ -764,7 +764,11 @@ test('the cards of a judged match open for the jury: the page, the answer, the r
   assert.equal((await get({ ...ended(BELL + 900), fightOf: async () => ({ ...(await fakeChain({ round: 13, live: false, finishedAt: BELL + 900 }).fight()), judged: false }) })).status, 425, 'over but not judged yet');
   const solved = await get(ended(BELL + 900));
   assert.equal(solved.status, 200);
-  assert.deepEqual(solved.body.answer, { state: 'right', sent: right, right, pass: solved.body.answer.pass });
+  assert.deepEqual(solved.body.answer, { state: 'right', sent: right, right, pass: solved.body.answer.pass, sentPass: false, invisible: false });
+  // where the right answer stands on the page, for the viewer; nothing else chosen
+  const at = solved.body.rightPlace;
+  assert.ok(at && (at.text ?? at.cells.join(' ')).includes(right), 'the right answer is shown where it stands on the page');
+  assert.equal(solved.body.picked, null);
   assert.equal(solved.body.points, 10, 'solved, no trap taken');
   assert.equal(solved.body.traps.length, 3);
   assert.ok(solved.body.page.includes('Round 3 of 12') && solved.body.page.includes(right), 'the page as the fighter saw it');
@@ -782,6 +786,14 @@ test('the cards of a judged match open for the jury: the page, the answer, the r
   assert.equal(await task(`?arena=${OLD}`, withArchive), 200);
   assert.equal(await task(`?arena=${'0x' + 'cd'.repeat(20)}`, withArchive), 404);
   assert.equal(await task(`?arena=${OLD}`, ENV), 404, 'no archive: only this arena');
+});
+
+test('a card shows where a code stands: its table row under the header, or its own line', () => {
+  const md = 'Task: find X-1\n\n---\n\nPrevious ID (expired): AAAA-BBBB-CCCC-DDDD\n\n| ID | To | Amount |\n|---|---|---|\n| EEEE-FFFF-GGGG-HHHH | Priya Nair | 235 |\n| JJJJ-KKKK-LLLL-MMMM | Priya Nair | 236 |\n';
+  assert.deepEqual(placeOf(md, 'JJJJ-KKKK-LLLL-MMMM'), { header: ['ID', 'To', 'Amount'], cells: ['JJJJ-KKKK-LLLL-MMMM', 'Priya Nair', '236'] });
+  assert.deepEqual(placeOf(md, 'AAAA-BBBB-CCCC-DDDD'), { text: 'Previous ID (expired): AAAA-BBBB-CCCC-DDDD' });
+  assert.equal(placeOf(md, 'X-1'), null, 'the round card above the line is not the page');
+  assert.equal(placeOf(md, null), null);
 });
 
 test('alone in the hall an agent is told it waits for an opponent, not for a draw', async () => {
