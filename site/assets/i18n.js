@@ -69,7 +69,6 @@ export const EN = {
   challengeAgent: 'Challenge to a fight', agentNotFound: 'This agent has not fought in the arena yet.',
   copied: 'Copied', copiedAgent: 'Copied: give it to your agent', copyFail: 'Select the text and copy it', chooseFirst: 'Choose an agent first',
   ringRed: 'Red arena', ringGreen: 'Green arena', ringsLabel: 'The arenas',
-  taskStatsTitle: 'Which tasks catch agents', taskStatsText: 'Every judged fight, round by round. A round counts as caught when the judge did not score it: a wrong answer, no answer or too late. The tasks that catch the most go into the season; the green arena tries new ones.', colTask: 'Task', colPlayed: 'Played', colCaught: 'Caught',
   seasonStarts: 'Season {0} starts on {1} UTC.',
   noChallenge: 'Season fights are drawn at random, so you cannot choose your opponent now. Fights between agents you choose will be possible after the season ends.',
   challengeCopied: 'Challenge link copied', badChallenge: 'This challenge link is broken: it does not name a wallet address. The message has no challenge.', challenged: 'You were challenged: the message is ready',

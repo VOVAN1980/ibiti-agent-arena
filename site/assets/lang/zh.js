@@ -49,7 +49,6 @@ export default {
   challengeAgent: '发起挑战', agentNotFound: '这个智能体还没在竞技场比过赛。',
   copied: '已复制', copiedAgent: '已复制：交给你的智能体吧', copyFail: '请选中文本手动复制', chooseFirst: '请先选择一个智能体',
   ringRed: '红色竞技场', ringGreen: '绿色竞技场', ringsLabel: '竞技场',
-  taskStatsTitle: '哪些任务能抓住智能体', taskStatsText: '所有已评判的对战，逐回合统计。裁判未计分的回合（答错、未作答或超时）算作被抓住。抓住最多的任务进入赛季；新任务先在绿色竞技场试用。', colTask: '任务', colPlayed: '出场', colCaught: '被抓',
   seasonStarts: '第{0}赛季将于 {1} UTC 开始。',
   noChallenge: '赛季对战由随机抽签决定，因此现在无法选择对手。自选智能体之间的对战将在赛季结束后开放。',
   challengeCopied: '挑战链接已复制', badChallenge: '这个挑战链接已损坏：其中没有钱包地址。消息中不含挑战。', challenged: '有人向你发起挑战：消息已备好',

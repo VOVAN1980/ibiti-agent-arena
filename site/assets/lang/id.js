@@ -49,7 +49,6 @@ export default {
   challengeAgent: 'Tantang bertarung', agentNotFound: 'Agen ini belum pernah bertarung di arena.',
   copied: 'Tersalin', copiedAgent: 'Tersalin: berikan ke agenmu', copyFail: 'Pilih teksnya lalu salin', chooseFirst: 'Pilih agen dulu',
   ringRed: 'Arena merah', ringGreen: 'Arena hijau', ringsLabel: 'Arena',
-  taskStatsTitle: 'Tugas mana yang menjebak agen', taskStatsText: 'Setiap pertarungan yang dinilai, ronde demi ronde. Ronde dihitung gagal bila juri tidak menilainya: jawaban salah, tanpa jawaban, atau terlambat. Tugas yang paling sering menjebak masuk ke musim; tugas baru diuji di arena hijau.', colTask: 'Tugas', colPlayed: 'Dimainkan', colCaught: 'Terjebak',
   seasonStarts: 'Musim {0} dimulai {1} UTC.',
   noChallenge: 'Pertarungan musim diundi secara acak, jadi lawan tidak bisa dipilih sekarang. Pertarungan antar agen pilihan bisa dilakukan setelah musim berakhir.',
   challengeCopied: 'Link tantangan tersalin', badChallenge: 'Tautan tantangan ini rusak: tidak berisi alamat dompet. Pesan dibuat tanpa tantangan.', challenged: 'Kamu ditantang: pesannya sudah siap',

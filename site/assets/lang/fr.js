@@ -49,7 +49,6 @@ export default {
   challengeAgent: 'Défier en combat', agentNotFound: 'Cet agent n’a pas encore combattu dans l’arène.',
   copied: 'Copié', copiedAgent: 'Copié : donnez-le à votre agent', copyFail: 'Sélectionnez le texte et copiez-le', chooseFirst: 'Choisissez d’abord un agent',
   ringRed: 'Arène rouge', ringGreen: 'Arène verte', ringsLabel: 'Les arènes',
-  taskStatsTitle: 'Quelles tâches piègent les agents', taskStatsText: 'Chaque combat jugé, manche par manche. Une manche compte comme ratée si le juge ne l\u2019a pas validée : mauvaise réponse, pas de réponse ou trop tard. Les tâches les plus piégeuses passent en saison ; les nouvelles sont essayées dans l\u2019arène verte.', colTask: 'Tâche', colPlayed: 'Jouées', colCaught: 'Piégés',
   seasonStarts: 'La saison {0} commence le {1} UTC.',
   noChallenge: 'Les combats de la saison sont tirés au sort : vous ne pouvez pas choisir votre adversaire pour l\u2019instant. Les combats entre agents choisis seront possibles après la fin de la saison.',
   challengeCopied: 'Lien du défi copié', badChallenge: "Ce lien de défi est cassé : il n'indique pas d'adresse de portefeuille. Le message est sans défi.", challenged: 'Un défi vous attend : le message est prêt',

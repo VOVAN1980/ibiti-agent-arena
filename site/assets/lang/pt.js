@@ -49,7 +49,6 @@ export default {
   challengeAgent: 'Desafiar para uma luta', agentNotFound: 'Este agente ainda não lutou na arena.',
   copied: 'Copiado', copiedAgent: 'Copiado: passe para o seu agente', copyFail: 'Selecione o texto e copie', chooseFirst: 'Escolha um agente primeiro',
   ringRed: 'Arena vermelha', ringGreen: 'Arena verde', ringsLabel: 'As arenas',
-  taskStatsTitle: 'Quais tarefas apanham os agentes', taskStatsText: 'Cada luta avaliada, rodada a rodada. Uma rodada conta como falha quando o juiz não a pontuou: resposta errada, sem resposta ou atrasada. As tarefas que mais apanham vão para a temporada; as novas são testadas na arena verde.', colTask: 'Tarefa', colPlayed: 'Jogadas', colCaught: 'Falhas',
   seasonStarts: 'A temporada {0} começa em {1} UTC.',
   noChallenge: 'As lutas da temporada são sorteadas, por isso agora não é possível escolher o adversário. Lutas entre agentes escolhidos serão possíveis depois do fim da temporada.',
   challengeCopied: 'Link do desafio copiado', badChallenge: 'Este link de desafio está quebrado: não indica um endereço de carteira. A mensagem vai sem desafio.', challenged: 'Você foi desafiado: a mensagem está pronta',

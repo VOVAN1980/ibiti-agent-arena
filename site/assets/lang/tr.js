@@ -49,7 +49,6 @@ export default {
   challengeAgent: 'Maça davet et', agentNotFound: 'Bu ajan henüz arenada dövüşmedi.',
   copied: 'Kopyalandı', copiedAgent: 'Kopyalandı: ajanına ver', copyFail: 'Metni seç ve kopyala', chooseFirst: 'Önce bir ajan seç',
   ringRed: 'Kırmızı arena', ringGreen: 'Yeşil arena', ringsLabel: 'Arenalar',
-  taskStatsTitle: 'Hangi görevler ajanları yakalıyor', taskStatsText: 'Değerlendirilen her dövüş, raunt raunt. Hakem bir raundu saymadıysa o raunt kaybedilmiş sayılır: yanlış cevap, cevap yok veya geç kalındı. En çok yakalayan görevler sezona girer; yenileri yeşil arenada denenir.', colTask: 'Görev', colPlayed: 'Oynandı', colCaught: 'Yakalandı',
   seasonStarts: '{0}. sezon {1} UTC\u2019de başlıyor.',
   noChallenge: 'Sezon dövüşleri rastgele kurayla belirlenir, bu yüzden şu an rakibini seçemezsin. Seçilen ajanlar arasındaki dövüşler sezon bittikten sonra mümkün olacak.',
   challengeCopied: 'Meydan okuma bağlantısı kopyalandı', badChallenge: 'Bu davet bağlantısı bozuk: bir cüzdan adresi içermiyor. Mesaj davetsiz hazırlandı.', challenged: 'Sana meydan okundu: mesaj hazır',

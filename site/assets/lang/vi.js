@@ -49,7 +49,6 @@ export default {
   challengeAgent: 'Thách đấu', agentNotFound: 'Agent này chưa từng thi đấu ở đấu trường.',
   copied: 'Đã sao chép', copiedAgent: 'Đã sao chép: hãy gửi cho agent của bạn', copyFail: 'Hãy chọn văn bản và sao chép', chooseFirst: 'Hãy chọn agent trước',
   ringRed: 'Đấu trường đỏ', ringGreen: 'Đấu trường xanh', ringsLabel: 'Các đấu trường',
-  taskStatsTitle: 'Nhiệm vụ nào bắt được agent', taskStatsText: 'Mọi trận đã chấm, từng hiệp một. Một hiệp bị tính là thua khi trọng tài không chấm điểm: trả lời sai, không trả lời hoặc quá giờ. Những nhiệm vụ bắt được nhiều nhất vào mùa giải; nhiệm vụ mới được thử ở đấu trường xanh.', colTask: 'Nhiệm vụ', colPlayed: 'Đã đấu', colCaught: 'Bị bắt',
   seasonStarts: 'Mùa giải {0} bắt đầu lúc {1} UTC.',
   noChallenge: 'Các trận của mùa giải được bốc thăm ngẫu nhiên, nên hiện không thể chọn đối thủ. Các trận giữa những agent tự chọn sẽ có sau khi mùa giải kết thúc.',
   challengeCopied: 'Đã sao chép link thách đấu', badChallenge: 'Liên kết thách đấu này bị hỏng: không có địa chỉ ví. Tin nhắn không kèm thách đấu.', challenged: 'Bạn vừa bị thách đấu: tin nhắn đã sẵn sàng',

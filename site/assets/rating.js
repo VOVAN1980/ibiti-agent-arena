@@ -2,8 +2,7 @@
 // the move since a week ago.
 // A table on wide screens, cards on phones; a row opens the agent's own page.
 import { CFG, emptyState, refresh, rating, seasonState, nameOf } from './arena.js';
-import { $, keep, esc, header, footer, cup, t, applyI18n, agentUrl, seasonLine, pagesUrl } from './ui.js';
-import { LANG } from './i18n.js';
+import { $, keep, header, footer, cup, t, applyI18n, agentUrl, seasonLine } from './ui.js';
 
 document.title = `${t('navRating')} — IBITI Agent Arena`;
 $('#head').innerHTML = header('rating');
@@ -78,58 +77,12 @@ document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click
   render(true);
 }));
 
-// ------------------------------------------------------------ which tasks catch agents
-// Every judged fight's tasks come from the page server (/plan) once the match is judged; a round
-// counts as caught when the judge did not score it (a wrong answer, no answer, too late).
-const plans = new Map(); // "agent#number" -> [{ round, id, name }], or null while asked / unknown
-let statsSig = '';
-async function loadPlans() {
-  const todo = [...s.fights.values()].filter((f) => f.judged && !f.judged.empty && !plans.has(`${f.agent}#${f.number}`)).slice(0, 24);
-  await Promise.all(todo.map(async (f) => {
-    const k = `${f.agent}#${f.number}`;
-    plans.set(k, null);
-    try {
-      const r = await fetch(`${pagesUrl()}/plan/${f.agent}/${f.number}?lang=${LANG}`);
-      if (r.ok) plans.set(k, (await r.json()).tasks ?? []);
-      else plans.delete(k); // asked again on the next pass
-    } catch {
-      plans.delete(k);
-    }
-  }));
-}
-function renderStats() {
-  const by = new Map();
-  for (const f of s.fights.values()) {
-    const tasks = f.judged && !f.judged.empty ? plans.get(`${f.agent}#${f.number}`) : null;
-    if (!tasks) continue;
-    for (const x of tasks) {
-      const row = by.get(x.id) ?? { name: x.name, played: 0, caught: 0 };
-      row.played++;
-      if (((f.judged.correct >> (x.round - 1)) & 1) === 0) row.caught++;
-      by.set(x.id, row);
-    }
-  }
-  const rows = [...by.values()].sort((a, b) => b.caught / b.played - a.caught / a.played || b.played - a.played);
-  const next = JSON.stringify(rows);
-  if (next === statsSig) return;
-  statsSig = next;
-  if (!rows.length) {
-    $('#tstats').innerHTML = `<tr><td class="empty">${t('noJudged')}</td></tr>`;
-    return;
-  }
-  const pct = (r) => Math.round((100 * r.caught) / r.played);
-  $('#tstats').innerHTML = `<tr><th>${t('colTask')}</th><th class="num">${t('colPlayed')}</th><th class="num">${t('colCaught')}</th><th></th></tr>` +
-    rows.map((r) => `<tr><td><b>${esc(r.name)}</b></td><td class="num" translate="no">${r.played}</td><td class="num" translate="no">${r.caught} · ${pct(r)}%</td><td class="bar"><div class="meter"><b style="width:${pct(r)}%"></b></div></td></tr>`).join('');
-}
-
 async function loop() {
   try {
     await refresh(s);
     season = await seasonState().catch(() => season);
     renderSeason();
     render();
-    await loadPlans();
-    renderStats();
   } catch (e) {
     console.error(e);
   }
