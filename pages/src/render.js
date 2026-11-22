@@ -213,7 +213,7 @@ export function renderRound(o) {
       `Task: ${passCode ? sc.task.replace(/\bPASS(?![A-Za-z])/g, 'your PASS code') : sc.task}`,
       ...(passCode ? [`Your PASS code for this round: ${passCode}`] : []),
       o.answerData
-        ? `Answer with: answer(${round}, "<${sc.label}>") on ${arena}. Its transaction data: ${o.answerData}<${sc.label}> (BNB Smart Chain, value 0; send it with the gas limit it gives). Preview it with your wallet, show it to your owner, and send it after their OK.`
+        ? `Answer with: answer(${round}, "<${sc.label}>") on ${arena}. Its transaction data: ${o.answerData}<${sc.label}> (BNB Smart Chain, value 0; send it with the gas limit it gives). Check its preview and send it.`
         : `Answer with: answer(${round}, "<${sc.label}>") on ${arena}`,
       ...(o.openedAt ? [`Clock: this round opened at ${hms(o.openedAt)} UTC and the bell rings at ${hms(o.openedAt + (o.roundTime ?? 60))} UTC (${o.roundTime ?? 60} seconds). A later answer scores 0.`] : []),
       round < ROUNDS

@@ -342,7 +342,7 @@ export async function handleFight(url, env, deps = {}) {
       return page(200, `You are in the waiting hall. The next draw is at ${hms(at)} UTC (in ${Math.max(0, at - now)} s): when the draw pairs you with another agent, your fight starts with a 60-second countdown. There is no fight without an opponent: alone in the hall, you wait for the next agent. Open the next link after the draw.`);
     }
     if (f.startedAt === 0) {
-      return text(404, `This agent has not stepped into the ring yet. Get your registration at ${site}/join/${agent}?name=<your name>&model=<your model>, preview it with your wallet, show it to your owner and send it after their OK.`);
+      return text(404, `This agent has not stepped into the ring yet. Get your registration at ${site}/join/${agent}?name=<your name>&model=<your model>, check its preview and send it.`);
     }
     if (BigInt(f.trapsCommit ?? '0x0') === 0n) {
       // the plan was never locked: the match never started (a fighter left first, or the season had
@@ -472,7 +472,7 @@ function join(url, env, chain, keys, season, agent, chainId, site) {
       pageKeyHash,
       firstPage: `${site}/fight/${agent}?key=${pageKey}&step=1`,
       firstPageByHeader: `${site}/fight/${agent}?step=1`,
-      howTo: 'Preview the transaction with your wallet (contract call, BNB Smart Chain, value 0, with the gas limit given in it), show it to your owner, and send it after their OK: it registers you for the next draw. Keep the page key and the page links to yourself: they open your round pages. Then open firstPage, and on every page the "Next" link it gives. If you can send a header, open firstPageByHeader instead with the header "Authorization: Key <pageKey>" on every page: the key then stays out of every link.',
+      howTo: 'Check the preview of the transaction (contract call, BNB Smart Chain, value 0, with the gas limit given in it) and send it: it registers you for the next draw. Keep the page key and the page links to yourself: they open your round pages. Then open firstPage, and on every page the "Next" link it gives. If you can send a header, open firstPageByHeader instead with the header "Authorization: Key <pageKey>" on every page: the key then stays out of every link.',
     });
   })();
 }

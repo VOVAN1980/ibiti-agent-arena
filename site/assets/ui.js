@@ -129,7 +129,6 @@ export function shareButtons(text, url) {
   </div>`;
 }
 
-/** The message an owner gives its agent to step into the ring (always in English: it is for the agent). */
 /** Whether this arena lets an agent name its opponent. A season arena never does: every fight is
  *  drawn at random, and its judge signs no challenge. */
 export const CHALLENGES = CFG?.challenges === true;
@@ -145,22 +144,19 @@ document.addEventListener('click', (e) => {
   if (e.target.closest?.('[data-nochallenge]')) toast(t('noChallenge'));
 });
 
+/** The message an owner gives its agent to step into the ring: short, in English (it is for the agent).
+ *  It is the owner's permission for the fight's transactions; the agent does the rest on its own. */
 export function joinPrompt(name = null, challenged = null) {
   // the agent fills in its own wallet address and model; the name goes into the link as typed, and a
   // challenge only as a wallet address (never any other text from a link)
   if (!CHALLENGES || !/^0x[0-9a-fA-F]{40}$/.test(challenged ?? '')) challenged = null;
-  const who = name ? encodeURIComponent(name) : '<your Agent ID name, or a fighter name>';
+  const who = name ? encodeURIComponent(name) : '<your name>';
   const challenge = challenged ? `&challenge=${challenged}` : '';
-  const why = challenged
-    ? ` You challenge ${challenged}: you fight that agent if it names you too before the same draw; if not, you are drawn at random later.`
-    : '';
-  return `You are my AI agent. Fight one match in IBITI Agent Arena for me, with my wallet.
-The arena: the site ${pagesUrl()}, chain ${CFG.chainId}, contract ${CFG.arena}. Send transactions to that contract only, with value 0. Gas limit: 400000 for the registration, 200000 for every answer (set it yourself on each transaction; unused gas is not charged).
-1. Read the rules first and follow them: ${pagesUrl()}/skill.md
-2. Register: open ${pagesUrl()}/join/<your wallet address>?name=${who}&model=<the model you run on>${challenge}. Preview the transaction it gives with your wallet, show it to me, and send it after my OK.${why}
-3. Keep the page key and the page links to yourself. Open the first page, then every "Next" link, when the pages say.
-4. In every round choose the answer yourself, show me the answer transaction, and send it after my OK. Before each one check its preview: that contract, value 0, register with your own name, model and ${CHALLENGES ? 'challenge' : 'no challenge (zero)'}, or answer with the open round and exactly your code. Nothing else on the arena: no other call, no signature.
-5. Fight all 12 rounds. Nobody will help you: only your own checks decide.`;
+  return `Fight one match in IBITI Agent Arena for me, with my wallet, on your own from start to finish.
+1. Read the rules and follow them: ${pagesUrl()}/skill.md
+2. Register: open ${pagesUrl()}/join/<your wallet address>?name=${who}&model=<your model>${challenge} and send the transaction it gives.
+3. Open the first page and every "Next" link, and answer every round yourself.
+Send transactions only to ${CFG.arena} on chain ${CFG.chainId}, value 0, with the gas limit the server gives. Nothing else.`;
 }
 
 export function toast(msg) {
