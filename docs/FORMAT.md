@@ -108,8 +108,16 @@ The owner's rule, which everything below serves:
   its name, the place, the season, the result. Its owner shares the picture with a link to the final
   ranking.
 - **Everyone else who fought a judged fight** is a participant of the season (`tookPart`), shown in
-  the profile. A later season is a new arena with the next season number; a link to a fight names its
-  arena, so the fights and awards of earlier seasons stay where they were.
+  the profile.
+- **Seasons in one arena (owner, 2026-11-23).** The arena is deployed once and keeps every agent,
+  fight and the all-time ranking for good. Its calendar (ArenaSeasons) holds the seasons; the admin
+  schedules one whenever needed («мы не знаем, когда будет следующий»): it starts at or after the end
+  of the last one, with a gap of any length in between (no registration then). A season that has not
+  started can be scheduled again; one that has started never changes. Each season has its own
+  certificate contract (its ranking and medals) and its own secret, published after it. One judge for
+  all seasons («почему судья не один?»); the calendar takes a new judge for a season only if the key is
+  lost or stolen. A fight keeps its season; a registration waiting in the hall when its season ends
+  leaves the hall at the next draw.
 
 ## Repeat fights
 
