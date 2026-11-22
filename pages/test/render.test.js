@@ -47,7 +47,7 @@ test('every fighter of a tournament meets the same situation and the same hidden
   }
 });
 
-test('the secret plan: three tiers, every task after the ones it needs, different in every fight', () => {
+test('the secret plan: four tiers of three, at most one lookup, every task after the ones it needs, different in every fight', () => {
   let repeats = 0; // plans where a trap comes back in another round
   const plans = new Set();
   const last = new Set();
@@ -55,8 +55,9 @@ test('the secret plan: three tiers, every task after the ones it needs, differen
     const seed = KEYS.cardSeed('0x' + s.toString(16).padStart(64, '0'));
     const { order, traps } = planOf(seed);
     assert.equal(new Set(order).size, 12, 'twelve different tasks');
+    assert.ok(order.filter((id) => id < 100).length <= 1, 'at most one lookup round');
     order.forEach((id, i) => {
-      assert.equal(TASKS[id].tier, i < 4 ? 1 : i < 8 ? 2 : 3, `seed ${s} round ${i + 1}: its tier`);
+      assert.equal(TASKS[id].tier, Math.floor(i / 3) + 1, `seed ${s} round ${i + 1}: its tier`);
       for (const n of TASKS[id].needs ?? []) assert.ok(order.indexOf(n) > -1 && order.indexOf(n) < i, `seed ${s}: ${id} after ${n}`);
     });
     assert.equal(traps.length, 36);
@@ -69,7 +70,7 @@ test('the secret plan: three tiers, every task after the ones it needs, differen
   assert.equal(plans.size, 300, 'no two fights share a plan');
   // every round draws its traps on its own: a trap seen in one round says nothing about another
   assert.ok(repeats > 250, `a trap often comes back in a later round (${repeats} of 300 plans)`);
-  assert.ok(last.size >= 8, 'even the last round has many possible themes');
+  assert.equal(last.size, Object.values(TASKS).filter((t) => t.tier === 4).length, 'any of the hardest tasks can be the last round');
   // only the secret makes the plan: the on-chain seed alone tells nothing
   const chainSeed = '0x' + '5e'.repeat(32);
   assert.notDeepEqual(planOf(KEYS.cardSeed(chainSeed)).order, planOf(arenaKeys('22'.repeat(32)).cardSeed(chainSeed)).order);
@@ -138,6 +139,10 @@ test('the round card of rounds 9–12 shows a PASS code: the fighter\'s own on a
       const code = KEYS.code(ARENA, A, s + 1, r);
       const p = renderRound(base({ seed, round: r, code, passKey: KEYS.passKey }));
       const card = p.md.split('\n---\n')[0];
+      if (!TASKS[p.meta.scenario].pass) {
+        assert.equal(p.meta.passCode, null, 'a task without a "none qualifies" answer has no PASS code');
+        continue;
+      }
       assert.ok(card.includes(`Your PASS code for this round: ${p.meta.passCode}.`));
       assert.match(card, /send your PASS code/);
       assert.doesNotMatch(card, /send PASS\b/);
@@ -294,7 +299,7 @@ test('(other leagues) every decision table has exactly one right row, or none wh
 test('the final round is one of the hardest tasks and says so in its title', () => {
   const p = renderRound(base({ round: 12, code: PASS, traps: [1, 2, 3] }));
   assert.match(p.title, /^Final round — /);
-  assert.equal(TASKS[p.meta.scenario].tier, 3);
+  assert.equal(TASKS[p.meta.scenario].tier, 4);
   assert.equal(p.meta.name, TASKS[p.meta.scenario].name);
 });
 
@@ -598,7 +603,7 @@ test('no hints: a glued trap sticks to every option, not only to the right one (
     }
   }
   assert.ok(rows > 200, 'option tables were checked');
-  assert.deepEqual([...kinds].sort(), [1, 2, 3], 'decision tables, hard rounds and the treasurer\'s day');
+  assert.deepEqual([...kinds].sort(), [2, 3, 4], 'data rounds, the treasurer\'s day and the re-enacted thefts');
 });
 
 test('no hints: the same card seen again shows none of the same wrong IDs', () => {

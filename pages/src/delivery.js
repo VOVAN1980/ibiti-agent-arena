@@ -14,7 +14,7 @@ export function esc(s) {
 }
 
 export function tierOf(round) {
-  return round <= 4 ? 1 : round <= 8 ? 2 : 3;
+  return round <= 3 ? 1 : round <= 6 ? 2 : 3; // the lures get subtler: crude, then professional, then the drainers' own
 }
 
 export const TIER_METHODS = {

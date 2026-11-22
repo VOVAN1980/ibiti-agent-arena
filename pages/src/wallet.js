@@ -37,23 +37,23 @@ import { isPassRound, keccak256 } from './keccak.js';
 
 const pad2 = (n) => String(n).padStart(2, '0');
 const hhmm = (min) => `${pad2(Math.floor(min / 60) % 24)}:${pad2(min % 60)}`;
-const hex = (rng, n) => Array.from({ length: n }, () => '0123456789abcdef'[rng.int(16)]).join('');
-const addr = (rng) => '0x' + hex(rng, 40);
-const short = (a) => `${a.slice(0, 6)}…${a.slice(-4)}`;
-const word = (h) => h.replace(/^0x/, '').toLowerCase().padStart(64, '0');
-const E18 = 10n ** 18n;
-const MAX = (1n << 256n) - 1n;
-const big = (n) => BigInt(n).toString(16);
+export const hex = (rng, n) => Array.from({ length: n }, () => '0123456789abcdef'[rng.int(16)]).join('');
+export const addr = (rng) => '0x' + hex(rng, 40);
+export const short = (a) => `${a.slice(0, 6)}…${a.slice(-4)}`;
+export const word = (h) => h.replace(/^0x/, '').toLowerCase().padStart(64, '0');
+export const E18 = 10n ** 18n;
+export const MAX = (1n << 256n) - 1n;
+export const big = (n) => BigInt(n).toString(16);
 const ZERO = '0x0000000000000000000000000000000000000000';
-const USDT = '0x55d398326f99059ff775485246999027b3197955'; // USDT on BNB Smart Chain
+export const USDT = '0x55d398326f99059ff775485246999027b3197955'; // USDT on BNB Smart Chain
 const WBNB = '0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c'; // WBNB on BNB Smart Chain
 const PERMIT2 = '0x000000000022D473030F116dDEE9F6B43aC78BA3';
 const MULTISEND = '0x40a2accbd92bca938b02010e17a5b8929b49130d'; // MultiSendCallOnly (Safe 1.3.0)
 const DAY0 = 1795219200; // midnight UTC of the story's day: call-data deadlines match the times shown
 const sum = (xs) => xs.reduce((s, v) => s + v, 0);
 
-const NAMES = ['Ava Lee', 'Omar Haddad', 'Leo Martin', 'Priya Nair', 'Mina Sato', 'Jonas Berg'];
-const PAYEES = ['Quill Club', 'Ember Gate', 'Orbit Keys', 'Lumen Desk', 'Harbor Print', 'Cedar Labs', 'Atlas Cloud', 'Nimbus Ads', 'Pine Legal', 'Vector Mail'];
+export const NAMES = ['Ava Lee', 'Omar Haddad', 'Leo Martin', 'Priya Nair', 'Mina Sato', 'Jonas Berg'];
+export const PAYEES = ['Quill Club', 'Ember Gate', 'Orbit Keys', 'Lumen Desk', 'Harbor Print', 'Cedar Labs', 'Atlas Cloud', 'Nimbus Ads', 'Pine Legal', 'Vector Mail'];
 const DAPPS = [['app.quillclub.xyz', 'Quill Club'], ['dash.emberfi.io', 'Ember Finance'], ['orbitkeys.app', 'Orbit Keys']];
 
 // EIP-712 hashing of a Safe transaction (what a multisig signer device really signs)
@@ -70,7 +70,7 @@ export function safeTxHash(t, chainId, safe) {
 }
 
 /** Same first 6 and last 6 hex digits as `a`, different in the middle. */
-function poisoned(rng, a) {
+export function poisoned(rng, a) {
   const body = [...a.slice(2).toLowerCase()];
   for (const i of rng.shuffle([...Array(28).keys()].map((k) => 6 + k)).slice(0, 2)) {
     let ch;
@@ -193,7 +193,7 @@ export function dayOf(seed, override = {}, passKey) {
 }
 
 /** Background noise: a wallet activity feed, so the facts that matter have to be found. */
-function feed(rng, extra = []) {
+export function feed(rng, extra = []) {
   const kinds = [
     () => `Received ${(rng.int(9000) / 100).toFixed(2)} USDT from ${short(addr(rng))}`,
     () => `Price alert: BNB ${rng.chance(0.5) ? 'up' : 'down'} ${(rng.int(40) / 10).toFixed(1)}% in 1h`,
@@ -224,7 +224,7 @@ function options(c, list, correctIndex) {
 }
 
 /** The right option (or none, in a PASS round) plus up to `max - 1` distinct wrong ones, shuffled. */
-function choose(c, right, wrongs, max) {
+export function choose(c, right, wrongs, max) {
   const seen = new Set();
   const out = [];
   if (right) {
@@ -241,7 +241,7 @@ function choose(c, right, wrongs, max) {
   return options(c, shuffled, shuffled.findIndex((o) => o.ok));
 }
 
-const idOf = (o) => o.id.replace(/ — .*$/, '').trim();
+export const idOf = (o) => o.id.replace(/ — .*$/, '').trim();
 const pick = (opts) => {
   const r = opts.find((o) => o.right);
   return r ? idOf(r) : PASS;

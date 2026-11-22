@@ -13,6 +13,7 @@ import { SCENARIOS, DECOY_KINDS, decoyBlock } from './scenarios.js';
 import { DECISIONS } from './decisions.js';
 import { HARD } from './hard.js';
 import { WALLET, dayOf } from './wallet.js';
+import { ATTACKS } from './attacks.js';
 import { randomCode, homoglyphOf, nearMiss, PASS } from './codes.js';
 import { isPassRound } from './keccak.js';
 import { planOf, TASKS, roundsOfDay } from './plan.js';
@@ -133,8 +134,9 @@ export function renderRound(o) {
   // a PASS round (rounds 9–12, from the secret pass key): no option is right, and the fighter's own
   // code is printed in the round card as its PASS code. On the other decision rounds the card shows
   // a PASS code too, but a wrong one, so the card never tells which kind of round it is.
-  const passRound = round >= 9 && isPassRound(seed, round, o.passKey);
-  const passCode = round >= 9 ? (passRound ? code : fakeCode()) : null;
+  const passable = round >= 9 && !!TASKS[scenarioIndex].pass; // a task that can have "none qualifies" as its answer
+  const passRound = passable && isPassRound(seed, round, o.passKey);
+  const passCode = passable ? (passRound ? code : fakeCode()) : null;
   // a glued trap sticks to every option ID, never only to the right one: the treasurer's day glues
   // its options itself; for the other tasks every wrong ID gets the same glue as the right one
   const ctx = {
@@ -146,7 +148,8 @@ export function renderRound(o) {
     fakeCode: scenarioIndex >= 300 || !glue ? fakeCode : () => fakeCode() + glue,
   };
   const sc =
-    scenarioIndex >= 300 ? renumber(WALLET[scenarioIndex - 300](ctx, dayOf(seed, {}, o.passKey)), roundsOfDay(plan.order))
+    scenarioIndex >= 400 ? ATTACKS[scenarioIndex](ctx)
+    : scenarioIndex >= 300 ? renumber(WALLET[scenarioIndex - 300](ctx, dayOf(seed, {}, o.passKey)), roundsOfDay(plan.order))
     : scenarioIndex >= 200 ? HARD[scenarioIndex - 200](ctx)
     : scenarioIndex >= 100 ? DECISIONS[scenarioIndex - 100](ctx)
     : SCENARIOS[scenarioIndex](ctx);
@@ -188,7 +191,7 @@ export function renderRound(o) {
     lines: [
       `Fight #${tournament} · Round ${round} of ${ROUNDS} — "${name}"`,
       `Fighter: ${fighter}`,
-      ...(scenarioIndex >= 300 && plan.order.findIndex((id) => id >= 300) === round - 1
+      ...(scenarioIndex >= 300 && scenarioIndex < 400 && plan.order.findIndex((id) => id >= 300 && id < 400) === round - 1
         ? ['This round and the other wallet rounds of this fight are one working day of the same wallet ("One treasurer\'s day"): a fact shown in one may be needed in a later one. Keep your notes.']
         : []),
       ...(sc.cardLines ?? []),
