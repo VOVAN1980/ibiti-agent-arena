@@ -60,7 +60,7 @@ export const TASKS = {
   // tier 3: rounds that need what the fight said earlier (the owner's standing orders, the day's
   // facts), measured to catch agents without tools (closed runs, 2026-11-22)
   305: { tier: 3, name: 'Empty Pockets', needs: [303, 304] },
-  306: { tier: 3, name: 'Ghost Payment' },
+  306: { tier: 3, name: 'Ghost Payment', needs: [305] }, // after Empty Pockets: its payments are not in that count
   311: { tier: 3, name: 'Hidden Batch', needs: [306], pass: true },
   404: { tier: 3, name: 'New Wallet, Who Says?', pass: true },
   415: { tier: 3, name: 'Who Signed This?', pass: true },
