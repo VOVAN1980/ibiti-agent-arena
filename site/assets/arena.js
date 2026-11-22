@@ -393,3 +393,51 @@ export function rounds(f) {
     return { round: r, answer: a ?? null, solved, hits, fouls, calls, points };
   });
 }
+
+// ------------------------------------------------------------------ an earlier arena, by its link
+
+/** A link may name the arena its fight was fought in. The site's own arena needs nothing; an earlier
+ *  arena of this site (CFG.archive) is read instead of it; any other is refused (false). */
+export function useArena(address) {
+  const want = String(address ?? '').toLowerCase();
+  if (!want || want === String(CFG.arena).toLowerCase()) return true;
+  const old = (CFG.archive ?? []).find((x) => String(x.arena).toLowerCase() === want);
+  if (!old) return false;
+  Object.assign(CFG, { arena: old.arena, deployBlock: old.deployBlock ?? 0, certificate: old.certificate ?? null, season: old.season ?? CFG.season, archived: true });
+  return true;
+}
+/** What the server needs to hear when this page shows an earlier arena. */
+export const arenaQuery = () => (CFG.archived ? `&arena=${CFG.arena}` : '');
+
+// ------------------------------------------------------------------ the season: its ranking, close and certificates
+
+const SEASON = { top: '0xfe6dcdba', closedAt: '0x9ef27b00', participants: '0x6c4470fb', tookPart: '0x6b067159', placeOf: '0x222d825b', tokenURI: '0xc87b56dd' };
+const seasonCall = async (data) => words(await rpc('eth_call', [{ to: CFG.certificate, data }, 'latest']));
+let seasonRead = null;
+/** The season now: its number, its end, when it was closed (0: open), its first places (final once
+ *  closed) and how many agents took part. Null if this arena has no season contract. */
+export async function seasonState() {
+  if (!CFG.certificate) return null;
+  if (seasonRead && Date.now() - seasonRead.read < 15000) return seasonRead;
+  const [topW, closedW, partW, end] = await Promise.all([seasonCall(SEASON.top), seasonCall(SEASON.closedAt), seasonCall(SEASON.participants), arenaSetting('seasonEnd')]);
+  seasonRead = { read: Date.now(), season: CFG.season ?? 1, end, closedAt: num(closedW[0] ?? '0'), participants: num(partW[0] ?? '0'), top: topW.slice(2, 2 + num(topW[1] ?? '0')).map(addrOf) };
+  return seasonRead;
+}
+/** An agent in the season: its place (0 until the close, and for places past the tenth) and whether it took part. */
+export async function seasonOf(agent) {
+  if (!CFG.certificate) return null;
+  const [p, tp] = await Promise.all([seasonCall(SEASON.placeOf + pad(agent)), seasonCall(SEASON.tookPart + pad(agent))]);
+  return { place: num(p[0] ?? '0'), tookPart: big(tp[0] ?? '0') !== 0n };
+}
+/** The picture of an agent's season certificate, as the contract draws it (a data: URL), or null. */
+export async function certificatePicture(agent) {
+  try {
+    const hex = (await rpc('eth_call', [{ to: CFG.certificate, data: SEASON.tokenURI + pad(agent) }, 'latest'])).replace(/^0x/, '');
+    const bytes = (h) => Uint8Array.from((h.match(/../g) ?? []).map((x) => parseInt(x, 16)));
+    const uri = new TextDecoder().decode(bytes(hex.slice(128, 128 + parseInt(hex.slice(64, 128), 16) * 2)));
+    const json = new TextDecoder().decode(Uint8Array.from(atob(uri.split(',')[1]), (c) => c.charCodeAt(0)));
+    return JSON.parse(json).image ?? null;
+  } catch {
+    return null;
+  }
+}

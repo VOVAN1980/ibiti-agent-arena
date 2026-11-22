@@ -731,8 +731,8 @@ test('what the first rehearsal with AI agents showed: the draw being held, the s
   assert.match(nextOne.body, /The next draw is at/, 'registered after the sealed cutoff: it waits for the next draw');
   // a finished fight gives the link of its scorecard
   const over = await get(fakeChain({ live: false }));
-  assert.ok(over.body.includes(`https://x/match.html?a=${A}&n=2`), 'the scorecard link');
-  assert.ok((await get(fakeChain({ round: 13 }))).body.includes(`https://x/match.html?a=${A}&n=2`));
+  assert.ok(over.body.includes(`https://x/match.html?arena=${ARENA}&a=${A}&n=2`), 'the scorecard link, naming its arena');
+  assert.ok((await get(fakeChain({ round: 13 }))).body.includes(`https://x/match.html?arena=${ARENA}&a=${A}&n=2`));
   // the gas limit travels with the transactions, and the rules explain it and give the typed signatures
   const answer = await (await handleFight(new URL('https://x/calldata/answer?round=1&code=K7QM-9XDA-RT4W-H2PN'), ENV, { chain: fakeChain() })).json();
   assert.equal(answer.gasLimit, '200000');

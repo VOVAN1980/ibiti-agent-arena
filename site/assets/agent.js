@@ -1,6 +1,6 @@
 // One fighter's own page: its place, its best fight, its record, every fight it fought, and the way
 // to challenge it. Everything comes from the chain, like the rest of the site.
-import { CFG, emptyState, refresh, rating, verdict, nameOf, fightName, boutOf, isLive } from './arena.js';
+import { CFG, emptyState, refresh, rating, verdict, nameOf, fightName, boutOf, isLive, seasonOf, certificatePicture } from './arena.js';
 import { $, esc, keep, tName, short, header, footer, cup, avatar, shareButtons, siteUrl, t, applyI18n, agentUrl, matchUrl } from './ui.js';
 
 const agent = (new URLSearchParams(location.search).get('a') || '').toLowerCase();
@@ -60,15 +60,51 @@ function render() {
       <div class="stat"><b translate="no">${mine.filter((f) => f.judged && !f.judged.empty).length}</b><span>${esc(t('fightsWord'))}</span></div>
       <div class="stat"><b translate="no">${count('win')} · ${count('loss')} · ${count('draw')}</b><span>${esc(t('record'))}</span></div>
     </div>
+    <div id="season"></div>
     <div class="cta" style="margin-top:16px"><a class="btn red" href="index.html?challenge=${agent}#enter">${esc(t('challengeAgent'))}</a>${me ? `<a class="btn" href="${matchUrl(agent, me.number)}&replay=1">${esc(t('watchReplay'))}</a>` : ''}</div>`;
   $('#fights').innerHTML = rows.map((r) => r.html).join('');
   $('#share').innerHTML = me ? shareButtons(t('shareAgent', name, me.points), `${siteUrl()}/${agentUrl(agent)}`) : shareButtons(t('shareArena'), siteUrl());
+}
+
+/** The agent's season: its place with the certificate's picture, or its participation. */
+let seasonSig = '';
+async function renderSeason() {
+  const mine = await seasonOf(agent).catch(() => null);
+  const box = $('#season');
+  if (!mine || (!mine.place && !mine.tookPart)) return;
+  const next = JSON.stringify(mine);
+  if (next === seasonSig && box.innerHTML) return; // the profile was drawn again: fill it again
+  seasonSig = next;
+  const n = CFG.season ?? 1;
+  if (!mine.place) {
+    box.innerHTML = `<div class="seasonrow"><span class="badge">${esc(t('seasonParticipant', n))}</span></div>`;
+    return;
+  }
+  const medal = ['🥇', '🥈', '🥉'][mine.place - 1] ?? '🏅';
+  const picture = await certificatePicture(agent);
+  const text = t('certShare', n, mine.place);
+  box.innerHTML = `<div class="seasonrow"><span class="badge id"><span translate="no">${medal}</span> ${esc(t('seasonPlace', n, mine.place))}</span></div>
+    ${picture ? `<div class="certbox"><img alt="" src="${picture}"><div class="stack"><b>${esc(t('certTitle'))}</b>${shareButtons(text, `${siteUrl()}/rating.html`)}<button class="btn small" type="button" id="savePicture">${esc(t('savePicture'))}</button></div></div>` : ''}`;
+  $('#savePicture')?.addEventListener('click', async () => {
+    // the picture as a PNG file: what the social networks take
+    const img = new Image();
+    img.src = picture;
+    await img.decode();
+    const c = document.createElement('canvas');
+    c.width = c.height = 1200;
+    c.getContext('2d').drawImage(img, 0, 0, 1200, 1200);
+    const a = document.createElement('a');
+    a.download = `ibiti-agent-arena-season-${n}-place-${mine.place}.png`;
+    a.href = c.toDataURL('image/png');
+    a.click();
+  });
 }
 
 async function loop() {
   try {
     await refresh(s);
     render();
+    renderSeason();
   } catch (e) {
     console.error(e);
   }

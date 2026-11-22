@@ -6,7 +6,8 @@
 // right answers or traps appears before the judge's verdict.
 // The scoreboard is rebuilt only when something changes; between reads of the chain only the clock
 // and the bars move, in place (so a page translator has nothing to redo every second).
-import { CFG, emptyState, refresh, bouts, verdict, clockOf, fightName, fightOf, openedRounds, rounds, trapName, isLive, rating, arenaSetting, ROUNDS } from './arena.js';
+import { CFG, emptyState, refresh, bouts, verdict, clockOf, fightName, fightOf, openedRounds, rounds, trapName, isLive, rating, arenaSetting, useArena, arenaQuery, ROUNDS } from './arena.js';
+import { LANG } from './i18n.js';
 
 /** Fouls as the judge counted them; a silent fight is never judged, so its fouls are not known. */
 const foulsOf = (j) => (j.empty ? '—' : j.fouls);
@@ -21,6 +22,8 @@ applyI18n();
 const params = new URLSearchParams(location.search);
 const wantAgent = (params.get('a') || '').toLowerCase();
 const wantNumber = Number(params.get('n') || 0);
+// the link may name the arena of its fight: an earlier arena of this site is read instead of the current one
+const arenaServed = useArena(params.get('arena'));
 // how fast a replay runs: 'fast' (a round in a few seconds), 'twice' (twice the fight's speed) or
 // 'real' (as it was fought); the viewer's choice is remembered, and a link can ask for one
 const SPEEDS = ['fast', 'twice', 'real'];
@@ -541,17 +544,70 @@ function cell(r, side) {
   return `<td style="min-width:240px">${bar}<div style="margin-top:6px">${res}</div>${traps.length ? `<div class="note">${traps.map(esc).join('<br>')}</div>` : ''}</td>`;
 }
 
+// the last round that opened in a bout, read once from its fights' clocks (null until known)
+const openedOf = new Map();
+async function readOpened(b) {
+  const k = `${b.red.agent}#${b.red.number}`;
+  if (openedOf.has(k)) return;
+  openedOf.set(k, null);
+  try {
+    const clocks = await Promise.all([b.red, b.blue].filter(Boolean).map((f) => fightOf(f.agent, f.number)));
+    openedOf.set(k, Math.max(0, ...clocks.map((c) => openedRounds(c, s.now))));
+    roundsSig = '';
+    renderRounds(b);
+  } catch {
+    openedOf.delete(k); // asked again at the next refresh
+  }
+}
+
 function renderRounds(b) {
   if (themesKnown() < 12) loadAll().then(() => themesKnown() === 12 && renderRounds(b)); // all open once the fight is over
-  const sig = JSON.stringify([b.red.judged, b.blue?.judged, b.red.answers.length, b.blue?.answers.length, themesKnown()], (k, x) => (typeof x === 'bigint' ? x.toString() : x));
+  readOpened(b);
+  const opened = openedOf.get(`${b.red.agent}#${b.red.number}`) ?? null;
+  const sig = JSON.stringify([b.red.judged, b.blue?.judged, b.red.answers.length, b.blue?.answers.length, themesKnown(), opened], (k, x) => (typeof x === 'bigint' ? x.toString() : x));
   if (sig === roundsSig) return;
   roundsSig = sig;
   const rr = rounds(b.red);
   const rb = b.blue ? rounds(b.blue) : [];
-  $('#rounds').innerHTML = `<tr><th>${t('roundCol')}</th><th><span class="dot red"></span>${keep(fightName(s, b.red))}</th>${b.blue ? `<th><span class="dot blue"></span>${keep(fightName(s, b.blue))}</th>` : ''}</tr>` +
-    rr.map((r, i) => `<tr class="r"><td><b>${r.round}</b> <span class="tiny">${esc(themeName(r.round))}</span></td>${cell(r, 'red')}${b.blue ? cell(rb[i], 'blue') : ''}</tr>`).join('');
+  // a round that never opened (both left before it) is not a round missed: it is marked as such; every
+  // round that opened has its cards: what each fighter saw and answered
+  const row = (r, i) => (opened !== null && r.round > opened
+    ? `<tr class="r off"><td><b>${r.round}</b></td><td colspan="${b.blue ? 3 : 2}" class="tiny">${esc(t('notOpened'))}</td></tr>`
+    : `<tr class="r"><td><b>${r.round}</b> <span class="tiny">${esc(themeName(r.round))}</span></td>${cell(r, 'red')}${b.blue ? cell(rb[i], 'blue') : ''}<td class="num"><button class="btn small" type="button" data-card="${r.round}">${esc(t('cardsBtn'))}</button></td></tr>`);
+  $('#rounds').innerHTML = `<tr><th>${t('roundCol')}</th><th><span class="dot red"></span>${keep(fightName(s, b.red))}</th>${b.blue ? `<th><span class="dot blue"></span>${keep(fightName(s, b.blue))}</th>` : ''}<th></th></tr>` + rr.map(row).join('');
   $('#after').style.display = '';
 }
+
+/** The jury's view of one round: for each fighter the page it saw, what it answered, the right answer and why. */
+async function showCards(b, round) {
+  const box = $('#cards');
+  box.innerHTML = `<div class="tiny">${esc(t('loading'))}</div>`;
+  const sides = [['red', b.red], ...(b.blue ? [['blue', b.blue]] : [])];
+  const got = await Promise.all(sides.map(([, f]) => fetch(`card/${f.agent}/${f.number}/${round}?lang=${LANG}${arenaQuery()}`, { cache: 'no-store' })
+    .then(async (r) => ({ status: r.status, body: await r.json() }))
+    .catch(() => ({ status: 0, body: null }))));
+  const theme = got.find((g) => g.body?.theme?.name)?.body.theme.name;
+  box.innerHTML = `<h3>${esc(t('cardsTitle', round))}${theme ? ` — ${esc(theme)}` : ''}</h3><div class="cardgrid">${sides.map(([side, f], i) => cardHtml(side, f, got[i])).join('')}</div>`;
+  box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+function cardHtml(side, f, got) {
+  const head = `<div class="chead"><span class="dot ${side}"></span><b>${keep(fightName(s, f))}</b></div>`;
+  if (got.status !== 200 || !got.body) return `<div class="jcard">${head}<div class="tiny">${esc(t(got.status === 425 ? 'cardsLater' : got.status === 404 ? 'notOpened' : 'clockFailed'))}</div></div>`;
+  const c = got.body;
+  const word = { right: 'ansRight', wrong: 'ansWrong', late: 'ansLate', none: 'ansNone', unjudged: 'ansNone' }[c.answer.state];
+  return `<div class="jcard">${head}
+    <div class="jrow"><span>${esc(t('cardAnswered'))}</span><b class="${c.answer.state === 'right' ? 'ok' : 'no'}">${esc(t(word))}</b>${c.answer.sent && c.answer.state !== 'right' ? ` <code translate="no">${esc(c.answer.sent)}</code>` : ''} · <b translate="no">${c.points} / 10</b></div>
+    <div class="jrow"><span>${esc(t('cardRight'))}</span><code translate="no">${esc(c.answer.right)}</code>${c.answer.pass ? ' · PASS' : ''}</div>
+    ${c.why ? `<div class="jrow"><span>${esc(t('cardWhy'))}</span><i>${esc(c.why)}</i></div>` : ''}
+    ${c.stake ? `<div class="jrow"><span>${esc(t('cardStake'))}</span>${esc(c.stake)}</div>` : ''}
+    <div class="jrow"><span>${esc(t('cardTraps'))}</span>${c.traps.map((x) => `<code translate="no" class="${x.taken ? 'no' : ''}">${esc(x.call ?? trapName(x.id))}${x.taken ? ' ✗' : ''}</code>`).join(' ')}</div>
+    <details><summary>${esc(t('cardPage'))}</summary><pre class="cardpage" translate="no">${esc(c.page)}</pre></details></div>`;
+}
+$('#rounds').addEventListener('click', (e) => {
+  const round = Number(e.target.closest?.('[data-card]')?.dataset.card);
+  const b = findBout();
+  if (round && b) showCards(b, round);
+});
 
 // ------------------------------------------------------------------ the replay: the arena plays the fight again
 
@@ -559,7 +615,13 @@ async function playReplay(b) {
   if (replaying || !b || !verdict(b)) return;
   replaying = true;
   const clocks = await Promise.all([b.red, b.blue].filter(Boolean).map((f) => fightOf(f.agent, f.number).catch(() => null)));
-  const last = Math.max(0, ...clocks.map((c) => (c ? openedRounds(c, s.now) : ROUNDS)));
+  if (clocks.some((c) => !c)) {
+    // the fight's clock is not known: no guessing which rounds opened
+    replaying = false;
+    banner('text', 0, t('clockFailed'));
+    return;
+  }
+  const last = Math.max(0, ...clocks.map((c) => openedRounds(c, s.now)));
   if (last === 0) {
     replaying = false;
     banner('text', 0, t('noRoundOpened'));
@@ -695,6 +757,10 @@ $('#watchReplay').addEventListener('click', () => playReplay(findBout()));
 // ------------------------------------------------------------------ reading the chain
 
 async function loop() {
+  if (!arenaServed) {
+    $('#ring').innerHTML = `<div class="hudmsg">${esc(t('otherArena'))}</div>`;
+    return;
+  }
   try {
     await refresh(s);
     const b = findBout();

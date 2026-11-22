@@ -53,7 +53,10 @@ const judge = () => judgeRun(judgeEnv, { log: () => {}, wait: async () => mine()
 
 // each gets its registration from /join and sends it as it is, keeping its page key
 for (const [i, f] of fighters.entries()) {
-  const j = await (await get(`/join/${f.agent}?name=${i === 0 ? 'E2E%20Red' : 'E2E%20Blue'}&model=test-model`)).json();
+  // its own Agent ID name in the (test) registry: the official path, counted in the season
+  const name = i === 0 ? 'e2ered' : 'e2eblue';
+  cast('send', '--rpc-url', rpc, '--private-key', f.key, dep.registry, 'give(address,string)', f.agent, name);
+  const j = await (await get(`/join/${f.agent}?name=${name}&model=test-model`)).json();
   if (j.transaction.to.toLowerCase() !== dep.arena.toLowerCase() || j.transaction.value !== '0') throw new Error('a wrong registration');
   f.key0 = f.key; // the wallet's key; f.key is now the page key
   f.key = j.pageKey;
@@ -136,3 +139,29 @@ if (red.hits !== expected.hits || red.fouls !== expected.fouls) throw new Error(
 if (blue.hits !== 0n || blue.fouls !== 0) throw new Error('Blue made no trap call: no hit, no foul');
 if (pointsOf(fighters[0]) !== 108 || pointsOf(fighters[1]) !== 110) throw new Error('the points are not what the rules give');
 console.log(`checked: one locked plan, the exact solved masks (Red all but 5, Blue all but 7), Red's call ${expected.what} as the plan said, Blue clean, points 108 and 110`);
+
+// the jury's cards of the judged match: the page as the fighter saw it, its answer, the right code
+const cardOf = async (f, n, r) => (await get(`/card/${f.agent}/${n}/${r}`)).json();
+const c5 = await cardOf(fighters[0], plans[0].number, 5);
+if (c5.answer?.state !== 'wrong' || c5.answer.right !== keys.code(dep.arena, fighters[0].agent, plans[0].number, 5) || !c5.page.includes('Round 5 of 12') || c5.page.includes(fighters[0].key)) throw new Error("Red's card of round 5 is not what was played");
+const c1 = await cardOf(fighters[1], plans[1].number, 1);
+if (c1.answer?.state !== 'right' || c1.points !== 10 || c1.answer.sent !== c1.answer.right) throw new Error("Blue's card of round 1 is not what was played");
+console.log("the jury's cards: Red's round 5 wrong with the right code shown, Blue's round 1 right for 10 points, no page key in them");
+
+// the season: both fought under their own Agent ID names, so both are ranked, Blue (110) ahead of Red (108)
+const season = dep.certificate;
+const view = (sig, ...a) => cast('call', '--rpc-url', rpc, season, sig, ...a);
+const [redAt, blueAt] = fighters.map((f) => view('top()(address[])').toLowerCase().indexOf(f.agent));
+if (redAt < 0 || blueAt < 0 || blueAt > redAt) throw new Error('the season does not rank Blue ahead of Red');
+if (view('participants()(uint32)') !== '2' || Number(view('closedAt()(uint64)').split(' ')[0]) !== 0) throw new Error('two took part and the season is open');
+// after its end the judge closes it: the places are final, and certified
+jumpTo(Number(cast('call', '--rpc-url', rpc, dep.arena, 'seasonEnd()(uint64)').split(' ')[0]) + 1);
+const closing = await judge();
+if (!closing.closed) throw new Error('the judge did not close the season');
+mine();
+const placeOf = (f) => view('placeOf(address)(uint8)', f.agent);
+if (placeOf(fighters[1]) !== '1' || placeOf(fighters[0]) !== '2') throw new Error('the places are not Blue first, Red second');
+const owner = view('ownerOf(uint256)(address)', BigInt(fighters[1].agent).toString()).toLowerCase();
+const picture = view('tokenURI(uint256)(string)', BigInt(fighters[1].agent).toString());
+if (owner !== fighters[1].agent || picture.length < 400) throw new Error("the winner's certificate is not there");
+console.log('the season is closed by the judge: Blue first with the gold certificate, Red second, two participants');

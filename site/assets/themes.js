@@ -2,6 +2,7 @@
 // once that round has opened: the site's code holds no round themes in advance, so nobody can read a
 // fight's tasks before the bell (docs/FORMAT.md). Answers are cached per fight and round.
 import { LANG } from './i18n.js';
+import { arenaQuery } from './arena.js';
 
 const cache = new Map();
 let fight = null; // the fight this page shows: { agent, number }
@@ -18,7 +19,7 @@ export async function loadTheme(round) {
   const k = keyOf(round);
   if (cache.has(k)) return cache.get(k);
   try {
-    const res = await fetch(`task/${fight.agent}/${fight.number}/${round}?lang=${LANG}`, { cache: 'no-store' });
+    const res = await fetch(`task/${fight.agent}/${fight.number}/${round}?lang=${LANG}${arenaQuery()}`, { cache: 'no-store' });
     if (res.status !== 200) return null;
     const theme = await res.json();
     cache.set(k, theme);

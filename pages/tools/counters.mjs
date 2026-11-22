@@ -58,7 +58,7 @@ console.log(JSON.stringify({
   toBlock: latest,
   walletsRegistered: registered.size,
   walletsRegisteredWithTheirAgentId: withAgentId.size,
-  fightsThatRan: ran.size,
+  fightsWithALockedPlan: ran.size, // each fighter of a match whose plan was locked (the first bell could ring)
   walletsWithAJudgedFight: judged.size,
   walletsWithAnOfficialJudgedFight: judgedOfficially.size,
   matchesCancelledBeforeTheBell: cancelled / 2,

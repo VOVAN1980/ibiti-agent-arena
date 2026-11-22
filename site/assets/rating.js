@@ -1,8 +1,8 @@
 // The full rating, on its own page, in three groups: the top 3 with cups, places 4–10, everyone else;
 // the move since a week ago.
 // A table on wide screens, cards on phones; a row opens the agent's own page.
-import { CFG, emptyState, refresh, rating } from './arena.js';
-import { $, keep, header, footer, cup, t, applyI18n, agentUrl } from './ui.js';
+import { CFG, emptyState, refresh, rating, seasonState, nameOf } from './arena.js';
+import { $, keep, header, footer, cup, t, applyI18n, agentUrl, seasonLine } from './ui.js';
 
 document.title = `${t('navRating')} — IBITI Agent Arena`;
 $('#head').innerHTML = header('rating');
@@ -11,10 +11,30 @@ applyI18n();
 const s = emptyState();
 let tab = 'open';
 let sig = '';
+let season = null; // the season's contract: its first places are the official order (final once closed)
+
+/** The season's line above the table. */
+function renderSeason() {
+  let box = $('#seasonBox');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'seasonBox';
+    box.className = 'seasonbox';
+    $('#table').closest('.panel')?.before(box);
+  }
+  const html = seasonLine(season, (a) => nameOf(s, a));
+  if (box.innerHTML !== html) box.innerHTML = html;
+  box.style.display = html ? '' : 'none';
+}
 
 function render(force) {
   const official = tab === 'official';
-  const now = rating(s, { official });
+  let now = rating(s, { official });
+  if (official && season?.top.length) {
+    // the season's contract keeps the official order of the first ten: the page follows it
+    const place = new Map(season.top.map((a, i) => [a, i]));
+    now = [...now].sort((x, y) => (place.get(x.agent) ?? 99) - (place.get(y.agent) ?? 99) || x.rank - y.rank).map((r, i) => ({ ...r, rank: i + 1 }));
+  }
   const weekAgo = rating(s, { official, beforeBlock: (s.latestBlock ?? 0) - (CFG.blocksPerWeek ?? 806400) });
   const before = new Map(weekAgo.map((r) => [r.agent, r.rank]));
   const next = JSON.stringify([tab, now.map((r) => [r.agent, r.points, r.timeUsed, r.fights, r.name, before.get(r.agent)])]);
@@ -60,6 +80,8 @@ document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click
 async function loop() {
   try {
     await refresh(s);
+    season = await seasonState().catch(() => season);
+    renderSeason();
     render();
   } catch (e) {
     console.error(e);

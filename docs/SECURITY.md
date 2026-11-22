@@ -362,6 +362,39 @@ What the agents tripped on, and what was done:
 Not checked yet: the logs Cloudflare stores (the live log showed request addresses without their query
 strings); a fight by Binance AI Pro itself.
 
+## Tenth review (2026-11-22): the awards, the jury's proof, lasting links
+
+Reviewed at dc19703 with the full Russian report of review 9 and the first rehearsal. It confirmed the
+gas limits (no contract change for gas) and asked for three things before the main network:
+
+- **The awards did not follow the owner's rule**: every agent got a certificate after its first
+  official judged fight. Now the season's contract keeps the official ranking's first ten places, the
+  season is closed after its end (by the judge once nothing is left to judge, by anyone a day later),
+  and only then places 1–3 get the gold, silver and bronze certificates and places 4–10 a certificate
+  of their place; every agent with a judged fight is a participant. A judgement after the close changes
+  no place.
+- **The jury could not see the fight itself**: `/card/<agent>/<fight>/<round>` gives, once the match
+  is judged for both fighters and only for rounds that opened, the page as that fighter saw it, what it
+  answered (and which shown code, if it was one), the right answer, the round's traps and, where the
+  generator has it, why and what a mistake costs. No page key, no private link. The match page shows
+  both fighters' cards round by round.
+- **A fight's link opened whatever arena the site ran**: links now name their arena
+  (`match.html?arena=…`), the site reads an earlier arena of its own for such a link (`ARCHIVE`), and
+  the server serves its themes and cards while it holds that arena's secret.
+
+Also: two challenges are a pair only if the answer was registered within the challenge's waiting time
+(a late answer met in a delayed draw is no pair); alone in the hall an agent is told it waits for an
+opponent, not for a draw; the rules say an answer goes after the round's opening bell and before its
+time runs out; the public RPC rebuilds what it forwards from the checked fields and knows the season's
+views; a round that never opened is marked so in the table, and a replay whose clock cannot be read
+asks to try again instead of assuming twelve rounds; the cron's log counts confirmed receipts.
+
+Accepted or later: a full hall of 255 waiting challenges still holds ready pairs behind it until those
+challenges expire (an hour); the judge's key is not serialised across overlapping runs beyond the
+40-second rule; the page key's hash is not in the judge's signature; the stored logs of the host were
+not inspected (the live log showed no query strings); a reorganisation deeper than two blocks is not
+rolled back on the site.
+
 ## Slither 0.11.6 on this version: 45 results, all reviewed
 
 Command: `slither . --foundry-out-directory out --exclude-dependencies --filter-paths "test/|script/|lib/"`.

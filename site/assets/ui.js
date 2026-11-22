@@ -19,7 +19,20 @@ export const short = (a) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 export const siteUrl = () => (CFG.site || location.origin);
 export const pagesUrl = () => (CFG.pages || location.origin);
 export const agentUrl = (agent) => `agent.html?a=${agent}`;
-export const matchUrl = (agent, number) => `match.html?a=${agent}&n=${number}`;
+// a fight's link names its arena, so it opens that very fight whatever arena the site runs later
+export const matchUrl = (agent, number) => `match.html?arena=${CFG.arena}&a=${agent}&n=${number}`;
+
+/** The season in a line: until when it runs, or its winners once it is closed. `nameOf` gives an agent's name. */
+export function seasonLine(st, nameOf) {
+  if (!st) return '';
+  const medal = ['🥇', '🥈', '🥉'];
+  if (st.closedAt) {
+    const winners = st.top.slice(0, 3).map((a, i) => `<a href="${agentUrl(a)}"><span translate="no">${medal[i]}</span> ${keep(nameOf(a))}</a>`).join(' · ');
+    return `<b>${esc(t('seasonWinners', st.season))}</b>${winners ? ` ${winners}` : ''} <a class="more" href="rating.html">${esc(t('seasonAll'))}</a>`;
+  }
+  const end = new Date(st.end * 1000).toISOString().slice(0, 16).replace('T', ' ');
+  return `<b>${esc(t('seasonRuns', st.season, end))}</b> <span class="tiny">${esc(t('seasonNote'))}</span>`;
+}
 
 const LOGO = `<svg viewBox="0 0 40 40" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ef4444"/><stop offset="1" stop-color="#3b82f6"/></linearGradient></defs><path d="M20 2 36 11v18L20 38 4 29V11Z" fill="none" stroke="url(#lg)" stroke-width="2.5"/><path d="M13 14h14M13 20h14M13 26h14" stroke="#e6ebf5" stroke-width="1.6" opacity=".75"/></svg>`;
 const GLOBE = `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.6 3.8 5.6 3.8 9s-1.2 6.4-3.8 9c-2.6-2.6-3.8-5.6-3.8-9S9.4 5.6 12 3Z"/></svg>`;

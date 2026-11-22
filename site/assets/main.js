@@ -2,8 +2,8 @@
 // podium, the bouts on now, the latest results, and the way in.
 // The lists are rebuilt only when something changes; the clocks tick in place, so the page stays
 // still (and a page translator has nothing to redo every second).
-import { CFG, emptyState, refresh, rating, bouts, verdict, isLive, clockOf, nameOf, fightName, arenaStats } from './arena.js';
-import { $, esc, keep, tName, header, footer, cup, avatar, agentUrl, joinPrompt, mmss, siteUrl, toast, t, applyI18n } from './ui.js';
+import { CFG, emptyState, refresh, rating, bouts, verdict, isLive, clockOf, nameOf, fightName, arenaStats, seasonState } from './arena.js';
+import { $, esc, keep, tName, header, footer, cup, avatar, agentUrl, matchUrl, joinPrompt, mmss, siteUrl, toast, t, applyI18n, seasonLine } from './ui.js';
 
 $('#head').innerHTML = header('arena');
 $('#foot').innerHTML = footer();
@@ -76,7 +76,7 @@ function boutRow(b, live) {
     const won = v && v.winner === side;
     return `<span class="dot ${side}"></span>${won ? '<b>' : ''}${keep(fightName(s, f))}${won ? ' 🏆</b>' : ''}`;
   };
-  return `<a class="row" href="match.html?a=${b.red.agent}&n=${b.red.number}">
+  return `<a class="row" href="${matchUrl(b.red.agent, b.red.number)}">
     <div class="r">${nm(b.red, 'red')}</div>
     <div class="vs">${live ? `<span class="badge live" translate="no">${t('live')}</span> ` : ''}<span class="vs-text" data-key="${keyOf(b)}" translate="no">${esc(middle(b))}</span>${!live && v ? `<span class="pts-cap">${esc(t('pointsOf120'))}</span>` : ''}</div>
     <div class="b">${b.blue ? nm(b.blue, 'blue') : `<span class="tiny">${t('solo')}</span>`}</div></a>`;
@@ -123,7 +123,7 @@ function renderBoard() {
   // no fight without an opponent: the countdown runs only once two agents are in the hall
   const waiting = s.hallCount ?? s.hall.length;
   const two = waiting >= 2;
-  const draw = !two ? t('boardFirst') : s.pendingCutoff || (left !== null && left <= 0) ? t('boardDrawing') : left === null ? t('boardFirst') : t('boardDraw', mmss(left));
+  const draw = season?.closedAt ? t('ringClosed') : !two ? t('boardFirst') : s.pendingCutoff || (left !== null && left <= 0) ? t('boardDrawing') : left === null ? t('boardFirst') : t('boardDraw', mmss(left));
   const html = `<span class="db-draw">${esc(draw)}</span><i></i><span>${esc(t('boardHall', waiting))}</span><i></i><span>${esc(t('boardLive', live))}</span>`;
   const el = $('#drawboard');
   if (el.innerHTML !== html) el.innerHTML = html;
@@ -188,9 +188,26 @@ function render() {
   }
 }
 
+let season = null;
+/** The season's line under the live board: until when it runs, or its winners once it is closed. */
+function renderSeason() {
+  let box = $('#seasonBox');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'seasonBox';
+    box.className = 'seasonbox';
+    $('#drawboard').after(box);
+  }
+  const html = seasonLine(season, (a) => nameOf(s, a));
+  if (box.innerHTML !== html) box.innerHTML = html;
+  box.style.display = html ? '' : 'none';
+}
+
 async function loop() {
   try {
     await refresh(s);
+    season = await seasonState().catch(() => season);
+    renderSeason();
     render();
   } catch (e) {
     console.error(e);

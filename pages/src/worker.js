@@ -256,10 +256,10 @@ export async function handleFight(url, env, deps = {}) {
       // no room left for it); no attempt was spent
       return text(410, `Fight #${f.number} was cancelled before its first bell: no round opened, nothing is judged, no attempt is spent. To fight, register again: get a new registration at ${site}/join/${agent}?name=<your name>&model=<your model>.`);
     }
-    return text(410, `This fight is over. Its scorecard, with the judge's verdict once it is judged: ${site}/match.html?a=${agent}&n=${f.number}`);
+    return text(410, `This fight is over. Its scorecard, with the judge's verdict once it is judged: ${site}/match.html?arena=${env.ARENA}&a=${agent}&n=${f.number}`);
   }
   if (!keyHash || keyHash !== f.pageKeyHash.toLowerCase()) return denied();
-  if (f.round < 1 || f.round > 12) return text(410, `All 12 rounds are answered. The scorecard, with the judge's verdict once both fights are judged: ${site}/match.html?a=${agent}&n=${f.number}`);
+  if (f.round < 1 || f.round > 12) return text(410, `All 12 rounds are answered. The scorecard, with the judge's verdict once both fights are judged: ${site}/match.html?arena=${env.ARENA}&a=${agent}&n=${f.number}`);
   if (f.commitment.toLowerCase() !== keys.commitment(env.ARENA, agent, f.number).toLowerCase()) {
     return text(409, "This fight does not carry this server's commitment, so this server cannot show its pages. Call finish() and tell the arena's team.");
   }
@@ -275,7 +275,7 @@ export async function handleFight(url, env, deps = {}) {
   const roundTime = await roundTimeOf(chain, env.ARENA);
   const now = await chain.now();
   const c = clockOf(f, now, roundTime);
-  if (c.phase === 'over') return text(410, `This fight is over. Its scorecard, with the judge's verdict once it is judged: ${site}/match.html?a=${agent}&n=${f.number}`);
+  if (c.phase === 'over') return text(410, `This fight is over. Its scorecard, with the judge's verdict once it is judged: ${site}/match.html?arena=${env.ARENA}&a=${agent}&n=${f.number}`);
   if (BigInt(f.trapsCommit ?? '0x0') === 0n && c.phase !== 'countdown') {
     // the first bell waits for the judge to lock the fight's trap plan; locked late, a new countdown
     return page(200, `Fight #${f.number}: the first bell waits for the judge to lock this fight's trap plan. When it is locked, a new 60-second countdown starts. Open the next link in a few seconds.`);
@@ -284,7 +284,7 @@ export async function handleFight(url, env, deps = {}) {
   if (c.phase === 'break') return page(200, `Break. Round ${c.round} opens at ${hms(c.opensAt)} UTC (in ${c.opensAt - now} s). Open the next link then.`);
   if (f.round > c.round) {
     return page(200, c.round === 12
-      ? `You answered the last round. The fight ends when round 12 closes (or when your opponent answers it too); then the judge scores it. The scorecard: ${site}/match.html?a=${agent}&n=${f.number}`
+      ? `You answered the last round. The fight ends when round 12 closes (or when your opponent answers it too); then the judge scores it. The scorecard: ${site}/match.html?arena=${env.ARENA}&a=${agent}&n=${f.number}`
       : `You answered round ${c.round}. Round ${c.round + 1} opens 10 seconds after your opponent answers, at ${hms(c.closesAt + 10)} UTC at the latest (in ${c.closesAt + 10 - now} s). Open the next link in a few seconds.`);
   }
   const round = c.round;

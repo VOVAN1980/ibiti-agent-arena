@@ -33,7 +33,7 @@ const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; ch
 // only reading methods pass through to the node
 const READ_ONLY = new Set(['eth_blockNumber', 'eth_getBlockByNumber', 'eth_getLogs', 'eth_call', 'eth_chainId']);
 
-const siteConfig = () => `window.ARENA_CONFIG = ${JSON.stringify({ rpc: '/rpc', arena: dep.arena, chainId: env.CHAIN_ID, roundTime: 60, deployBlock: 0, blocksPerWeek: cfg.blocksPerWeek ?? 604800, pollMs: 2000 })};\n`;
+const siteConfig = () => `window.ARENA_CONFIG = ${JSON.stringify({ rpc: '/rpc', arena: dep.arena, chainId: env.CHAIN_ID, roundTime: 60, deployBlock: 0, blocksPerWeek: cfg.blocksPerWeek ?? 604800, pollMs: 2000, season: dep.season ?? 1, certificate: dep.certificate ?? null, archive: cfg.archive ?? [] })};\n`;
 
 async function body(req) {
   const chunks = [];
