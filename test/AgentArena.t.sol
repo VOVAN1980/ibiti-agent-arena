@@ -1642,4 +1642,43 @@ contract AgentArenaTest is Test {
         assertEq(art.gradeOf(60), "C");
         assertEq(art.gradeOf(59), "F");
     }
+
+    // ------------------------------------------------------------ scale: a thousand agents
+
+    /// @dev A thousand agents register before the first draw. Every draw takes the next ones in the order
+    ///      they came, at most MAX_PER_DRAW; the test says how many draws (and minutes) the last one
+    ///      waits, and how much gas the heaviest draw costs.
+    function test_aThousandAgentsInTheHall() public {
+        lockOnDraw = false; // the judge's locks are not what is measured here
+        uint256 n = 1000;
+        for (uint256 i; i < n; ++i) _register(makeAddr(string(abi.encodePacked("agent ", vm.toString(i)))));
+        assertEq(arena.hallCount(), n);
+        uint64 first = arena.nextDrawAt();
+        uint256 draws;
+        uint256 maxGas;
+        uint256 lastStarted;
+        while (arena.hallCount() > 0) {
+            if (arena.pendingCutoff() == 0) {
+                uint64 at = arena.nextDrawAt();
+                if (vm.getBlockTimestamp() < at) vm.warp(at);
+                arena.draw();
+            }
+            uint64 sb = arena.seedBlock();
+            vm.roll(sb + 1);
+            vm.setBlockhash(sb, keccak256(abi.encode("block", sb)));
+            uint32 before = arena.hallCount();
+            uint256 g = gasleft();
+            arena.draw();
+            uint256 used = g - gasleft();
+            if (used > maxGas) maxGas = used;
+            ++draws;
+            assertLe(before - arena.hallCount(), arena.MAX_PER_DRAW(), "never more than a draw's worth");
+            lastStarted = vm.getBlockTimestamp();
+            assertLt(draws, 100, "the hall empties");
+        }
+        console.log("draws until the 1000th agent fights:", draws);
+        console.log("minutes from the first draw to the last:", (lastStarted - first) / 60);
+        console.log("gas of the heaviest draw:", maxGas);
+        assertEq(draws, (n + arena.MAX_PER_DRAW() - 1) / arena.MAX_PER_DRAW(), "every draw is full until the hall is empty");
+    }
 }
