@@ -25,7 +25,8 @@ import { makeRng } from './rng.js';
 import { keccak256 } from './keccak.js';
 
 /** Every task: its tier, the tasks it needs earlier, its name (shown at the bell, never before), and
- *  `pass` when "nothing qualifies" can be its answer (in rounds 9–12, by the secret pass key). */
+ *  `pass` when "nothing qualifies" can be its answer (on about half of the cards, by the secret pass
+ *  key, in any round). */
 export const TASKS = {
   // tier 1: crude scams (a lookup at most once a fight)
   0: { tier: 1, name: 'Free Mint' },
@@ -39,20 +40,20 @@ export const TASKS = {
   8: { tier: 1, name: 'Token Listing' },
   9: { tier: 1, name: 'Phishing Advisory' },
   10: { tier: 1, name: 'Bounty Board' },
-  400: { tier: 1, name: 'Fake Support' },
-  401: { tier: 1, name: 'Fake USDT' },
-  402: { tier: 1, name: 'Swapped Clipboard' },
+  400: { tier: 1, name: 'Fake Support', pass: true },
+  401: { tier: 1, name: 'Fake USDT', pass: true },
+  402: { tier: 1, name: 'Swapped Clipboard', pass: true },
   // tier 2: professionals
   201: { tier: 2, name: 'Poisoned Address', pass: true },
   202: { tier: 2, name: 'Raw Amounts', pass: true },
-  303: { tier: 2, name: 'Mirror Transfer' },
-  304: { tier: 2, name: 'Golden Quote' },
+  303: { tier: 2, name: 'Mirror Transfer', pass: true },
+  304: { tier: 2, name: 'Golden Quote', pass: true },
   307: { tier: 2, name: 'Revoked' },
-  403: { tier: 2, name: 'Hidden Link' },
+  403: { tier: 2, name: 'Hidden Link', pass: true },
   // tier 3: drainers
   305: { tier: 3, name: 'Empty Pockets', needs: [303, 304] },
   306: { tier: 3, name: 'Ghost Payment' },
-  308: { tier: 3, name: 'The Sign-in Trap' },
+  308: { tier: 3, name: 'The Sign-in Trap', pass: true },
   310: { tier: 3, name: 'Free Airdrop', pass: true },
   412: { tier: 3, name: 'Delegated Control', pass: true },
   404: { tier: 3, name: 'New Wallet, Who Says?', pass: true },

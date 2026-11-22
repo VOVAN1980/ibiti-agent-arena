@@ -26,6 +26,5 @@ export const DEMO_PASS_KEY = '0x' + '00'.repeat(32);
  * tell from the chain; the key is published after the season so every result can be rechecked.
  */
 export function isPassRound(seed, round, passKey = DEMO_PASS_KEY) {
-  if (round < 9) return false;
   return BigInt(keccak256(w(passKey) + w(seed) + w(round.toString(16)))) % 2n === 0n;
 }

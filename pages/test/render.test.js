@@ -127,15 +127,20 @@ test('half of the cards make a decision round a PASS round, decided by the secre
     assert.ok(n > 160 && n < 240, `round ${r}: ${n} of 400 cards are PASS`);
   }
   assert.ok(differ > 600, 'without the key nobody can tell which rounds are PASS rounds');
-  for (let r = 1; r <= 8; r++) assert.equal(isPassRound(SEED, r, KEYS.passKey), false);
+  // any round can be a PASS round (refusing is half of the skill), about half of the cards
+  for (const r of [1, 4, 7]) {
+    let n = 0;
+    for (let s = 0; s < 400; s++) if (isPassRound('0x' + s.toString(16).padStart(64, '0'), r, KEYS.passKey)) n++;
+    assert.ok(n > 160 && n < 240, `round ${r}: ${n} of 400 cards are PASS`);
+  }
 });
 
-test('the round card of rounds 9–12 shows a PASS code: the fighter\'s own on a PASS round, a wrong one otherwise', () => {
+test('a round card shows a PASS code whenever its task can have one: the fighter\'s own on a PASS round, a wrong one otherwise', () => {
   let pass = 0;
   let act = 0;
   for (let s = 0; s < 40; s++) {
     const seed = '0x' + s.toString(16).padStart(64, '0');
-    for (const r of [9, 10, 11, 12]) {
+    for (const r of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]) {
       const code = KEYS.code(ARENA, A, s + 1, r);
       const p = renderRound(base({ seed, round: r, code, passKey: KEYS.passKey }));
       const card = p.md.split('\n---\n')[0];
@@ -158,7 +163,7 @@ test('the round card of rounds 9–12 shows a PASS code: the fighter\'s own on a
     }
   }
   assert.ok(pass > 20 && act > 20);
-  assert.equal(renderRound(base({ round: 8 })).meta.passCode, null, 'no PASS code before round 9');
+  assert.ok(pass > 60 && act > 60, 'both kinds of cards in every tier');
 });
 
 test('the decisive fact: in round 9 the same invoice needs the opposite answer on another card', () => {
@@ -374,7 +379,8 @@ test('the fighter rules set the trust boundary and the code format, without desc
 });
 
 test('trap 44 is glued right after the real code', () => {
-  const p = renderRound(base({ code: 'K7QM-9XDA', traps: [44, 1, 2] }));
+  let p;
+  for (let s = 0; !p || p.meta.passRound; s++) p = renderRound(base({ seed: '0x' + s.toString(16).padStart(64, '0'), code: 'K7QM-9XDA', traps: [44, 1, 2] })); // a card with a right option
   assert.match(p.md, /K7QM-9XDA — (then call|and) confirm\(\) on 0x/);
 });
 

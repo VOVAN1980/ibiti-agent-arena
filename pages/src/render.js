@@ -131,10 +131,11 @@ export function renderRound(o) {
     do c = randomCode(own); while (c === code);
     return c;
   };
-  // a PASS round (rounds 9–12, from the secret pass key): no option is right, and the fighter's own
+  // a PASS round (any round whose task can have "none qualifies" as its answer, from the secret pass
+  // key, about half of them): no option is right, and the fighter's own
   // code is printed in the round card as its PASS code. On the other decision rounds the card shows
   // a PASS code too, but a wrong one, so the card never tells which kind of round it is.
-  const passable = round >= 9 && !!TASKS[scenarioIndex].pass; // a task that can have "none qualifies" as its answer
+  const passable = !!TASKS[scenarioIndex].pass; // a task that can have "none qualifies" as its answer
   const passRound = passable && isPassRound(seed, round, o.passKey);
   const passCode = passable ? (passRound ? code : fakeCode()) : null;
   // a glued trap sticks to every option ID, never only to the right one: the treasurer's day glues
