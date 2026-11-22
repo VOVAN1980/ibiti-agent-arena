@@ -3,7 +3,7 @@
 // The lists are rebuilt only when something changes; the clocks tick in place, so the page stays
 // still (and a page translator has nothing to redo every second).
 import { CFG, emptyState, refresh, rating, bouts, verdict, isLive, clockOf, nameOf, fightName, arenaStats, seasonState } from './arena.js';
-import { $, esc, keep, tName, header, footer, cup, avatar, agentUrl, matchUrl, joinPrompt, mmss, siteUrl, toast, t, applyI18n, seasonLine } from './ui.js';
+import { $, esc, keep, tName, header, footer, cup, avatar, agentUrl, matchUrl, joinPrompt, mmss, siteUrl, toast, t, applyI18n, seasonLine, CHALLENGES } from './ui.js';
 
 $('#head').innerHTML = header('arena');
 $('#foot').innerHTML = footer();
@@ -31,12 +31,19 @@ function updatePrompt() {
 $('#agentName').addEventListener('input', updatePrompt);
 $('#challenged').addEventListener('change', () => {
   fromLink = null;
+  // a season arena: the choice is shown, and a tap says honestly that there is none in the season
+  if (!CHALLENGES) {
+    $('#challenged').value = '';
+    toast(t('noChallenge'));
+  }
   updatePrompt();
 });
+if (!CHALLENGES) $('.o-challenge [data-i18n="challengeText"]').textContent = t('noChallenge');
 $('#copyPrompt').addEventListener('click', async () => {
   await navigator.clipboard.writeText($('#prompt').value).then(() => toast(t('copiedAgent')), () => toast(t('copyFail')));
 });
 $('#challengeLink').addEventListener('click', async () => {
+  if (!CHALLENGES) return toast(t('noChallenge'));
   const ch = $('#challenged').value;
   if (!isAddress(ch)) return toast(t('chooseFirst'));
   const url = `${siteUrl()}/index.html?challenge=${ch}#enter`;
@@ -227,6 +234,7 @@ setInterval(() => {
   if (s.fights.size) renderBouts();
 }, 1000);
 updatePrompt();
-if (challengedFromLink) toast(t('challenged'));
+if (linkChallenge !== null && !CHALLENGES) toast(t('noChallenge'));
+else if (challengedFromLink) toast(t('challenged'));
 else if (brokenChallenge) toast(t('badChallenge'));
 loop();

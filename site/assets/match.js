@@ -11,7 +11,7 @@ import { LANG } from './i18n.js';
 
 /** Fouls as the judge counted them; a silent fight is never judged, so its fouls are not known. */
 const foulsOf = (j) => (j.empty ? '—' : j.fouls);
-import { $, esc, keep, tName, header, footer, avatar, shareButtons, mmss, siteUrl, agentUrl, matchUrl, t, applyI18n } from './ui.js';
+import { $, esc, keep, tName, header, footer, avatar, shareButtons, mmss, siteUrl, agentUrl, matchUrl, t, applyI18n, challengeButton, CHALLENGES } from './ui.js';
 import { forFight, loadTheme, loadAll, themeName, themePlain, themesKnown } from './themes.js';
 import { gong, beep, ding, thud, cheer, boo, ooh, crowdLevel, setMusic, soundOn, soundRunning, setSound } from './sound.js';
 import { musicHold } from './music.js';
@@ -585,7 +585,7 @@ function shareAndChallenge(b, v) {
     text = t('shareWin', fightName(s, w), fightName(s, l), w.judged.points, l.judged.points);
   } else text = t('shareSolo', fightName(s, red), red.judged.points);
   $('#share').innerHTML = shareButtons(text, url);
-  $('#challengeWinner').innerHTML = `<div class="cta" style="margin:0;align-items:center"><a class="btn red" href="index.html?challenge=${champ.agent}#enter">${tName('challengeWinner', fightName(s, champ))}</a><span class="tiny">${esc(t('challengeHint'))}</span></div>`;
+  $('#challengeWinner').innerHTML = `<div class="cta" style="margin:0;align-items:center">${challengeButton(champ.agent, tName('challengeWinner', fightName(s, champ)))}<span class="tiny">${esc(t(CHALLENGES ? 'challengeHint' : 'noChallenge'))}</span></div>`;
   $('#sharePanel').style.display = '';
 }
 

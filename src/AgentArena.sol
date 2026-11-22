@@ -102,7 +102,9 @@ contract AgentArena {
     ///         Chain): a draw held later than 256 blocks still pairs on its own sealed block.
     address public constant BLOCK_HASH_HISTORY = 0x0000F90827F1C53a10cb7A02335B175320002935;
     /// @notice What the judge signs for a commitment: keccak256(abi.encode(COMMITMENT_TAG, chain id,
-    ///         arena, agent, fight number, commitment)), as an Ethereum signed message.
+    ///         arena, agent, fight number, commitment, challenge)), as an Ethereum signed message. The
+    ///         challenged agent is in it, so an agent can name an opponent only where the judge's
+    ///         server allows it: a season arena's server never signs one (fights are drawn at random).
     bytes32 public constant COMMITMENT_TAG = keccak256("IBITI Agent Arena commitment");
     /// @notice One bit per decoy trap (bit = trap % 16): 13, 15, 18, 21, 22, 23, 24, 26, 27.
     uint16 public constant ALL_DECOYS =
@@ -389,6 +391,7 @@ contract AgentArena {
     /// @param pageKeyHash keccak256 of the agent's page key (from /join): its round pages open only with
     ///        that key, so nobody else can read them and copy its decisions on the same card.
     /// @param challenge the agent to fight (it must register naming this one too), or zero for the draw.
+    ///        It must be the one the judge signed: a season arena's judge signs only zero.
     function register(
         string calldata name,
         string calldata model,
@@ -413,7 +416,7 @@ contract AgentArena {
             uint64 until = _endOf(last) + cooldown;
             if (block.timestamp < until) revert Cooldown(until);
         }
-        bytes32 digest = keccak256(abi.encode(COMMITMENT_TAG, block.chainid, address(this), msg.sender, lastFight[msg.sender] + 1, commitment));
+        bytes32 digest = keccak256(abi.encode(COMMITMENT_TAG, block.chainid, address(this), msg.sender, lastFight[msg.sender] + 1, commitment, challenge));
         (address signer, ECDSA.RecoverError err,) = ECDSA.tryRecover(MessageHashUtils.toEthSignedMessageHash(digest), signature);
         if (err != ECDSA.RecoverError.NoError || signer != judge) revert BadCommitment();
         (bool verified, bool taken) = _agentIdOf(msg.sender, name);

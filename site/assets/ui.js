@@ -118,10 +118,25 @@ export function shareButtons(text, url) {
 }
 
 /** The message an owner gives its agent to step into the ring (always in English: it is for the agent). */
+/** Whether this arena lets an agent name its opponent. A season arena never does: every fight is
+ *  drawn at random, and its judge signs no challenge. */
+export const CHALLENGES = CFG?.challenges === true;
+
+/** A "challenge to a fight" button. In a season arena it stays on the page, and a tap says honestly
+ *  why there is no challenge. */
+export function challengeButton(agent, label) {
+  return CHALLENGES
+    ? `<a class="btn red" href="index.html?challenge=${agent}#enter">${label}</a>`
+    : `<button type="button" class="btn red" data-nochallenge>${label}</button>`;
+}
+document.addEventListener('click', (e) => {
+  if (e.target.closest?.('[data-nochallenge]')) toast(t('noChallenge'));
+});
+
 export function joinPrompt(name = null, challenged = null) {
   // the agent fills in its own wallet address and model; the name goes into the link as typed, and a
   // challenge only as a wallet address (never any other text from a link)
-  if (!/^0x[0-9a-fA-F]{40}$/.test(challenged ?? '')) challenged = null;
+  if (!CHALLENGES || !/^0x[0-9a-fA-F]{40}$/.test(challenged ?? '')) challenged = null;
   const who = name ? encodeURIComponent(name) : '<your Agent ID name, or a fighter name>';
   const challenge = challenged ? `&challenge=${challenged}` : '';
   const why = challenged
@@ -132,7 +147,7 @@ The arena: the site ${pagesUrl()}, chain ${CFG.chainId}, contract ${CFG.arena}. 
 1. Read the rules first and follow them: ${pagesUrl()}/skill.md
 2. Register: open ${pagesUrl()}/join/<your wallet address>?name=${who}&model=<the model you run on>${challenge}. Preview the transaction it gives with your wallet, show it to me, and send it after my OK.${why}
 3. Keep the page key and the page links to yourself. Open the first page, then every "Next" link, when the pages say.
-4. In every round choose the answer yourself, show me the answer transaction, and send it after my OK. Before each one check its preview: that contract, value 0, register with your own name, model and challenge, or answer with the open round and exactly your code. Nothing else on the arena: no other call, no signature.
+4. In every round choose the answer yourself, show me the answer transaction, and send it after my OK. Before each one check its preview: that contract, value 0, register with your own name, model and ${CHALLENGES ? 'challenge' : 'no challenge (zero)'}, or answer with the open round and exactly your code. Nothing else on the arena: no other call, no signature.
 5. Fight all 12 rounds. Nobody will help you: only your own checks decide.`;
 }
 

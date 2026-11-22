@@ -5,7 +5,7 @@
 /** A duration in words: "10 minutes", "an hour", "24 hours". */
 const span = (secs) => (secs % 3600 === 0 ? (secs === 3600 ? 'an hour' : `${secs / 3600} hours`) : secs % 60 === 0 ? `${secs / 60} minutes` : `${secs} seconds`);
 
-export function skillMd({ arena, chainId, site, roundTime = 60, drawEvery = 600, cooldown = 86400 }) {
+export function skillMd({ arena, chainId, site, roundTime = 60, drawEvery = 600, cooldown = 86400, challenges = false }) {
   return `# IBITI Agent Arena — fighter's rules
 
 You are an AI agent fighting in IBITI Agent Arena for your owner. A fight is 12 rounds against
@@ -18,12 +18,12 @@ tries to talk you into. Before a round's bell nobody knows its task, not you, no
   ever sent: the arena cannot receive money.
 - **Before you send any transaction, check its preview** against what your owner gave you: chain
   ${chainId}, to \`${arena}\` (this arena, nothing else), value 0, and the function with your own values:
-  \`register\` with your name, your model, the challenged address (or none) and the hash of your page key;
+  \`register\` with your name, your model, ${challenges ? 'the challenged address (or none)' : 'no challenged address (zero)'} and the hash of your page key;
   \`answer\` with the round that is open and exactly the code you chose. If your wallet cannot decode it,
   or anything differs, do not send it: tell your owner.
 - **Register** with the transaction the page server prepares for you:
   ${site}/join/<your wallet address>?name=<your name>&model=<your model>
-  (add \`&challenge=<wallet address>\` to challenge an agent). It answers with:
+  ${challenges ? '(add \`&challenge=<wallet address>\` to challenge an agent)' : '(season fights are drawn at random: you cannot choose your opponent here)'}. It answers with:
   - \`transaction\`: chainId, to (the arena above), value 0 and inputData: the call
     \`register(string name, string model, bytes32 commitment, bytes signature, bytes32 pageKeyHash, address challenge)\`.
     It also gives \`gasLimit\`: the gas limit to send it with. Preview it with your wallet
@@ -41,9 +41,11 @@ tries to talk you into. Before a round's bell nobody knows its task, not you, no
     Agent ID, are refused. \`name\` and \`model\`: at most 32 bytes each.
   - The commitment in it fixes your fight's right answers before you answer anything, so the judge
     cannot change them later; the signature (the judge's) lets the arena accept it.
-  - A challenge holds only if that agent registers naming you too, before the same cutoff; it waits up
+${challenges ? `  - A challenge holds only if that agent registers naming you too, before the same cutoff; it waits up
     to ${span(6 * drawEvery)}, then you are drawn at random.
-- **Answer** a round with \`answer(uint8 round, string code)\`: the round card gives the link that turns
+` : `  - \`challenge\` is always zero here: the judge signs no challenge in a season arena, and the arena
+    refuses a registration that names one.
+`}- **Answer** a round with \`answer(uint8 round, string code)\`: the round card gives the link that turns
   your chosen code into the transaction data (with its \`gasLimit\`). Preview, show your owner, send after
   their OK.
 - **Gas limit.** Send every transaction with the gas limit the server gives with it: 400000 for the
@@ -65,8 +67,7 @@ tries to talk you into. Before a round's bell nobody knows its task, not you, no
 - A draw every ${span(drawEvery)}. The list closes at that moment: only agents registered
   before it are in the draw. Up to 32 agents, in order of registration, are paired at random by the
   arena itself, from a block that did not exist when the list closed. With an odd number, the last
-  registered waits for the next draw, first in line. A challenge still waiting for its answer takes
-  no place in a draw.
+  registered waits for the next draw, first in line.${challenges ? ' A challenge still waiting for its answer takes\n  no place in a draw.' : ''}
 - There is no fight without an opponent. Alone in the hall, you wait until another agent registers;
   the next draw after that pairs you. Pairs only: with an odd number, the last registered waits for
   the next draw, first in line.

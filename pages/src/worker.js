@@ -5,7 +5,9 @@
 //        the agent's registration, ready to preview with its wallet: { transaction: { chainId, to,
 //        value, inputData }, pageKey, pageKeyHash, firstPage }. The transaction is register(name,
 //        model, commitment, the judge's signature of it, pageKeyHash, challenge); the page key opens
-//        the agent's round pages and stays with the agent.
+//        the agent's round pages and stays with the agent. A challenge only where CHALLENGES is
+//        "open": a season arena draws every fight at random, so its server signs no challenge and
+//        the arena refuses one it did not sign.
 //   GET /fight/<address>?key=<page key>&step=<n>[&format=md]   (or the header "Authorization: Key <key>")
 //        the fighter's page now: the hall, the countdown, the open round, a break. Every page ends
 //        with the exact link of the next one (step n+1): a new address each time, because an agent's
@@ -229,7 +231,7 @@ export async function handleFight(url, env, deps = {}) {
     const reader = deps.chain ?? makeChain({ rpc: env.RPC_URL, arena: env.ARENA });
     const settings = reader.timings ? await reader.timings().catch(() => ({})) : {};
     const roundTime = await roundTimeOf(reader, env.ARENA).catch(() => Number(env.ROUND_TIME ?? 60));
-    const body = skillMd({ arena: env.ARENA, chainId: env.CHAIN_ID ?? 56, site: env.SITE_URL ?? url.origin, roundTime, ...settings });
+    const body = skillMd({ arena: env.ARENA, chainId: env.CHAIN_ID ?? 56, site: env.SITE_URL ?? url.origin, roundTime, challenges: challengesOpen(env), ...settings });
     return new Response(body, { headers: { ...HEADERS, 'content-type': 'text/markdown; charset=utf-8' } });
   }
   if (url.pathname === '/calldata/answer') {
@@ -373,6 +375,9 @@ export async function handleFight(url, env, deps = {}) {
   return new Response(card.html, { headers: { ...HEADERS, 'content-type': 'text/html; charset=utf-8' } });
 }
 
+/** Whether this arena lets an agent name its opponent: never in a season arena (the default). */
+const challengesOpen = (env) => env.CHALLENGES === 'open';
+
 /** The agent's registration, ready to preview with its wallet, and its page key. */
 function join(url, env, chain, keys, agent, chainId, site) {
   return (async () => {
@@ -383,10 +388,11 @@ function join(url, env, chain, keys, agent, chainId, site) {
     if (!name || !model || byteLength(name) > 32 || byteLength(model) > 32) {
       return text(400, 'Give name=<your fighter name, or your Agent ID name> and model=<the model you run on>, each at most 32 bytes.');
     }
+    if (challenge && !challengesOpen(env)) return text(400, 'Season fights are drawn at random: in this arena an agent cannot choose its opponent. Register without challenge.');
     if (challenge && !/^0x[0-9a-f]{40}$/.test(challenge)) return text(400, 'challenge=<the wallet address of the agent you challenge>, or leave it out for the draw.');
     const fight = (await chain.lastFight(agent)) + 1;
     const commitment = keys.commitment(env.ARENA, agent, fight);
-    const signature = signCommitment(env.JUDGE_KEY, chainId, env.ARENA, agent, fight, commitment);
+    const signature = signCommitment(env.JUDGE_KEY, chainId, env.ARENA, agent, fight, commitment, challenge || '0x0');
     const pageKey = [...crypto.getRandomValues(new Uint8Array(32))].map((b) => b.toString(16).padStart(2, '0')).join('');
     const pageKeyHash = keccak256(pageKey);
     return json(200, {

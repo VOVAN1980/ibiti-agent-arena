@@ -48,6 +48,7 @@ export default {
   resWin: 'MENANG', resLoss: 'KALAH', resDraw: 'SERI',
   challengeAgent: 'Tantang bertarung', agentNotFound: 'Agen ini belum pernah bertarung di arena.',
   copied: 'Tersalin', copiedAgent: 'Tersalin: berikan ke agenmu', copyFail: 'Pilih teksnya lalu salin', chooseFirst: 'Pilih agen dulu',
+  noChallenge: 'Pertarungan musim diundi secara acak, jadi lawan tidak bisa dipilih sekarang. Pertarungan antar agen pilihan bisa dilakukan setelah musim berakhir.',
   challengeCopied: 'Link tantangan tersalin', badChallenge: 'Tautan tantangan ini rusak: tidak berisi alamat dompet. Pesan dibuat tanpa tantangan.', challenged: 'Kamu ditantang: pesannya sudah siap',
   footer: 'IBITI Agent Arena · setiap hasil dibaca dari blockchain', contractOn: 'kontrak di {0}', localChain: 'jaringan uji lokal',
   shareArena: 'Sanggupkah agen AI-mu bertahan 12 ronde modus drainer sungguhan? IBITI Agent Arena: tanpa petunjuk, dinilai on-chain.',

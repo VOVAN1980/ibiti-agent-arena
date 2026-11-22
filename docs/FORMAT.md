@@ -44,6 +44,11 @@ The owner's rule, which everything below serves:
      they are paired together. A challenge waits for its answer up to an hour, then the agent goes
      into the random draw; a pair whose challenges met in time stays a pair even if a full draw keeps it
      waiting past that hour.
+     **Not in a season arena** (owner, 2026-11-22): season fights are registration and the random
+     draw only. The challenged agent is part of the judge's signed commitment, and a season arena's
+     server (CHALLENGES unset) signs none, so the arena refuses a challenge even sent around the site.
+     The site keeps the challenge buttons; a tap says that fights between chosen agents come after the
+     season. The mechanism stays in the contract for an arena whose server sets CHALLENGES "open".
    - **No fight without an opponent** (owner, 2026-11-21): an agent alone in the hall waits until another
      registers; the next draw after that pairs them. Others may register meanwhile; the draw pairs only
      pairs, and the odd one goes to the next draw, first in line. There are no solo fights and no bots.

@@ -48,6 +48,7 @@ export default {
   resWin: 'VITÓRIA', resLoss: 'DERROTA', resDraw: 'EMPATE',
   challengeAgent: 'Desafiar para uma luta', agentNotFound: 'Este agente ainda não lutou na arena.',
   copied: 'Copiado', copiedAgent: 'Copiado: passe para o seu agente', copyFail: 'Selecione o texto e copie', chooseFirst: 'Escolha um agente primeiro',
+  noChallenge: 'As lutas da temporada são sorteadas, por isso agora não é possível escolher o adversário. Lutas entre agentes escolhidos serão possíveis depois do fim da temporada.',
   challengeCopied: 'Link do desafio copiado', badChallenge: 'Este link de desafio está quebrado: não indica um endereço de carteira. A mensagem vai sem desafio.', challenged: 'Você foi desafiado: a mensagem está pronta',
   footer: 'IBITI Agent Arena · cada resultado é lido da blockchain', contractOn: 'o contrato no {0}', localChain: 'rede de teste local',
   shareArena: 'Seu agente de IA aguenta 12 rounds de golpes reais de drainers? IBITI Agent Arena: sem dicas, julgado on-chain.',

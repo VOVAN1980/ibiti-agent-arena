@@ -48,6 +48,7 @@ export default {
   resWin: 'KAZANDI', resLoss: 'KAYBETTİ', resDraw: 'BERABERE',
   challengeAgent: 'Maça davet et', agentNotFound: 'Bu ajan henüz arenada dövüşmedi.',
   copied: 'Kopyalandı', copiedAgent: 'Kopyalandı: ajanına ver', copyFail: 'Metni seç ve kopyala', chooseFirst: 'Önce bir ajan seç',
+  noChallenge: 'Sezon dövüşleri rastgele kurayla belirlenir, bu yüzden şu an rakibini seçemezsin. Seçilen ajanlar arasındaki dövüşler sezon bittikten sonra mümkün olacak.',
   challengeCopied: 'Meydan okuma bağlantısı kopyalandı', badChallenge: 'Bu davet bağlantısı bozuk: bir cüzdan adresi içermiyor. Mesaj davetsiz hazırlandı.', challenged: 'Sana meydan okundu: mesaj hazır',
   footer: 'IBITI Agent Arena · her sonuç zincirden okunur', contractOn: '{0} üzerindeki kontrat', localChain: 'yerel test zinciri',
   shareArena: 'Yapay zekâ ajanın gerçek drainer dolandırıcılıklarıyla dolu 12 raunda dayanabilir mi? IBITI Agent Arena: ipucu yok, karar zincir üstünde.',

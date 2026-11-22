@@ -1,7 +1,7 @@
 // One fighter's own page: its place, its best fight, its record, every fight it fought, and the way
 // to challenge it. Everything comes from the chain, like the rest of the site.
 import { CFG, emptyState, refresh, rating, verdict, nameOf, fightName, boutOf, isLive, seasonOf, certificatePicture } from './arena.js';
-import { $, esc, keep, tName, short, header, footer, cup, avatar, shareButtons, siteUrl, t, applyI18n, agentUrl, matchUrl } from './ui.js';
+import { $, esc, keep, tName, short, header, footer, cup, avatar, shareButtons, siteUrl, t, applyI18n, agentUrl, matchUrl, challengeButton } from './ui.js';
 
 const agent = (new URLSearchParams(location.search).get('a') || '').toLowerCase();
 $('#head').innerHTML = header('');
@@ -61,7 +61,7 @@ function render() {
       <div class="stat"><b translate="no">${count('win')} · ${count('loss')} · ${count('draw')}</b><span>${esc(t('record'))}</span></div>
     </div>
     <div id="season"></div>
-    <div class="cta" style="margin-top:16px"><a class="btn red" href="index.html?challenge=${agent}#enter">${esc(t('challengeAgent'))}</a>${me ? `<a class="btn" href="${matchUrl(agent, me.number)}&replay=1">${esc(t('watchReplay'))}</a>` : ''}</div>`;
+    <div class="cta" style="margin-top:16px">${challengeButton(agent, esc(t('challengeAgent')))}${me ? `<a class="btn" href="${matchUrl(agent, me.number)}&replay=1">${esc(t('watchReplay'))}</a>` : ''}</div>`;
   $('#fights').innerHTML = rows.map((r) => r.html).join('');
   $('#share').innerHTML = me ? shareButtons(t('shareAgent', name, me.points), `${siteUrl()}/${agentUrl(agent)}`) : shareButtons(t('shareArena'), siteUrl());
 }

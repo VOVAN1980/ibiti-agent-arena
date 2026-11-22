@@ -107,7 +107,7 @@ contract AgentArenaTest is Test {
 
     function _register(address who, address challenge) internal {
         bytes32 commitment = _next(who);
-        bytes memory sig = _sig(who, commitment);
+        bytes memory sig = _signAs(judgePk, who, commitment, challenge);
         vm.prank(who);
         arena.register(_nameOf(who), "claude-opus-5.5", commitment, sig, PAGE_KEY_HASH, challenge);
     }
@@ -119,7 +119,12 @@ contract AgentArenaTest is Test {
     }
 
     function _signAs(uint256 key, address who, bytes32 c) internal view returns (bytes memory) {
-        bytes32 digest = keccak256(abi.encode(keccak256("IBITI Agent Arena commitment"), block.chainid, address(arena), who, arena.lastFight(who) + 1, c));
+        return _signAs(key, who, c, address(0));
+    }
+
+    /// @dev The judge's signature of a commitment with the challenged agent in it.
+    function _signAs(uint256 key, address who, bytes32 c, address challenge) internal view returns (bytes memory) {
+        bytes32 digest = keccak256(abi.encode(keccak256("IBITI Agent Arena commitment"), block.chainid, address(arena), who, arena.lastFight(who) + 1, c, challenge));
         (uint8 v, bytes32 r, bytes32 sg) = vm.sign(key, MessageHashUtils.toEthSignedMessageHash(digest));
         return abi.encodePacked(r, sg, v);
     }
@@ -510,6 +515,22 @@ contract AgentArenaTest is Test {
         _draw();
         assertTrue(arena.isLive(many[32]) && arena.isLive(many[33]));
         assertEq(_fight(many[32]).opponent, many[33]);
+    }
+
+    function test_aChallengeTheJudgeDidNotSignIsRefused() public {
+        // a season arena's server signs only "no challenge": naming an opponent around it fails
+        bytes32 commitment = _next(alice);
+        bytes memory noChallenge = _sig(alice, commitment);
+        vm.prank(alice);
+        vm.expectRevert(AgentArena.BadCommitment.selector);
+        arena.register("alice", "claude-opus-5.5", commitment, noChallenge, PAGE_KEY_HASH, bob);
+        // and a signed challenge cannot be swapped for another opponent
+        bytes memory forBob = _signAs(judgePk, alice, commitment, bob);
+        vm.prank(alice);
+        vm.expectRevert(AgentArena.BadCommitment.selector);
+        arena.register("alice", "claude-opus-5.5", commitment, forBob, PAGE_KEY_HASH, carol);
+        vm.prank(alice);
+        arena.register("alice", "claude-opus-5.5", commitment, forBob, PAGE_KEY_HASH, bob);
     }
 
     function test_twoAgentsThatChallengeEachOtherAreDrawnTogether() public {

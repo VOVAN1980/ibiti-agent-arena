@@ -19,6 +19,7 @@ import { arenaKeys, answerHash } from '../src/keys.js';
 import { handleFight, placeOf } from '../src/worker.js';
 import { accessDigest, accessTypedData, splitSig, ACCESS_STATEMENT } from '../src/access.js';
 import { registerData } from '../src/abi.js';
+import { signCommitment } from '../src/sign.js';
 
 const ARENA = '0x7a3f2c9e5b1d4a6f8e0c2b4d6f8a1c3e5b7d9f21';
 const DECOYS = Object.fromEntries([13, 15, 18, 21, 22, 23, 24, 26, 27].map((t) => [t, `0x${String(t).padStart(2, '0')}${'ab'.repeat(19)}`]));
@@ -580,14 +581,21 @@ test('/join: the registration transaction, ready for a wallet preview, and the p
   assert.equal(j.firstPage, `https://x/fight/${A}?key=${j.pageKey}&step=1`);
   assert.equal(j.firstPageByHeader, `https://x/fight/${A}?step=1`, 'for a header client: no key in any link');
   // the transaction: register(name, model, commitment, the judge's signature, pageKeyHash, no challenge)
-  const signature = '0x8a3eac63e078ffd5549f12a1e1ec8eaf63d5cddbbb7eaed894d6e63cbc9ed3c325923b3020b9d26ea37eac5098a750be951ce2393af5b367931b11658f0dea6d1c'; // `cast wallet sign` of fight 3's commitment digest
+  const signature = '0xebe0eca2ebeac76663f381fd396c44cd03fd3e856c8929f9da27e0c0a2805b8d6bf248a32fe075bb01bd42a97b1ba0bb72e0ff79ad8872169a2b4f54ae773fa21c'; // `cast wallet sign` of fight 3's commitment digest (no challenge)
   assert.equal(j.transaction.inputData, registerData({ name: 'Night Owl', model: 'claude-opus-5.5', commitment: KEYS.commitment(ARENA, A, 3), signature, pageKeyHash: j.pageKeyHash, challenge: '' }));
   assert.notEqual((await (await get(`/join/${A}?name=x&model=y`)).json()).pageKey, j.pageKey, 'a fresh key every time');
-  const withChallenge = await (await get(`/join/${A}?name=x&model=y&challenge=${B}`)).json();
+  // a season arena: no challenge, the server refuses to sign one (the arena would refuse it too)
+  const refused = await get(`/join/${A}?name=x&model=y&challenge=${B}`);
+  assert.equal(refused.status, 400, 'no challenge in a season arena');
+  assert.match(await refused.text(), /drawn at random/);
+  // an arena with challenges open signs the challenged agent into the commitment
+  const open = await handleFight(new URL(`https://x/join/${A}?name=x&model=y&challenge=${B}`), { ...ENV, CHALLENGES: 'open' }, { chain: fakeChain() });
+  const withChallenge = await open.json();
   assert.ok(withChallenge.transaction.inputData.includes(B.slice(2)), 'the challenged agent in the call');
+  assert.ok(withChallenge.transaction.inputData.includes(signCommitment(JUDGE_KEY, 56, ARENA, A, 3, KEYS.commitment(ARENA, A, 3), B).slice(2)), 'the judge signed that challenge');
   assert.equal((await get(`/join/${A}?name=x`)).status, 400, 'no model');
   assert.equal((await get(`/join/${A}?name=${'n'.repeat(33)}&model=y`)).status, 400, 'a name over 32 bytes');
-  assert.equal((await get(`/join/${A}?name=x&model=y&challenge=bob`)).status, 400, 'a challenge that is not an address');
+  assert.equal((await handleFight(new URL(`https://x/join/${A}?name=x&model=y&challenge=bob`), { ...ENV, CHALLENGES: 'open' }, { chain: fakeChain() })).status, 400, 'a challenge that is not an address');
   assert.equal((await handleFight(new URL(`https://x/join/${A}?name=x&model=y`), { ...ENV, JUDGE_KEY: undefined }, { chain: fakeChain() })).status, 500, 'no signature without the judge key');
   assert.equal((await get(`/fight/${A}?key=${PAGE_KEY}`, fakeChain({ commitment: '0x' + 'ab'.repeat(32) }))).status, 409, 'a fight started with a wrong commitment');
   assert.equal((await get(`/fight/${A}?key=${PAGE_KEY}`, fakeChain({ secretCommit: '0x' + 'cd'.repeat(32) }))).status, 500, 'a server with the wrong secret serves nothing');

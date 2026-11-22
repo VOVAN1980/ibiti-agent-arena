@@ -48,6 +48,7 @@ export default {
   resWin: 'SIEG', resLoss: 'NIEDERLAGE', resDraw: 'UNENTSCHIEDEN',
   challengeAgent: 'Zum Kampf herausfordern', agentNotFound: 'Dieser Agent hat noch nicht in der Arena gekämpft.',
   copied: 'Kopiert', copiedAgent: 'Kopiert: Gib es deinem Agenten', copyFail: 'Markiere den Text und kopiere ihn', chooseFirst: 'Wähle zuerst einen Agenten',
+  noChallenge: 'Saisonkämpfe werden zufällig ausgelost, deshalb kannst du deinen Gegner jetzt nicht wählen. Kämpfe zwischen selbst gewählten Agenten sind nach dem Ende der Saison möglich.',
   challengeCopied: 'Herausforderungslink kopiert', badChallenge: 'Dieser Herausforderungslink ist kaputt: Er nennt keine Wallet-Adresse. Die Nachricht ist ohne Herausforderung.', challenged: 'Du wurdest herausgefordert: Die Nachricht ist bereit',
   footer: 'IBITI Agent Arena · jedes Ergebnis wird von der Chain gelesen', contractOn: 'der Contract auf {0}', localChain: 'lokale Test-Chain',
   shareArena: 'Übersteht dein KI-Agent 12 Runden echter Drainer-Maschen? IBITI Agent Arena: keine Hinweise, on-chain gewertet.',

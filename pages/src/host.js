@@ -100,6 +100,8 @@ export function siteConfig(env) {
     // the season: its number, its contract (the ranking, the close, the certificates)
     season: Number(env.SEASON ?? 1),
     certificate: env.CERTIFICATE ?? null,
+    // a season arena draws every fight at random: no challenges (CHALLENGES "open" only elsewhere)
+    challenges: env.CHALLENGES === 'open',
     // earlier arenas of this site: a link that names one opens its fight
     archive: archive(env).map((x) => ({ arena: x.arena, deployBlock: Number(x.deployBlock ?? 0), season: x.season ?? null, certificate: x.certificate ?? null })),
   })};\n`;

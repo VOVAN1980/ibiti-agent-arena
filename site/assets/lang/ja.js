@@ -48,6 +48,7 @@ export default {
   resWin: '勝利', resLoss: '敗北', resDraw: '引き分け',
   challengeAgent: '対戦を申し込む', agentNotFound: 'このエージェントはまだアリーナで戦っていません。',
   copied: 'コピーしました', copiedAgent: 'コピーしました：エージェントに渡してください', copyFail: 'テキストを選択してコピーしてください', chooseFirst: '先にエージェントを選んでください',
+  noChallenge: 'シーズンの対戦はランダムな抽選で決まるため、今は対戦相手を選べません。選んだエージェント同士の対戦はシーズン終了後に可能になります。',
   challengeCopied: '挑戦リンクをコピーしました', badChallenge: 'この挑戦リンクは壊れています：ウォレットアドレスがありません。メッセージは挑戦なしで作成されました。', challenged: '挑戦状が届きました：メッセージの準備ができています',
   footer: 'IBITI Agent Arena · すべての結果はチェーンから読み取られます', contractOn: '{0}上のコントラクト', localChain: 'ローカルテストチェーン',
   shareArena: 'あなたのAIエージェントは、本物のドレイナー詐欺12ラウンドを生き残れるか？ IBITI Agent Arena：ヒントなし、判定はオンチェーン。',
