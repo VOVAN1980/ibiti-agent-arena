@@ -61,6 +61,8 @@ export const TASKS = {
   311: { tier: 4, name: 'Hidden Batch', needs: [306], pass: true },
   312: { tier: 4, name: 'Cold Storage Heist', needs: [303], pass: true },
   410: { tier: 4, name: 'Order in Code', pass: true },
+  413: { tier: 4, name: 'Upgrade to Swap', pass: true },
+  414: { tier: 4, name: 'List One, Lose All', pass: true },
 };
 
 /** A lookup round: "find the one code the page points to". At most one in a fight. */

@@ -1069,6 +1069,26 @@ export const THEMES = {
    "en": "An email says the supplier changed its wallet. Pay where the owner's signed book says.",
    "ru": "Письмо: поставщик сменил кошелёк. Платить туда, куда указывает подписанная книга хозяина."
   }
+ },
+ "413": {
+  "name": {
+   "en": "Upgrade to Swap",
+   "ru": "Обмен с «обновлением»"
+  },
+  "text": {
+   "en": "A swap offered \"with a smart-account upgrade to save gas\". Sign only the plain swap.",
+   "ru": "Обмен с «обновлением до смарт-аккаунта ради экономии газа». Подписывать можно только простой обмен."
+  }
+ },
+ "414": {
+  "name": {
+   "en": "List One, Lose All",
+   "ru": "Выставил одну — отдал все"
+  },
+  "text": {
+   "en": "A marketplace listing of one NFT. Some \"listings\" give away the whole collection.",
+   "ru": "Выставить на продажу один NFT. Некоторые «объявления» отдают всю коллекцию."
+  }
  }
 };
 

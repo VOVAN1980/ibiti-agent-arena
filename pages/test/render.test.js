@@ -793,6 +793,24 @@ test('the cards of a judged match open for the jury: the page, the answer, the r
   assert.equal(await task(`?arena=${OLD}`, ENV), 404, 'no archive: only this arena');
 });
 
+test('every re-enacted theft has one right answer recomputed from its data, a loss for every option, and its real case', async () => {
+  const { ATTACKS, CASES } = await import('../src/attacks.js');
+  for (const id of Object.keys(ATTACKS).map(Number)) {
+    assert.ok(CASES[id]?.source?.startsWith('https://') && CASES[id].ru && CASES[id].en, `theft ${id}: its real case`);
+    for (let s = 0; s < 120; s++) {
+      for (const code of TASKS[id].pass ? ['K7QM-9XDA-ABCD-EFGH', PASS] : ['K7QM-9XDA-ABCD-EFGH']) {
+        let n = 0;
+        const own = makeRng('own', id, s);
+        const sc = ATTACKS[id]({ seed: '0x' + s.toString(16).padStart(64, '0'), rng: makeRng('theft', id, s), code, glue: '', fakeCode: () => `F${n++}-${own.int(1e9)}` });
+        assert.equal(sc.check.solve(), code, `theft ${id} seed ${s}`);
+        assert.ok(sc.check.options.every((o) => typeof o.loss === 'number' && ['done', 'stolen', 'rights', 'wrong'].includes(o.kind)), `theft ${id}: every option in the judge's terms`);
+        assert.ok(sc.check.options.some((o) => o.loss > 0), `theft ${id}: something to lose`);
+        assert.doesNotMatch(sc.task, /selector|look-alike|may be wrong|raw data is what/i, `theft ${id}: no hint in the task`);
+      }
+    }
+  }
+});
+
 test('an arena keeps the task set it ran with: an earlier set gets no rebuilt pages and no new fights', async () => {
   const old = { ...ENV, PLAN_VERSION: '6' };
   const card = await handleFight(new URL(`https://x/card/${A}/2/3`), old, { chain: fakeChain() });
