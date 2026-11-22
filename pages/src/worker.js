@@ -16,7 +16,9 @@
 //   GET /task/<address>/<fight>/<round>[?lang=xx]   for the audience: a round's theme, once it has opened
 //   GET /card/<address>/<fight>/<round>[?lang=xx]   for the audience and the jury, once the match is
 //        judged: the round's page as that fighter saw it, what it answered, the right answer and why
-//   /task and /card take ?arena=<address> for a fight of an earlier arena of this site (ARCHIVE)
+//   GET /plan/<address>/<fight>[?lang=xx]   once the match is judged: the task of every round that
+//        opened (for the per-task statistics: which tasks catch agents)
+//   /task, /card and /plan take ?arena=<address> for a fight of an earlier arena of this site (ARCHIVE)
 //
 // Everything else is answered with a short plain-text reason.
 //
@@ -43,7 +45,7 @@ import { makeChain, clockOf, BREAK } from './chain.js';
 import { renderRound } from './render.js';
 import { skillMd } from './skill.js';
 import { arenaKeys } from './keys.js';
-import { planOf, PLAN_VERSION } from './plan.js';
+import { planOf, PLAN_VERSION, TASKS } from './plan.js';
 import { keccak256 } from './keccak.js';
 import { registerData, answerData, byteLength } from './abi.js';
 import { themeOf } from './themes.js';
@@ -105,8 +107,29 @@ async function task(url, env, chain, agent, number, round) {
   const opened = (x) => openedUpTo(x, now, roundTime);
   const upTo = live.length ? Math.min(...live.map(opened)) : Math.max(...fights.map(opened));
   if (round > upTo) return json(425, { error: 'this round has not opened yet', round });
-  const id = planOf(keys.cardSeed(f.seed)).order[round - 1];
+  const id = planOf(keys.cardSeed(f.seed), deckOf(env), f.startedAt).order[round - 1];
   return json(200, { round, ...themeOf(id, url.searchParams.get('lang') ?? 'en') });
+}
+
+/** A settled match's tasks, round by round, for the per-task statistics (which tasks catch agents).
+ *  Only once the match is settled for both fighters, as for the jury's cards, and only the rounds that
+ *  really opened. */
+async function fightPlan(url, env, chain, keys, arena, agent, number) {
+  const f = await chain.fightOf(agent, number);
+  if (f.startedAt === 0) return json(404, { error: 'no such fight' });
+  if (BigInt(f.trapsCommit ?? '0x0') === 0n) return json(404, { error: 'this match never started' });
+  const roundTime = await roundTimeOf(chain, arena);
+  const now = await chain.now();
+  const fights = [f, ...(f.opponent !== ZERO ? [await chain.fightOf(f.opponent, f.opponentNumber)] : [])];
+  const endsAt = (x) => x.clockAt + (12 - x.clockRound) * (roundTime + BREAK) + roundTime;
+  const over = (x) => x.finishedAt !== 0 || now > endsAt(x);
+  if (!fights.every((x) => over(x) && (x.judged || x.round <= 1))) return json(425, { error: 'the plan opens once the match is judged' });
+  if (f.commitment.toLowerCase() !== keys.commitment(arena, agent, number).toLowerCase()) return json(409, { error: "this fight does not carry this server's commitment" });
+  const plan = planOf(keys.cardSeed(f.seed), deckOf(env), f.startedAt);
+  if (keys.trapsCommit(plan.traps, keys.trapSalt(arena, f.seed)).toLowerCase() !== f.trapsCommit.toLowerCase()) return json(503, { error: "this server's plan is not the one locked for this fight" });
+  const opened = Math.max(...fights.map((x) => openedUpTo(x, now, roundTime)));
+  const lang = url.searchParams.get('lang') ?? 'en';
+  return json(200, { deck: deckOf(env), tasks: plan.order.slice(0, opened).map((id, i) => ({ round: i + 1, id, name: themeOf(id, lang)?.name ?? TASKS[id].name })) });
 }
 
 /** The round's page of a finished match, for the audience and the jury: what the fighter saw, what
@@ -126,7 +149,7 @@ async function juryCard(url, env, chain, keys, arena, decoys, agent, number, rou
   if (!fights.every((x) => over(x) && (x.judged || x.round <= 1))) return json(425, { error: 'the cards open once the match is judged' });
   if (round > Math.max(...fights.map((x) => openedUpTo(x, now, roundTime)))) return json(404, { error: 'this round never opened', round });
   if (f.commitment.toLowerCase() !== keys.commitment(arena, agent, number).toLowerCase()) return json(409, { error: "this fight does not carry this server's commitment" });
-  const plan = planOf(keys.cardSeed(f.seed));
+  const plan = planOf(keys.cardSeed(f.seed), deckOf(env), f.startedAt);
   if (keys.trapsCommit(plan.traps, keys.trapSalt(arena, f.seed)).toLowerCase() !== f.trapsCommit.toLowerCase()) return json(503, { error: "this server's plan is not the one locked for this fight" });
   const code = keys.code(arena, agent, number, round);
   const traps = plan.traps.slice((round - 1) * 3, round * 3);
@@ -242,7 +265,7 @@ export async function handleFight(url, env, deps = {}) {
     }
     return json(200, { chainId: Number(env.CHAIN_ID ?? 56), to: env.ARENA, value: '0', gasLimit: ANSWER_GAS, inputData: answerData(round, code) });
   }
-  const t = url.pathname.match(/^\/(task|card)\/(0x[0-9a-fA-F]{40})\/(\d{1,6})\/(\d{1,2})\/?$/);
+  const t = url.pathname.match(/^\/(task|card)\/(0x[0-9a-fA-F]{40})\/(\d{1,6})\/(\d{1,2})\/?$/) ?? url.pathname.match(/^\/(plan)\/(0x[0-9a-fA-F]{40})\/(\d{1,6})\/?$/);
   const m = url.pathname.match(/^\/(fight|join)\/(0x[0-9a-fA-F]{40})\/?$/);
   if (!m && !t) return text(404, 'Not found. Start at /join/<your wallet address>?name=<your name>&model=<your model>.');
   // a fight of an earlier arena of this site: its link names the arena
@@ -267,10 +290,13 @@ export async function handleFight(url, env, deps = {}) {
   if ((await chain.secretCommit()).toLowerCase() !== keys.commit.toLowerCase()) {
     return old ? json(409, { error: "this server does not hold that arena's secret" }) : text(500, 'The arena is not configured: this server\'s secret does not match the arena.');
   }
-  if (t && t[1] === 'task') return task(url, { ...env, ARENA: arena }, chain, t[2].toLowerCase(), Number(t[3]), Number(t[4]));
+  // the deck it draws from: the red ring's season deck, or the green ring's workshop
+  const deck = (old ? old.deck : env.DECK) ?? 'season';
+  if (t && t[1] === 'plan') return fightPlan(url, { ...env, DECK: deck }, chain, keys, arena, t[2].toLowerCase(), Number(t[3]));
+  if (t && t[1] === 'task') return task(url, { ...env, ARENA: arena, DECK: deck }, chain, t[2].toLowerCase(), Number(t[3]), Number(t[4]));
   if (t) {
     const decoys = old ? old.decoys : typeof env.DECOYS === 'string' ? JSON.parse(env.DECOYS) : env.DECOYS;
-    return juryCard(url, env, chain, keys, arena, decoys, t[2].toLowerCase(), Number(t[3]), Number(t[4]), env.SITE_URL ?? url.origin);
+    return juryCard(url, { ...env, DECK: deck }, chain, keys, arena, decoys, t[2].toLowerCase(), Number(t[3]), Number(t[4]), env.SITE_URL ?? url.origin);
   }
   const agent = m[2].toLowerCase();
 
@@ -326,7 +352,7 @@ export async function handleFight(url, env, deps = {}) {
 
   // the fight's secret plan: the same for both fighters of a match, nowhere on-chain; its hash must be
   // the one the judge locked, or the judge could not score what this server would show
-  const plan = planOf(keys.cardSeed(f.seed));
+  const plan = planOf(keys.cardSeed(f.seed), deckOf(env), f.startedAt);
   if (BigInt(f.trapsCommit ?? '0x0') !== 0n && keys.trapsCommit(plan.traps, keys.trapSalt(env.ARENA, f.seed)).toLowerCase() !== f.trapsCommit.toLowerCase()) {
     return text(503, "This server's trap plan for this fight is not the one the judge locked, so it shows no card: the judge could not score it. Do not answer; tell your owner and the arena's team.");
   }
@@ -374,6 +400,9 @@ export async function handleFight(url, env, deps = {}) {
   }
   return new Response(card.html, { headers: { ...HEADERS, 'content-type': 'text/html; charset=utf-8' } });
 }
+
+/** The deck this arena's fights draw from: "season" (the red ring, the default) or "workshop". */
+const deckOf = (env) => env.DECK ?? 'season';
 
 /** Whether this arena lets an agent name its opponent: never in a season arena (the default). */
 const challengesOpen = (env) => env.CHALLENGES === 'open';

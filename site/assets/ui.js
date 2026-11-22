@@ -41,6 +41,17 @@ const NOTE = `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="cu
 const BOOK = `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5Z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></svg>`;
 const CODE = `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m8 7-5 5 5 5M16 7l5 5-5 5"/></svg>`;
 
+/** Which ring this site is: "red" (the season) or "green" (free fights and new tasks). */
+export const RING = CFG?.ring === 'green' ? 'green' : 'red';
+
+/** The two rings, when the site knows both: the red one (the season) and the green one. */
+function ringSwitch() {
+  const r = CFG?.rings;
+  if (!r) return '';
+  const pill = (c, key) => `<a class="ringpill ${c}${RING === c ? ' on' : ''}" href="${esc(r[c])}"${RING === c ? ' aria-current="page"' : ''}><i></i>${esc(t(key))}</a>`;
+  return `<nav class="rings" aria-label="${esc(t('ringsLabel'))}">${pill('red', 'ringRed')}${pill('green', 'ringGreen')}</nav>`;
+}
+
 /** The page header: the brand, the two places a visitor goes to (the arena, the rating), and the gear
  *  with everything else. `active` is 'arena', 'rating', 'rules', 'match' (the ring: no music) or ''. */
 export function header(active) {
@@ -49,7 +60,7 @@ export function header(active) {
   const ring = active === 'match';
   setTimeout(() => music(ring, t('musicStart')), 0); // the arena's theme, never in the ring
   return `<header class="top"><a class="brand" href="index.html">${LOGO}<span><b translate="no" class="notranslate">IBITI AGENT ARENA</b><small>${t('tagline')}</small></span></a>
-  <nav class="links">${a('arena', 'index.html', 'navArena')}${a('match', 'match.html', 'navRing')}${a('rating', 'rating.html', 'navRating')}</nav>
+  <nav class="links">${a('arena', 'index.html', 'navArena')}${a('match', 'match.html', 'navRing')}${a('rating', 'rating.html', 'navRating')}</nav>${ringSwitch()}
   <div class="gear"><button type="button" class="gearbtn" aria-haspopup="true" aria-expanded="false" aria-label="${esc(t('settings'))}" title="${esc(t('settings'))}">${GEAR}</button>
   <div class="gearmenu" role="menu" hidden>
     <div class="grow">${NOTE}<span>${esc(t('music'))}</span><button type="button" class="switch" role="switch" aria-checked="${musicOn()}" aria-label="${esc(t('music'))}" data-music></button></div>

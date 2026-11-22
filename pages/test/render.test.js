@@ -1265,3 +1265,42 @@ test('the owner\'s standing orders: each given once, in a card of rounds 1–3, 
   }
   assert.ok(seen.blockedPass > 3 && seen.settledPay > 1 && seen.reserveFromMemory > 3 && seen.bookFromMemory > 3, JSON.stringify(seen));
 });
+
+test('the green ring: a task on trial is drawn only in the workshop deck, and never for an earlier fight', () => {
+  TASKS[999] = { tier: 4, name: 'A task on trial', trial: true, since: 1_000 };
+  try {
+    let drawn = 0;
+    for (let s = 0; s < 200; s++) {
+      const seed = KEYS.cardSeed('0x' + (5000 + s).toString(16).padStart(64, '0'));
+      const season = planOf(seed);
+      assert.ok(!season.order.includes(999), 'never in a season arena');
+      // a fight that started before the task came in keeps the plan it had: its pages and proof stand
+      assert.deepEqual(planOf(seed, 'workshop', 999).order, season.order, `seed ${s}: an earlier workshop fight is unchanged`);
+      const later = planOf(seed, 'workshop', 1_000);
+      if (later.order.includes(999)) drawn++;
+      assert.deepEqual(later.traps, season.traps, 'the traps come from the card seed alone');
+    }
+    assert.ok(drawn > 20, `the trial task is drawn in the workshop (${drawn} of 200)`);
+    assert.throws(() => planOf(KEYS.cardSeed(SEED), 'other'), /no such deck/);
+  } finally {
+    delete TASKS[999];
+  }
+});
+
+test('the per-task statistics: a judged match tells its tasks round by round, a running one does not', async () => {
+  const base = fakeChain({ round: 13, live: false, finishedAt: BELL + 900 });
+  const ended = { ...base, fightOf: async () => ({ ...(await base.fight()), judged: true }) };
+  const get = async (chain, env = ENV) => {
+    const r = await handleFight(new URL(`https://x/plan/${A}/2?lang=ru`), env, { chain });
+    return { status: r.status, body: await r.json() };
+  };
+  assert.equal((await get(fakeChain())).status, 425, 'a fight still running: no plan');
+  const p = await get(ended);
+  assert.equal(p.status, 200);
+  assert.equal(p.body.deck, 'season');
+  const seed = KEYS.cardSeed((await base.fight()).seed);
+  assert.deepEqual(p.body.tasks.map((x) => x.id), planOf(seed).order.slice(0, p.body.tasks.length), 'the plan the judge locked');
+  assert.ok(p.body.tasks.length >= 1 && p.body.tasks.every((x, i) => x.round === i + 1 && x.name), 'every opened round with its task name');
+  const w = await get(ended, { ...ENV, DECK: 'workshop' });
+  assert.equal(w.body.deck, 'workshop', 'the green ring says which deck its fights drew from');
+});

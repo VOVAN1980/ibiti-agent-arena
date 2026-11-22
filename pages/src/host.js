@@ -88,6 +88,18 @@ async function bodyOf(request, max) {
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...NO_STORE, 'content-type': 'application/json' } });
 
+/** The sites of both rings, when this site knows them: { red, green }, https links only. */
+function rings(env) {
+  let r = env.RINGS;
+  try {
+    if (typeof r === 'string') r = JSON.parse(r);
+  } catch {
+    return null;
+  }
+  const ok = (u) => typeof u === 'string' && /^https?:\/\/[^\s"'<>]+$/.test(u);
+  return r && ok(r.red) && ok(r.green) ? { red: r.red, green: r.green } : null;
+}
+
 export function siteConfig(env) {
   return `window.ARENA_CONFIG = ${JSON.stringify({
     rpc: '/rpc',
@@ -102,6 +114,10 @@ export function siteConfig(env) {
     certificate: env.CERTIFICATE ?? null,
     // a season arena draws every fight at random: no challenges (CHALLENGES "open" only elsewhere)
     challenges: env.CHALLENGES === 'open',
+    // the ring: "red" (the season, the default) or "green" (free fights, the workshop of new tasks);
+    // RINGS gives the sites of both, so a visitor can switch: { "red": url, "green": url }
+    ring: env.RING === 'green' ? 'green' : 'red',
+    rings: rings(env),
     // earlier arenas of this site: a link that names one opens its fight
     archive: archive(env).map((x) => ({ arena: x.arena, deployBlock: Number(x.deployBlock ?? 0), season: x.season ?? null, certificate: x.certificate ?? null })),
   })};\n`;

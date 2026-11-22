@@ -77,12 +77,14 @@ const hexPath = (g, x, y, r) => {
 };
 
 const floorTex = () => canvasTex(1024, 1024, (g, w, h) => {
+  // the season's ring is red, the free ring green (window.ARENA_CONFIG.ring)
+  const green = window.ARENA_CONFIG?.ring === 'green';
   const bg = g.createRadialGradient(w / 2, h / 2, 40, w / 2, h / 2, w / 2);
-  bg.addColorStop(0, '#16213d');
-  bg.addColorStop(1, '#070b16');
+  bg.addColorStop(0, green ? '#0f3a22' : '#3d1219');
+  bg.addColorStop(1, green ? '#04140b' : '#150509');
   g.fillStyle = bg;
   g.fillRect(0, 0, w, h);
-  g.strokeStyle = 'rgba(110,140,230,.22)';
+  g.strokeStyle = green ? 'rgba(80,220,140,.22)' : 'rgba(240,90,100,.22)';
   g.lineWidth = 2;
   const r = 34;
   for (let y = 0, row = 0; y < h + r; y += r * 1.5, row++) for (let x = (row % 2) * r * 0.866; x < w + r; x += r * 1.732) {

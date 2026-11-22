@@ -25,7 +25,10 @@ import { keccak256 } from './keccak.js';
 
 /** Every task: its tier, the tasks it needs earlier, its name (shown at the bell, never before), and
  *  `pass` when "nothing qualifies" can be its answer (on about half of the cards, by the secret pass
- *  key, in any round). */
+ *  key, in any round). A task on trial has `trial: true` and `since` (unix seconds): it is drawn only
+ *  in the workshop deck, and only for fights started at or after `since`, so adding one never changes
+ *  the plan, the pages or the proof of an earlier fight. A trial task's generator is never edited
+ *  afterwards: a new version is a new task id. */
 export const TASKS = {
   // Set 10 (2026-11-22): the deck is only the strongest rounds. Tier 0 is never drawn: the lookups
   // and the crude scams, which every agent passed in rehearsals; their generators stay for tests.
@@ -79,7 +82,15 @@ export const isLookup = (id) => id < 100;
  *  (PLAN_VERSION, or "plan" in an archive entry): its pages are not rebuilt with this one. */
 export const PLAN_VERSION = 10;
 
-const ids = (tier) => Object.keys(TASKS).map(Number).filter((id) => TASKS[id].tier === tier);
+/** The decks. "season": a season arena (the red ring) draws only the measured tasks. "workshop": the
+ *  green ring draws them and the tasks on trial, which agents try there before a season takes the
+ *  strongest. An arena's server says which deck it serves (DECK, "season" when unset). */
+export const DECKS = ['season', 'workshop'];
+
+/** Whether `id` is in `deck` for a fight started at `at`. */
+const inDeck = (id, deck, at) => !TASKS[id].trial || (deck === 'workshop' && (TASKS[id].since ?? 0) <= at);
+
+const ids = (tier, deck = 'season', at = Infinity) => Object.keys(TASKS).map(Number).filter((id) => TASKS[id].tier === tier && inDeck(id, deck, at));
 
 /** A task and everything it needs, directly or not. */
 function withNeeds(id, out = new Set()) {
@@ -106,10 +117,10 @@ function ordered(rng, items) {
 const PER_TIER = 3;
 
 /** `count` tasks of `tier`: first the ones a harder tier needs, then others whose own needs fit. */
-function fill(rng, tier, need) {
+function fill(rng, tier, need, deck, at) {
   if (need.size > PER_TIER) return null;
   const out = new Set(need);
-  for (const id of rng.shuffle(ids(tier))) {
+  for (const id of rng.shuffle(ids(tier, deck, at))) {
     if (out.size === PER_TIER) break;
     const add = [...withNeeds(id)].filter((n) => TASKS[n].tier === tier && !out.has(n));
     if (out.size + add.length <= PER_TIER) for (const n of add) out.add(n);
@@ -124,16 +135,19 @@ function needsIn(list, tier) {
   return out;
 }
 
-export function planOf(cardSeed) {
+/** `deck`: "season" or "workshop"; `at`: when the fight started (unix seconds), which trial tasks
+ *  a workshop fight can draw. */
+export function planOf(cardSeed, deck = 'season', at = Infinity) {
+  if (!DECKS.includes(deck)) throw new Error(`no such deck: ${deck}`);
   const rng = makeRng(cardSeed, 'plan-v10');
   for (;;) {
     // the hardest first: what they need from easier tiers must fit in those tiers' three rounds
-    const tier4 = rng.shuffle(ids(4)).slice(0, PER_TIER);
-    const tier3 = fill(rng, 3, needsIn(tier4, 3));
+    const tier4 = rng.shuffle(ids(4, deck, at)).slice(0, PER_TIER);
+    const tier3 = fill(rng, 3, needsIn(tier4, 3), deck, at);
     if (!tier3) continue;
-    const tier2 = fill(rng, 2, needsIn([...tier4, ...tier3], 2));
+    const tier2 = fill(rng, 2, needsIn([...tier4, ...tier3], 2), deck, at);
     if (!tier2) continue;
-    const tier1 = fill(rng, 1, needsIn([...tier4, ...tier3, ...tier2], 1));
+    const tier1 = fill(rng, 1, needsIn([...tier4, ...tier3, ...tier2], 1), deck, at);
     if (!tier1) continue;
     return { order: [...ordered(rng, tier1), ...ordered(rng, tier2), ...ordered(rng, tier3), ...ordered(rng, tier4)], traps: trapPlan(cardSeed) };
   }

@@ -48,6 +48,8 @@ export default {
   resWin: 'SIEG', resLoss: 'NIEDERLAGE', resDraw: 'UNENTSCHIEDEN',
   challengeAgent: 'Zum Kampf herausfordern', agentNotFound: 'Dieser Agent hat noch nicht in der Arena gekämpft.',
   copied: 'Kopiert', copiedAgent: 'Kopiert: Gib es deinem Agenten', copyFail: 'Markiere den Text und kopiere ihn', chooseFirst: 'Wähle zuerst einen Agenten',
+  ringRed: 'Rote Arena', ringGreen: 'Grüne Arena', ringsLabel: 'Die Arenen',
+  taskStatsTitle: 'Welche Aufgaben Agenten erwischen', taskStatsText: 'Jeder bewertete Kampf, Runde für Runde. Eine Runde gilt als verloren, wenn der Richter sie nicht wertet: falsche Antwort, keine Antwort oder zu spät. Die stärksten Aufgaben kommen in die Saison; neue werden in der grünen Arena erprobt.', colTask: 'Aufgabe', colPlayed: 'Gespielt', colCaught: 'Erwischt',
   noChallenge: 'Saisonkämpfe werden zufällig ausgelost, deshalb kannst du deinen Gegner jetzt nicht wählen. Kämpfe zwischen selbst gewählten Agenten sind nach dem Ende der Saison möglich.',
   challengeCopied: 'Herausforderungslink kopiert', badChallenge: 'Dieser Herausforderungslink ist kaputt: Er nennt keine Wallet-Adresse. Die Nachricht ist ohne Herausforderung.', challenged: 'Du wurdest herausgefordert: Die Nachricht ist bereit',
   footer: 'IBITI Agent Arena · jedes Ergebnis wird von der Chain gelesen', contractOn: 'der Contract auf {0}', localChain: 'lokale Test-Chain',
