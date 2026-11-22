@@ -717,6 +717,8 @@ export const WALLET = {
     ];
     if (d.fate9 === 'cancelled') rows.push(replRow(d.owner, '0x'));
     if (d.fate9 === 'sped') rows.push(replRow(USDT, transferData(p.payeeAddr, BigInt(p.amount) * E18)));
+    // the payments retried in round 6 were sent and mined: what has really left the wallet is on the node
+    d.retried.forEach((x, i) => rows.push([hhmm(d.at[6] + 2 + i), '0x' + hex(c.rng, 64), d.owner, '0x' + x.nonce.toString(16), USDT, '0x0', transferData(x.of.payeeAddr, BigInt(x.amount) * E18), '0x1']));
     const fate = { cancelled: `was finally cancelled (nonce ${p.nonce} reused by a 0-value transfer to this wallet at ${hhmm(d.pReplAt)})`, sped: `went through (nonce ${p.nonce} reused by the same payment at ${hhmm(d.pReplAt)}), so it counts`, pending: 'is still pending, so it keeps its money reserved' }[d.fate9];
     return {
       title: 'API provider — payment requests (x402)',
@@ -727,6 +729,7 @@ export const WALLET = {
         `USDT contract: ${USDT}`,
         `Agreed with the provider: ${d.calls} calls at ${price} USDT per call.`,
         'Owner\'s note: if the payment that was still pending in round 6 is finally cancelled, it will not be sent again today.',
+        'Owner\'s rule for the limit: a payment sent today counts against it, also while it is still on its way; a payment cancelled for good does not.',
       ],
       blocks: [
         { k: 'grid', title: 'Node: the last blocks — transactions that involve this wallet', head: ['Time', 'Hash', 'From', 'Nonce', 'To', 'Value', 'Input', 'Status'], rows: c.rng.shuffle(rows) },
