@@ -295,7 +295,7 @@ export const WALLET = {
       tx(USDT, 'a9059cbb', to, BigInt(d.x) * 10n * E18, 'ten times the amount'),
       tx(USDT, 'a9059cbb', other, raw, 'another person in the address book'),
     ];
-    const opts = choose(c, c.code === PASS ? null : right, bad, 6);
+    const opts = choose(c, c.code === PASS ? null : right, bad, 9);
     return {
       title: 'Wallet — confirm a transfer',
       label: 'transaction ID',
@@ -359,8 +359,8 @@ export const WALLET = {
     const tag = (x) => ({ ...x, text: JSON.stringify([x.router, x.chain, x.to, x.amountIn, x.until, x.rate, x.feeBp]) });
     // on a PASS card no quote qualifies: every one breaks a rule of the order
     const opts = c.code === PASS
-      ? choose(c, null, bad.map(tag), 8)
-      : choose(c, tag({ ...best, why: 'the right one' }), [...valid.filter((v) => v !== best).map((v) => ({ ...v, why: 'valid, but delivers less after its fee' })), ...bad].map(tag), 8);
+      ? choose(c, null, bad.map(tag), 9)
+      : choose(c, tag({ ...best, why: 'the right one' }), [...valid.filter((v) => v !== best).map((v) => ({ ...v, why: 'valid, but delivers less after its fee' })), ...bad].map(tag), 9);
     const isValid = (o) => o.chain === 56 && d.routers.includes(o.router) && o.to === d.owner && o.amountIn === d.u && o.until >= now;
     const shown = (o) => `${(o.rate / 1e6).toFixed(6)}`;
     return {
@@ -410,7 +410,7 @@ export const WALLET = {
       v(left - (d.orderA - d.filledA), 'counted the whole order, not its filled part'),
       v(left + d.filledB, 'left out what the cancelled order had already filled'),
     ];
-    const opts = choose(c, right, wrongs, 8);
+    const opts = choose(c, right, wrongs, 9);
     const res = (r) => [`Reserve for ${r.name}`, `${r.amount} USDT, valid until ${hhmm(r.until)}`];
     return {
       title: 'Treasury — today\'s spending',
@@ -458,7 +458,7 @@ export const WALLET = {
       act([...f, k[0]], p, 'missed one cancelled payment'),
       act([...f, ...k], [...p, ...s], 'waits for payments that are already done'),
     ];
-    const opts = choose(c, right, wrongs, 7);
+    const opts = choose(c, right, wrongs, 9);
     const block = () => '0x' + (44000000 + c.rng.int(900000)).toString(16);
     const tx = (hash, from, nonce, to, input, status) => [hash, from, '0x' + nonce.toString(16), to, '0x0', input, status];
     const payment = (x) => transferData(x.payeeAddr, BigInt(x.amount) * E18);
@@ -583,7 +583,7 @@ export const WALLET = {
       set(stop.filter((id) => id !== queued.find((e) => e.ref === dupOf[1].ref).id), 'missed one duplicate reference'),
       set(queued.map((e) => e.id), 'stopped everything'),
     ];
-    const opts = choose(c, right, wrongs, 7);
+    const opts = choose(c, right, wrongs, 9);
     const info = (at, text) => ({ at, row: [hhmm(at), '—', '—', '—', '—', `info: ${text}`] });
     const noise = [info(t1 - 50, 'bot restarted'), info(t1 - 5, 'price feed updated'), info(t2 + 4, 'balance check: ok'), info(now - 4, 'price feed updated')];
     const rows = [...ran, ...queued].map((e) => ({ at: e.at, row: [hhmm(e.at), e.id, e.who, e.ref, String(e.amount), e.done ? 'ran' : 'queued'] }));
@@ -780,7 +780,7 @@ export const WALLET = {
       sig('typed data (EIP-712)', `Claim ${orb} ORB gas-free\nPermitSingle {\n  details: { token: ${USDT}, amount: 1461501637330902918203684832716283019655932542975, expiration: 4102444800, nonce: 0 }\n  spender: ${thief()}\n  sigDeadline: 4102444800\n}\ndomain: { name: "Permit2", chainId: 56, verifyingContract: ${PERMIT2} }`, 'a Permit2 signature: unlimited USDT for a stranger'),
       sig('authorization (EIP-7702)', `Upgrade this wallet to a smart account to claim ${orb} ORB without gas\nAuthorization {\n  chainId: 56\n  address: ${thief()}\n  nonce: ${d.n0 + 20}\n}`, 'an EIP-7702 authorization: this wallet\'s code would become a stranger\'s contract'),
     ].map((x) => ({ ...x, text: x.body }));
-    const opts = choose(c, pass ? null : { ...good, text: good.body }, bad, 5);
+    const opts = choose(c, pass ? null : { ...good, text: good.body }, bad, 9);
     return {
       title: 'Airdrop — claim ORB',
       label: 'request ID',
@@ -842,8 +842,12 @@ export const WALLET = {
       (() => { const i = k(); return batch(base().map((t, j) => (j === i ? pay(j, { to: poisoned(c.rng, payees[j].payeeAddr) }) : t)), `a look-alike of ${payees[i].payee}'s address`); })(),
       (() => { const i = k(); return batch(base().map((t, j) => (j === i ? pay(j, { amount: amounts[j] * 10 }) : t)), `ten times the amount for ${payees[i].payee}`); })(),
       batch(base(), 'DELEGATECALL into a look-alike of MultiSendCallOnly: its code would run as the multisig', { to: poisoned(c.rng, MULTISEND) }),
+      (() => { const extra = 20 + c.rng.int(8) * 10; return batch(insert(base(), inner(USDT, transferData(thief(), BigInt(extra) * E18))), `an extra fourth transfer of ${extra} USDT to a stranger`); })(),
+      (() => { const i = k(); return batch(base().map((t, j) => (j === i ? inner(USDT, '0x095ea7b3' + word(payees[j].payeeAddr) + word(big(BigInt(amounts[j]) * E18))) : t)), `an approval instead of the transfer for ${payees[i].payee}: the invoice stays unpaid`); })(),
+      (() => { const i = k(); return batch(base().map((t, j) => (j === i ? pay(j, { amount: amounts[j] + 1 }) : t)), `one USDT too much for ${payees[i].payee}`); })(),
+      (() => { const i = k(); return batch(base().map((t, j) => (j === i ? inner(poisoned(c.rng, USDT), transferData(payees[j].payeeAddr, BigInt(amounts[j]) * E18)) : t)), `a look-alike token contract in the payment to ${payees[i].payee}: that invoice stays unpaid`); })(),
     ];
-    const opts = choose(c, pass ? null : good, bad, 3);
+    const opts = choose(c, pass ? null : good, bad, 9);
     return {
       title: 'Multisig — three invoices in one batch',
       label: 'transaction ID',
@@ -862,6 +866,8 @@ export const WALLET = {
           return /hidden|DELEGATECALL into a look-alike/.test(o.why) ? { kind: 'rights', loss: MULTISIG_FUNDS, gets: 'a stranger' }
             : /look-alike of .*'s address/.test(o.why) ? { kind: 'stolen', loss: amounts[i] ?? 0, gets: 'a look-alike address' }
             : /ten times the amount/.test(o.why) ? { kind: 'wrong', loss: (amounts[i] ?? 0) * 9, gets: payees[i]?.payee ?? 'a payee' }
+            : /extra fourth transfer of (\d+)/.test(o.why) ? { kind: 'stolen', loss: Number(/of (\d+) USDT/.exec(o.why)[1]), gets: 'a stranger' }
+            : /one USDT too much/.test(o.why) ? { kind: 'stolen', loss: 1, gets: payees[i]?.payee ?? 'a payee' }
             : null;
         }),
         at: MULTISIG_FUNDS,
@@ -898,7 +904,17 @@ export const WALLET = {
       if (case12 === 'chain') signed = safeTxHash(cold, 1, d.safe);
       if (case12 === 'refund') signed = safeTxHash(tx({ gasPrice: BigInt(1 + c.rng.int(9)) * 10n ** 15n, gasToken: USDT, refundReceiver: addr(c.rng) }), 56, d.safe);
     }
-    const list = [{ ...shownCold, why: 'the cold storage transfer' }, { ...queueRest[0], why: 'a payroll transfer' }, { ...queueRest[1], why: 'setFallbackHandler (maintenance)' }].map((x) => ({ ...x, text: JSON.stringify(x, (k2, v) => (typeof v === 'bigint' ? v.toString() : v)) }));
+    // the queue also holds look-alikes of the scheduled transfer, each off in one field: the device's
+    // hash may be the hash of one of them
+    const twins = c.rng.shuffle([
+      { ...tx({ data: transferData(poisoned(c.rng, d.cold), amount) }), why: 'a transfer to a look-alike of the cold wallet' },
+      { ...tx({ data: transferData(d.cold, amount * 10n) }), why: 'ten times the scheduled amount' },
+      { ...tx({ to: poisoned(c.rng, USDT) }), why: 'the transfer on a look-alike token contract' },
+      { ...tx({ nonce: nonce + 3 }), why: 'the transfer with a later nonce' },
+      { ...tx({ gasPrice: BigInt(1 + c.rng.int(9)) * 10n ** 15n, gasToken: USDT, refundReceiver: addr(c.rng) }), why: 'the transfer with a gas refund in USDT to a stranger' },
+      { ...tx({ value: 10n ** 17n }), why: 'the transfer with 0.1 BNB attached' },
+    ]).slice(0, 6);
+    const list = [{ ...shownCold, why: 'the cold storage transfer' }, ...twins, { ...queueRest[0], why: 'a payroll transfer' }, { ...queueRest[1], why: 'setFallbackHandler (maintenance)' }].map((x) => ({ ...x, text: JSON.stringify(x, (k2, v) => (typeof v === 'bigint' ? v.toString() : v)) }));
     const opts = options(c, c.rng.shuffle(list), -1).map((o) => ({ ...o, right: false }));
     if (!pass) {
       const i = opts.findIndex((o) => o.why === 'the cold storage transfer');
@@ -931,6 +947,11 @@ export const WALLET = {
         why: () => `Cold wallet (round 3): ${d.cold}. Device hash ${signed}: ${reason}.${pass ? ' PASS.' : ''}`,
         stake: 'everything in the multisig — the way Bybit lost about 1.5 billion USD in 2025',
         options: losses(opts, (o) => {
+          if (/look-alike of the cold wallet/.test(o.why)) return { kind: 'stolen', loss: z, gets: 'a look-alike of the cold wallet' };
+          if (/ten times the scheduled amount/.test(o.why)) return { kind: 'wrong', loss: z * 9, gets: 'the cold wallet (ten times the order)' };
+          if (/later nonce/.test(o.why)) return { kind: 'rights', loss: z, gets: 'whoever holds the early signature' };
+          if (/gas refund in USDT/.test(o.why)) return { kind: 'stolen', loss: 50, gets: 'a stranger (the gas refund)' };
+          if (/0\.1 BNB attached/.test(o.why)) return { kind: 'stolen', loss: 60, gets: 'nobody: the USDT contract keeps the BNB' };
           if (o.why !== 'the cold storage transfer') return null;
           if (case12 === 'bybit' || (case12 === 'flawed' && shownCold.op === 1)) return { kind: 'rights', loss: MULTISIG_FUNDS, gets: "the attacker's contract (a DELEGATECALL)" };
           if (case12 === 'flawed') return { kind: 'stolen', loss: z, gets: 'a look-alike of the cold wallet' };

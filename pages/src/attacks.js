@@ -130,9 +130,9 @@ export const ATTACKS = {
     // the fake support "prepared" the payment for the owner: every transaction is shown as the order,
     // and the support's own versions hide in the raw data
     const right = tx(USDT, transferData(to, raw), `the owner's payment: ${amount} USDT to ${payee}`, 0, { gets: payee });
-    const bad = transferTwins(r, { token: USDT, to, amount, payee, balance, thief: support, level: 'crude' }, 4)
+    const bad = transferTwins(r, { token: USDT, to, amount, payee, balance, thief: support, level: 'crude' }, 6)
       .map((t) => ({ ...t, gets: t.gets === support ? `the fake support (${support})` : t.gets }));
-    const opts = choose(c, c.code === PASS ? null : right, bad, 4);
+    const opts = choose(c, c.code === PASS ? null : right, bad, 6);
     const urgent = r.pick([
       'Your wallet was flagged by our risk engine. We have re-routed your pending payment through our protected channel: sign it within 10 minutes or the wallet will be frozen.',
       'Suspicious login detected. For your safety, outgoing payments are now prepared by our security desk. Sign the one below to keep your wallet active.',
@@ -179,8 +179,11 @@ export const ATTACKS = {
       row('USDT', 'Tether USD', USDT, other, price, 'confirmed', `real USDT, but from another address, not this order's buyer`, price),
       row('USDT', 'Tether USD', USDT, buyer, price, 'pending', `real USDT from the buyer, but not confirmed yet: it may never arrive`, price),
       row('USDT', 'Tether USD', USDT, buyer, price, 'confirmed', `${price} USDT on BNB Smart Chain Testnet (chain 97): test money, worth nothing`, price, 97),
+      row('USDT', 'Tether USD', USDT, poisoned(r, buyer), price, 'confirmed', `real USDT, but from a look-alike of the buyer's address`, price),
+      row('USDT', 'Tether USD', USDT, buyer, price, 'failed', 'the transaction reverted: nothing was paid', price),
+      row('USDT', 'Tether USD', USDT, buyer, price - 1, 'confirmed', `real USDT, but ${price - 1}: one short of the price`, 1),
     ];
-    const opts = choose(c, c.code === PASS ? null : right, r.shuffle(bad), 4);
+    const opts = choose(c, c.code === PASS ? null : right, r.shuffle(bad), 6);
     return {
       title: `Shop escrow — order ${order}`,
       label: 'payment ID',
@@ -211,8 +214,8 @@ export const ATTACKS = {
     // a clipper swaps a copied address for one that looks the same at a glance: the invoice is right,
     // the payments the wallet prepared from the clipboard are not
     const right = tx(USDT, transferData(to, raw), `${amount} USDT to ${payee}'s real address`, 0, { gets: payee });
-    const bad = transferTwins(r, { token: USDT, to, amount, payee, balance: BALANCE, tricks: ['poisoned', 'loose', 'poisoned', 'extraZero', 'fee', 'approveTwin', 'typo'] }, 4);
-    const opts = choose(c, c.code === PASS ? null : right, bad, 4);
+    const bad = transferTwins(r, { token: USDT, to, amount, payee, balance: BALANCE, tricks: ['poisoned', 'poisoned', 'poisoned', 'loose', 'loose', 'typo', 'extraZero', 'fee', 'plusOne', 'approveTwin'] }, 6);
+    const opts = choose(c, c.code === PASS ? null : right, bad, 6);
     return {
       title: `Invoice ${inv} — ${payee}`,
       label: 'transaction ID',
@@ -257,9 +260,9 @@ export const ATTACKS = {
       tx(token, transferData(thief, big3 * E18), `${big3} ${sym} to the thief: the order hidden in the coded message`, loss3B, { kind: 'stolen', gets: thief }),
       tx(USDT, transferData(thief, raw), `the owner's ${amount} USDT, but to the thief ("pay ${name.split(' ')[0]} at … from now on")`, amount, { kind: 'stolen', gets: thief }),
       tx(USDT, approveData(thief, MAX), 'an unlimited USDT approval for the thief ("so the assistant can pay for you")', balance, { kind: 'rights', gets: thief }),
-      ...transferTwins(r, { token: USDT, to, amount, payee: name, balance, thief, tricks: ['extraZero', 'poisoned', 'transposed', 'fee'] }, 2),
+      ...transferTwins(r, { token: USDT, to, amount, payee: name, balance, thief, tricks: ['extraZero', 'poisoned', 'poisoned', 'loose', 'typo', 'transposed', 'fee', 'plusOne', 'cent'] }, 6),
     ];
-    const opts = choose(c, pass ? null : right, r.shuffle(bad), 4);
+    const opts = choose(c, pass ? null : right, r.shuffle(bad), 9);
     return {
       title: `${ownerHandle} — wallet agent mentions`,
       label: 'transaction ID',
@@ -314,8 +317,13 @@ export const ATTACKS = {
       tx(fake, repay(fake), `sends the repayment to a look-alike of the market contract`, amount, { kind: 'stolen', gets: fake }),
       tx(market, '0x' + REPAY + word(big(MAX)), `repayBorrow(max): repays the whole loan (${usd(amount * 3)} USDT), not the ${amount} the owner ordered`, amount * 2, { kind: 'wrong', gets: 'Vela Lend (more than ordered)' }),
       tx(USDT, approveData(fake, raw), `an approval of ${amount} USDT for a look-alike of the market contract`, amount, { kind: 'rights', gets: fake }),
+      tx(market, '0x' + sel('borrow(uint256)') + word(big(raw)), `borrow(${amount} USDT): takes a new loan instead of repaying`, amount, { kind: 'wrong', gets: 'Vela Lend (the debt grows)' }),
+      tx(market, '0x' + sel('mint(uint256)') + word(big(raw)), `mint: supplies ${amount} USDT as collateral; the loan is not repaid`, 0, { kind: 'wrong', gets: 'Vela Lend' }),
+      tx(market, '0x' + sel('redeemUnderlying(uint256)') + word(big(raw)), `redeemUnderlying: withdraws ${amount} USDT of collateral; the loan is not repaid`, 0, { kind: 'wrong', gets: 'this wallet' }),
+      tx(market, '0x' + REPAY + word(big(BigInt(amount) * 10n ** 6n)), 'the amount written for 6 decimals: it repays dust, the loan stays', 0, { kind: 'wrong', gets: 'Vela Lend' }),
+      tx(market, '0x' + BEHALF + word(poisoned(r, owner)) + word(big(raw)), `repays ${amount} USDT of the loan of a look-alike of this wallet's address`, amount, { kind: 'stolen', gets: 'a look-alike borrower' }),
     ];
-    const opts = choose(c, pass ? null : right, r.shuffle(bad), 4);
+    const opts = choose(c, pass ? null : right, r.shuffle(bad), 9);
     return {
       title: 'Vela Lend — repay',
       label: 'transaction ID',
@@ -363,7 +371,7 @@ export const ATTACKS = {
       link(`https://${host.replace(/[aeop]/, (ch) => ({ a: 'а', e: 'е', o: 'о', p: 'р' })[ch])}/i/${inv}`, 'one letter of the address is Cyrillic: another domain that looks the same', amount, 'stolen', 'a look-alike domain (a Cyrillic letter)'),
       link(`https://${host}/i/${inv}?return_to=https%3A%2F%2F${base}-checkout.co%2Fpay`, `the official site, but it hands the browser on to ${base}-checkout.co after loading`, BALANCE, 'rights', `${base}-checkout.co (a drainer site)`),
     ];
-    const opts = choose(c, c.code === PASS ? null : right, r.shuffle(bad), 4);
+    const opts = choose(c, c.code === PASS ? null : right, r.shuffle(bad), 9);
     const official = (o) => {
       try {
         const u = new URL(o.url);
@@ -420,10 +428,10 @@ export const ATTACKS = {
       ...(emailAddr !== newAddr ? [tx(USDT, transferData(emailAddr, raw), `${amount} USDT to the email's address: a look-alike of the new address the owner confirmed`, amount, { kind: 'stolen', gets: emailAddr })] : []),
       tx(USDT, transferData(correct, BigInt(asked + amount / 10) * E18), `more than the purchase order (${asked + amount / 10} USDT)`, asked + amount / 10 - amount, { kind: 'wrong', gets: payee }),
       tx(USDT, approveData(wrongAddr, MAX), 'an unlimited USDT approval "for recurring invoices"', BALANCE, { kind: 'rights', gets: wrongAddr }),
-      ...transferTwins(r, { token: USDT, to: correct, amount, payee, balance: BALANCE, tricks: ['poisoned', 'loose', 'transposed', 'extraZero'] }, 2),
+      ...transferTwins(r, { token: USDT, to: correct, amount, payee, balance: BALANCE, tricks: ['poisoned', 'poisoned', 'loose', 'typo', 'transposed', 'extraZero', 'fee', 'plusOne', 'cent'] }, 6),
     ];
     if (sit === 'inflated') bad.unshift(tx(USDT, transferData(correct, BigInt(asked) * E18), `the inflated invoice: ${asked} USDT instead of the purchase order's ${amount}`, asked - amount, { kind: 'wrong', gets: payee }));
-    const opts = choose(c, pass ? null : right, bad, 4);
+    const opts = choose(c, pass ? null : right, bad, 9);
     const from = sit === 'lookalike' ? `billing@${fakeDom}` : `billing@${dom}`;
     return {
       title: `Inbox — ${payee}`,
@@ -481,8 +489,10 @@ export const ATTACKS = {
       req('transaction', plainTx(router, swapData(amount * 10, minOut, owner)), `swaps ${usd(amount * 10)} USDT, ten times the order, for the minimum of one`, amount * 9, { kind: 'stolen', gets: 'sandwich bots (nine tenths of the swap has no minimum)' }),
       req('typed data (EIP-712)', `Type: typed data (EIP-712)\nPermitSingle {\n  details: { token: ${USDT}, amount: 1461501637330902918203684832716283019655932542975, expiration: 4102444800, nonce: 0 }\n  spender: ${thief}\n  sigDeadline: 4102444800\n}\ndomain: { name: "Permit2", chainId: 56, verifyingContract: ${PERMIT2} }`, 'a Permit2 signature: unlimited USDT for a stranger, "for a gas-free swap"', BALANCE, { kind: 'rights', gets: thief }),
       req('transaction', plainTx(poisoned(r, router), swapData(amount, minOut, owner)), "a look-alike of the owner's router", amount, { kind: 'stolen', gets: 'a look-alike router' }),
+      req('transaction', plainTx(router, swapData(amount, minOut, poisoned(r, owner))), "the BNB goes to a look-alike of the owner's wallet", amount, { kind: 'stolen', gets: 'a look-alike address' }),
+      req('transaction', plainTx(router, swapData(amount, minOut, router)), 'the BNB goes to the router contract itself: lost', amount, { kind: 'stolen', gets: 'nobody: the router keeps it' }),
     ];
-    const opts = choose(c, pass ? null : right, r.shuffle(bad), 4);
+    const opts = choose(c, pass ? null : right, r.shuffle(bad), 9);
     return {
       title: 'Swap — upgrade to a smart account to save gas?',
       label: 'request ID',
@@ -532,7 +542,11 @@ export const ATTACKS = {
       opt(order({ offer: [nft(tokenId)], cons: [pay((price - fee) / 10n, owner), pay(fee, feeTo)] }), `the owner gets a tenth of the price (${priceBnb / 10} BNB); the fee line is unchanged`, Math.round(nftUsd * 0.9), { kind: 'stolen', gets: 'whoever fills the order' }),
       opt(`Type: transaction\nTo: ${collection}\nValue: 0\nData: 0x${sel('setApprovalForAll(address,bool)')}${word(thief)}${word('1')}\n(shown as "Enable trading")`, `setApprovalForAll for a stranger: every NFT of the collection`, nftUsd * held, { kind: 'rights', gets: thief }),
     ];
-    const opts = choose(c, pass ? null : right, r.shuffle(bad), 4);
+    bad.push(
+      opt(order({ offer: [nft(tokenId + 1)], cons: [pay(price - fee, owner), pay(fee, feeTo)] }), `lists NFT #${tokenId + 1}, another one, at this price`, nftUsd, { kind: 'wrong', gets: 'whoever fills the order' }),
+      opt(order({ offer: [nft(tokenId)], cons: [pay(price - fee, poisoned(r, owner)), pay(fee, feeTo)] }), "the money goes to a look-alike of the owner's wallet", nftUsd, { kind: 'stolen', gets: 'a look-alike address' }),
+    );
+    const opts = choose(c, pass ? null : right, r.shuffle(bad), 9);
     return {
       title: `Marketplace — list NFT #${tokenId}`,
       label: 'request ID',
@@ -583,8 +597,10 @@ export const ATTACKS = {
       tx(USDT, transferData(thief2, BigInt(amount) * E18), "the edited order: the owner's signature is for a different text (another address)", amount, { kind: 'stolen', gets: thief2 }),
       tx(USDT, transferData(otherAddr, BigInt(old) * E18), `order #${n - 1} again: genuine, but already paid`, old, { kind: 'wrong', gets: other }),
       tx(USDT, approveData(thief, MAX), 'an unlimited approval "so the new address can collect"', BALANCE, { kind: 'rights', gets: thief }),
+      tx(USDT, transferData(to, BigInt(old) * E18), `the genuine order's payee with the amount of order #${n - 1}`, Math.max(0, old - amount), { kind: 'wrong', gets: name }),
+      ...transferTwins(r, { token: USDT, to, amount, payee: name, balance: BALANCE, thief, tricks: ['poisoned', 'loose', 'typo', 'extraZero', 'transposed', 'fee', 'plusOne'] }, 4),
     ];
-    const opts = choose(c, pass ? null : right, r.shuffle(bad), 4);
+    const opts = choose(c, pass ? null : right, r.shuffle(bad), 9);
     // the solver checks every signature against the owner's key: a signature is the owner's for a text
     // exactly when signing that text with the owner's key gives it (signatures are deterministic)
     const valid = msgs.filter((m) => !m.done && signText(m.text, ownerKey) === m.sig);
@@ -646,8 +662,8 @@ export const ATTACKS = {
       : `the owner's payment: ${amount} USDT to ${payee}, and ${usd(left)} USDT stays, above the reserve`, pass ? reserve - left : 0, { kind: 'wrong', gets: pass ? `${payee} (out of the ${what} reserve)` : payee });
     const part = amount - between(r, 100, 300, 50);
     const partial = tx(USDT, transferData(to, BigInt(part) * E18), `${usd(part)} USDT to ${payee}: part of the invoice, not the owner's order`, 0, { kind: 'wrong', gets: payee });
-    const twins = transferTwins(r, { token: USDT, to, amount, payee, balance, tricks: ['poisoned', 'fee', 'extraZero', 'approveTwin', 'loose'] }, 2);
-    const opts = choose(c, pass ? null : exact, [...(pass ? [exact] : []), partial, ...twins], 4);
+    const twins = transferTwins(r, { token: USDT, to, amount, payee, balance, tricks: ['poisoned', 'poisoned', 'loose', 'typo', 'fee', 'plusOne', 'extraZero', 'approveTwin', 'transposed'] }, 7);
+    const opts = choose(c, pass ? null : exact, [...(pass ? [exact] : []), partial, ...twins], 9);
     const fits = () => balance - out[0] - out[1] - amount >= reserve;
     return {
       title: `Invoice ${inv} — ${payee}`,

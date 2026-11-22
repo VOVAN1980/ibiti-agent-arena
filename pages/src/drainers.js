@@ -17,6 +17,8 @@
 //   fakeToken       the right payee and amount, on a look-alike token contract (worthless)
 //   tokenSelf       the tokens sent to the token contract itself: lost for good
 //   decimals        the amount written for 6 decimals on an 18-decimal token: the bill stays unpaid
+//   plusOne         one USDT more than ordered
+//   cent            one cent more than ordered
 //   sweep           the whole balance to the thief (crude, for the first rounds)
 //
 // For the jury every transaction says what it really does (`why`), what the owner would lose (`loss`,
@@ -62,9 +64,11 @@ function transpose(rng, n) {
   return Number(s.slice(0, i) + s[i + 1] + s[i] + s.slice(i + 2));
 }
 
+// A trick named twice may appear twice, each time with other random digits: several look-alikes of
+// one address side by side are harder to tell apart than one.
 const TIER_TRICKS = {
-  crude: ['sweep', 'approve', 'poisoned', 'extraZero', 'fee'],
-  sharp: ['poisoned', 'loose', 'typo', 'extraZero', 'transposed', 'fee', 'approve', 'approveTwin', 'allowance', 'fakeToken', 'tokenSelf', 'decimals'],
+  crude: ['sweep', 'approve', 'poisoned', 'poisoned', 'loose', 'extraZero', 'fee', 'plusOne'],
+  sharp: ['poisoned', 'poisoned', 'poisoned', 'loose', 'loose', 'typo', 'typo', 'extraZero', 'transposed', 'fee', 'plusOne', 'cent', 'approve', 'approveTwin', 'allowance', 'fakeToken', 'tokenSelf', 'decimals'],
 };
 
 /**
@@ -94,6 +98,8 @@ export function transferTwins(rng, o, count) {
       const twin = typoTwin(rng, to);
       return tx('typo', token, transferCall(twin, raw), `${amount} USDT to an address one character off ${payee}'s: nobody can ever move it`, amount, 'stolen', `${twin} (nobody's address)`);
     },
+    plusOne: () => tx('plusOne', token, transferCall(to, BigInt(amount + 1) * E18), `${usd(amount + 1)} USDT to ${payee}: one USDT more than the order`, 1, 'stolen', `${payee} (1 USDT too much)`),
+    cent: () => tx('cent', token, transferCall(to, raw + E18 / 100n), `${usd(amount)}.01 USDT to ${payee}: one cent more than the order`, 0.01, 'stolen', `${payee} (0.01 USDT too much)`),
     extraZero: () => tx('extraZero', token, transferCall(to, raw * 10n), `${usd(amount * 10)} USDT to ${payee}: ten times the order`, amount * 9, 'stolen', `${payee} (${usd(amount * 9)} USDT too much)`),
     transposed: () => {
       const t = transpose(rng, amount);
