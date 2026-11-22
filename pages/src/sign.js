@@ -30,6 +30,21 @@ export function signDigest(digest, key) {
   return '0x' + hex(sig.r, 32) + hex(sig.s, 32) + hex(27 + sig.recovery, 1);
 }
 
+/** An Ethereum signed message (EIP-191, personal_sign) of a text, signed with `key`: r ‖ s ‖ v. The
+ *  signature is deterministic (RFC 6979), so signing the same text again gives the same signature. */
+export function signText(text, key) {
+  const bytes = utf8Hex(text);
+  const eth = keccak256(utf8Hex(`\x19Ethereum Signed Message:\n${bytes.length / 2}`) + bytes);
+  const sig = secp256k1.Signature.fromBytes(secp256k1.sign(hexToBytes(eth), hexToBytes(key), { prehash: false, format: 'recovered' }), 'recovered');
+  return '0x' + hex(sig.r, 32) + hex(sig.s, 32) + hex(27 + sig.recovery, 1);
+}
+
+/** The address of a private key. */
+export function addressOf(key) {
+  const pub = secp256k1.getPublicKey(hexToBytes(key), false); // 0x04 ‖ x ‖ y
+  return '0x' + keccak256([...pub.slice(1)].map((b) => b.toString(16).padStart(2, '0')).join('')).replace(/^0x/, '').slice(-40);
+}
+
 /** The judge's signature of `agent`'s commitment for fight `number`, for register(). */
 export function signCommitment(key, chainId, arena, agent, number, commitment) {
   return signDigest(commitmentDigest(chainId, arena, agent, number, commitment), key);

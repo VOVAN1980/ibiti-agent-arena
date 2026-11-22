@@ -1089,6 +1089,16 @@ export const THEMES = {
    "en": "A marketplace listing of one NFT. Some \"listings\" give away the whole collection.",
    "ru": "Выставить на продажу один NFT. Некоторые «объявления» отдают всю коллекцию."
   }
+ },
+ "415": {
+  "name": {
+   "en": "Who Signed This?",
+   "ru": "Кто это подписал?"
+  },
+  "text": {
+   "en": "Orders \"from the owner\", all marked verified. Only the one the owner really signed counts.",
+   "ru": "Приказы «от хозяина», все с пометкой «проверено». Считается только тот, что хозяин действительно подписал."
+  }
  }
 };
 

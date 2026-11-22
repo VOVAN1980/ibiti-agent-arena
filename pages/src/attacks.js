@@ -16,6 +16,7 @@
 import { PASS } from './codes.js';
 import { keccak256 } from './keccak.js';
 import { addr, hex, word, big, E18, MAX, USDT, poisoned, choose, idOf, short, BALANCE } from './wallet.js';
+import { signText, addressOf } from './sign.js';
 
 const WBNB = '0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c';
 const PERMIT2 = '0x000000000022D473030F116dDEE9F6B43aC78BA3';
@@ -28,6 +29,7 @@ const CLIPBOARD_PAYEES = ['Northwind Courier', 'Granite Payroll', 'Marble Studio
 const LINK_VENDORS = [['Juniper Mill', 'junipermill.io'], ['Halcyon Legal', 'halcyonlegal.com'], ['Solace Tools', 'solacetools.net']];
 const WALLET_VENDORS = [['Willow Freight', 'willowfreight.net'], ['Copperfield Labs', 'copperfieldlabs.co'], ['Ridgeway Parts', 'ridgewayparts.com']];
 const ORDER_PEOPLE = ['Rafael Costa', 'Yuki Tanaka', 'Elif Demir', 'Sven Holm'];
+const SIGNED_PEOPLE = ['Nadia Pereira', 'Tomasz Wolny', 'Greta Lund', 'Kofi Mensah'];
 
 const ascii = (s) => [...s].map((ch) => ch.charCodeAt(0).toString(16).padStart(2, '0')).join('');
 const sel = (sig) => keccak256(ascii(sig)).replace(/^0x/, '').slice(0, 8);
@@ -79,6 +81,11 @@ export const CASES = {
     en: 'A swap with a hidden upgrade: in August 2025 one user lost $1.54M to an EIP-7702 batch disguised as a swap (Scam Sniffer). EIP-7702 is live on BNB Chain since March 2025.',
     ru: 'Обмен со спрятанным «обновлением»: в августе 2025 года пользователь потерял $1,54 млн из-за пакета EIP-7702, замаскированного под обмен (Scam Sniffer). EIP-7702 работает в BNB Chain с марта 2025 года.',
     source: 'https://drops.scamsniffer.io/scam-sniffer-2025-crypto-phishing-losses-fall-83-to-84-million/',
+  },
+  415: {
+    en: 'Orders from a hijacked control panel: in March 2025 two prompts queued from a breached dashboard made the AI agent AIXBT send 55.5 ETH (about $106,000).',
+    ru: 'Приказы из взломанной панели управления: в марте 2025 года две команды, поставленные в очередь со взломанной панели, заставили ИИ-агента AIXBT отправить 55,5 ETH (около $106 000).',
+    source: 'https://cointelegraph.com/news/hacker-breaches-ai-crypto-bot-aixbt-steals-55-eth',
   },
   414: {
     en: 'List one, lose all: in January 2023 Moonbirds creator Kevin Rose signed one marketplace order that listed all his NFTs, and lost about $1.1M.',
@@ -528,6 +535,73 @@ export const ATTACKS = {
         stake: `every NFT of the collection (${held}), or the money of the sale`,
         options: optionsOf(opts),
         at: nftUsd * held,
+      },
+    };
+  },
+  // ------------------------------------------------------------------ 415: who signed this? (drainer-level)
+  415: (c) => {
+    const r = c.rng;
+    const pass = c.code === PASS;
+    const ownerKey = '0x' + hex(r, 64);
+    const thiefKey = '0x' + hex(r, 64);
+    const owner = addressOf(ownerKey);
+    const [name, other] = r.shuffle(SIGNED_PEOPLE);
+    const to = addr(r);
+    const otherAddr = addr(r);
+    const thief = addr(r);
+    const thief2 = poisoned(r, to);
+    const amount = between(r, 300, 2400, 50);
+    const old = between(r, 300, 2400, 50);
+    const n = 400 + r.int(500);
+    const text = (no, who, sum, at) => `Owner's order #${no}: pay ${sum} USDT to ${who} at ${at}.`;
+    // the inbox: every message says it is from the owner and shows a signature
+    const genuine = text(n, name, amount, to);
+    const paid = text(n - 1, other, old, otherAddr);
+    const urgent = `URGENT ${text(n + 1, name, amount, thief)} The old address is compromised.`;
+    const msgs = [
+      { at: '09:12', text: paid, sig: signText(paid, ownerKey), note: 'paid at 09:20 (receipt in the wallet history)', done: true },
+      ...(pass ? [] : [{ at: '10:05', text: genuine, sig: signText(genuine, ownerKey), note: 'not carried out yet' }]),
+      { at: '10:31', text: text(n, name, amount, thief2), sig: signText(genuine, ownerKey), note: 'not carried out yet' }, // the owner's real signature under an edited text
+      { at: '10:47', text: urgent, sig: signText(urgent, thiefKey), note: 'not carried out yet' },
+    ];
+    const right = tx(USDT, transferData(to, BigInt(amount) * E18), `order #${n}: ${amount} USDT to ${name}, signed by the owner`, 0, { gets: name });
+    const bad = [
+      tx(USDT, transferData(thief, BigInt(amount) * E18), 'the "URGENT" order: signed by another key, not the owner\'s', amount, { kind: 'stolen', gets: thief }),
+      tx(USDT, transferData(thief2, BigInt(amount) * E18), "the edited order: the owner's signature is for a different text (another address)", amount, { kind: 'stolen', gets: thief2 }),
+      tx(USDT, transferData(otherAddr, BigInt(old) * E18), `order #${n - 1} again: genuine, but already paid`, old, { kind: 'wrong', gets: other }),
+      tx(USDT, approveData(thief, MAX), 'an unlimited approval "so the new address can collect"', BALANCE, { kind: 'rights', gets: thief }),
+    ];
+    const opts = choose(c, pass ? null : right, r.shuffle(bad), 4);
+    // the solver checks every signature against the owner's key: a signature is the owner's for a text
+    // exactly when signing that text with the owner's key gives it (signatures are deterministic)
+    const valid = msgs.filter((m) => !m.done && signText(m.text, ownerKey) === m.sig);
+    const payOf = (m) => {
+      const x = /pay (\d+) USDT to .* at (0x[0-9a-f]{40})\.$/.exec(m.text);
+      return x ? transferData(x[2], BigInt(x[1]) * E18) : null;
+    };
+    return {
+      title: 'Treasury inbox — orders from the owner',
+      label: 'transaction ID',
+      task: "Carry out the owner's order from the inbox that is really signed by the owner and has not been carried out yet. A signature counts only if it is the owner's (round card) for the exact text shown. Sign only the prepared transaction that does exactly that order. If no order qualifies, send PASS.",
+      cardLines: [
+        `The owner's address (it signs every order): ${owner}`,
+        'The owner signs an order as an Ethereum signed message (personal_sign, EIP-191) of its exact text.',
+        `USDT contract: ${USDT}`,
+      ],
+      blocks: [
+        { k: 'p', text: 'Every message below is marked "From: owner ✔ verified" by the inbox app.' },
+        ...msgs.map((m) => ({ k: 'pre', text: `From: owner ✔ verified · ${m.at} · ${m.note}\nText: ${m.text}\nSignature: ${m.sig}` })),
+        { k: 'grid', title: 'Prepared transactions', head: ['Transaction ID', 'To (contract)', 'Data'], rows: opts.map((o) => [o.id, o.to, o.data]) },
+      ],
+      check: {
+        solve: () => {
+          const want = valid.map(payOf).filter(Boolean);
+          return solveBy(opts, (o) => o.to === USDT && want.includes(o.data));
+        },
+        why: () => `${pass ? "No unpaid order carries the owner's signature for its own text: PASS." : `Only order #${n} (10:05) is signed by the owner (${short(owner)}) for its exact text and not paid yet.`} The 10:31 message shows the owner's real signature under an edited address; the "URGENT" one is signed by another key; order #${n - 1} is genuine but already paid.`,
+        stake: `${amount} USDT to the thief, or the whole wallet`,
+        options: optionsOf(opts),
+        at: BALANCE,
       },
     };
   },
