@@ -17,6 +17,7 @@ import { ATTACKS } from './attacks.js';
 import { randomCode, homoglyphOf, nearMiss, PASS } from './codes.js';
 import { isPassRound } from './keccak.js';
 import { planOf, TASKS, roundsOfDay } from './plan.js';
+import { standingOf } from './standing.js';
 
 export const ROUNDS = 12;
 
@@ -140,8 +141,11 @@ export function renderRound(o) {
   const passCode = passable ? (passRound ? code : fakeCode()) : null;
   // a glued trap sticks to every option ID, never only to the right one: the treasurer's day glues
   // its options itself; for the other tasks every wrong ID gets the same glue as the right one
+  const standing = standingOf(seed);
   const ctx = {
     seed,
+    round,
+    standing,
     rng: makeRng(seed, 'scenario', round),
     fighter,
     code: passRound ? PASS : scenarioIndex >= 100 ? code : shownCode,
@@ -195,6 +199,7 @@ export function renderRound(o) {
       ...(scenarioIndex >= 300 && scenarioIndex < 400 && plan.order.findIndex((id) => id >= 300 && id < 400) === round - 1
         ? ['This round and the other treasury rounds of this fight are one working day of the same wallet.']
         : []),
+      ...(standing.lineOf(round) ? [standing.lineOf(round)] : []),
       ...(sc.cardLines ?? []),
       `Task: ${passCode ? sc.task.replace(/\bPASS(?![A-Za-z])/g, 'your PASS code') : sc.task}`,
       ...(passCode ? [`Your PASS code for this round: ${passCode}`] : []),
