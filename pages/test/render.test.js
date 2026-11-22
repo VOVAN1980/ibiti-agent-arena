@@ -1246,7 +1246,7 @@ test('the owner\'s standing orders: each given once, in a card of rounds 1–3, 
         seen.bookFromMemory++;
       }
     }
-    for (const kind of ['blocked', 'reserve', 'book', 'signer', 'update']) {
+    for (const kind of ['blocked', 'reserve', 'book', 'signer', 'update', 'update2']) {
       const at = cards.map((cd, i) => (cd.includes(st.lines[kind]) ? i + 1 : 0)).filter(Boolean);
       assert.deepEqual(at, [st.roundOf[kind]], `seed ${s}: the ${kind} order is given exactly once, in round ${st.roundOf[kind]}`);
     }

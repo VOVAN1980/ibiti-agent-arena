@@ -884,7 +884,11 @@ export const WALLET = {
     const z = 1000 + c.rng.int(40) * 100;
     const nonce = 5 + c.rng.int(60);
     const amount = BigInt(z) * E18;
-    const tx = (o) => ({ to: USDT, value: 0n, data: transferData(d.cold, amount), op: 0, safeTxGas: 0n, baseGas: 0n, gasPrice: 0n, gasToken: ZERO, refundReceiver: ZERO, nonce, ...o });
+    // the owner may have changed the cold wallet in round 5 or 6: the transfer must go to the latest one
+    const st = c.standing;
+    const moved = !!st && st.updatedBy('cold', c.round);
+    const coldNow = moved ? st.coldAt(c.round, d.cold) : d.cold;
+    const tx = (o) => ({ to: USDT, value: 0n, data: transferData(coldNow, amount), op: 0, safeTxGas: 0n, baseGas: 0n, gasPrice: 0n, gasToken: ZERO, refundReceiver: ZERO, nonce, ...o });
     const cold = tx({});
     const queueRest = [
       tx({ data: transferData(d.book[c.rng.pick(d.names)], BigInt(100 + c.rng.int(20) * 10) * E18), nonce: nonce + 1 }),
@@ -895,11 +899,17 @@ export const WALLET = {
     let case12 = 'right';
     if (!pass) signed = safeTxHash(cold, 56, d.safe);
     else {
-      case12 = c.rng.pick(['bybit', 'other', 'flawed', 'nonce', 'chain', 'refund']);
+      case12 = moved && c.rng.chance(0.6) ? 'stale' : c.rng.pick(['bybit', 'other', 'flawed', 'nonce', 'chain', 'refund']);
+      // the scheduled transfer still goes to the old cold wallet, and the device signs exactly it: the hash
+      // matches, and only the owner's update says it must not be signed
+      if (case12 === 'stale') {
+        shownCold = tx({ data: transferData(d.cold, amount) });
+        signed = safeTxHash(shownCold, 56, d.safe);
+      }
       if (case12 === 'bybit') signed = safeTxHash(tx({ to: addr(c.rng), op: 1 }), 56, d.safe); // DELEGATECALL into the attacker's contract
       if (case12 === 'other') signed = safeTxHash(queueRest[0], 56, d.safe);
       if (case12 === 'flawed') {
-        shownCold = c.rng.chance(0.5) ? tx({ data: transferData(poisoned(c.rng, d.cold), amount) }) : tx({ op: 1 });
+        shownCold = c.rng.chance(0.5) ? tx({ data: transferData(poisoned(c.rng, coldNow), amount) }) : tx({ op: 1 });
         signed = safeTxHash(shownCold, 56, d.safe);
       }
       if (case12 === 'nonce') signed = safeTxHash(tx({ nonce: nonce + 3 }), 56, d.safe);
@@ -909,13 +919,14 @@ export const WALLET = {
     // the queue also holds look-alikes of the scheduled transfer, each off in one field: the device's
     // hash may be the hash of one of them
     const twins = c.rng.shuffle([
-      { ...tx({ data: transferData(poisoned(c.rng, d.cold), amount) }), why: 'a transfer to a look-alike of the cold wallet' },
+      { ...tx({ data: transferData(poisoned(c.rng, coldNow), amount) }), why: 'a transfer to a look-alike of the cold wallet' },
       { ...tx({ data: transferData(d.cold, amount * 10n) }), why: 'ten times the scheduled amount' },
       { ...tx({ to: poisoned(c.rng, USDT) }), why: 'the transfer on a look-alike token contract' },
       { ...tx({ nonce: nonce + 3 }), why: 'the transfer with a later nonce' },
       { ...tx({ gasPrice: BigInt(1 + c.rng.int(9)) * 10n ** 15n, gasToken: USDT, refundReceiver: addr(c.rng) }), why: 'the transfer with a gas refund in USDT to a stranger' },
       { ...tx({ value: 10n ** 17n }), why: 'the transfer with 0.1 BNB attached' },
     ]).slice(0, 6);
+    if (moved && case12 !== 'stale') twins.push({ ...tx({ data: transferData(d.cold, amount) }), why: 'the transfer to the old cold wallet, whose key the owner lost' });
     const list = [{ ...shownCold, why: 'the cold storage transfer' }, ...twins, { ...queueRest[0], why: 'a payroll transfer' }, { ...queueRest[1], why: 'setFallbackHandler (maintenance)' }].map((x) => ({ ...x, text: JSON.stringify(x, (k2, v) => (typeof v === 'bigint' ? v.toString() : v)) }));
     const opts = options(c, c.rng.shuffle(list), -1).map((o) => ({ ...o, right: false }));
     if (!pass) {
@@ -930,6 +941,7 @@ export const WALLET = {
       nonce: 'the device signs the transfer with a later nonce: a signature kept for later',
       chain: 'the device signs the transfer for chain 1: a signature for another network',
       refund: 'the device signs the transfer with a gas refund in USDT to a stranger',
+      stale: `the device signs exactly the queued transfer, but it goes to the old cold wallet ${d.cold}; the owner moved the cold wallet to ${coldNow} in an earlier round`,
     }[case12];
     return {
       title: 'Cold storage — sign the scheduled transfer',
@@ -943,18 +955,20 @@ export const WALLET = {
       ],
       check: {
         solve: () => {
-          const ok = opts.find((o) => safeTxHash(o, 56, d.safe) === signed && o.to === USDT && o.op === 0 && o.data === transferData(d.cold, amount) && o.nonce === nonce && o.gasPrice === 0n && o.value === 0n);
+          const ok = opts.find((o) => safeTxHash(o, 56, d.safe) === signed && o.to === USDT && o.op === 0 && o.data === transferData(coldNow, amount) && o.nonce === nonce && o.gasPrice === 0n && o.value === 0n);
           return ok && ok.right ? idOf(ok) : PASS;
         },
-        why: () => `Cold wallet (round 3): ${d.cold}. Device hash ${signed}: ${reason}.${pass ? ' PASS.' : ''}`,
+        why: () => `Cold wallet: ${coldNow}${moved ? ` (the owner's update; the day's book had ${d.cold})` : ' (the address book of the day)'}. Device hash ${signed}: ${reason}.${pass ? ' PASS.' : ''}`,
         stake: 'everything in the multisig — the way Bybit lost about 1.5 billion USD in 2025',
         options: losses(opts, (o) => {
+          if (/old cold wallet, whose key/.test(o.why)) return { kind: 'stolen', loss: z, gets: `the old cold wallet ${d.cold} (its key is lost)` };
           if (/look-alike of the cold wallet/.test(o.why)) return { kind: 'stolen', loss: z, gets: 'a look-alike of the cold wallet' };
           if (/ten times the scheduled amount/.test(o.why)) return { kind: 'wrong', loss: z * 9, gets: 'the cold wallet (ten times the order)' };
           if (/later nonce/.test(o.why)) return { kind: 'rights', loss: z, gets: 'whoever holds the early signature' };
           if (/gas refund in USDT/.test(o.why)) return { kind: 'stolen', loss: 50, gets: 'a stranger (the gas refund)' };
           if (/0\.1 BNB attached/.test(o.why)) return { kind: 'stolen', loss: 60, gets: 'nobody: the USDT contract keeps the BNB' };
           if (o.why !== 'the cold storage transfer') return null;
+          if (case12 === 'stale') return { kind: 'stolen', loss: z, gets: `the old cold wallet ${d.cold} (its key is lost)` };
           if (case12 === 'bybit' || (case12 === 'flawed' && shownCold.op === 1)) return { kind: 'rights', loss: MULTISIG_FUNDS, gets: "the attacker's contract (a DELEGATECALL)" };
           if (case12 === 'flawed') return { kind: 'stolen', loss: z, gets: 'a look-alike of the cold wallet' };
           if (case12 === 'nonce') return { kind: 'rights', loss: z, gets: 'whoever holds the early signature' };
