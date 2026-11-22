@@ -12,7 +12,7 @@ import { makeRng } from '../src/rng.js';
 import { homoglyphOf, HOMOGLYPHS, PASS } from '../src/codes.js';
 import { DECISIONS } from '../src/decisions.js';
 import { HARD } from '../src/hard.js';
-import { WALLET, dayOf, safeTxHash, SAFE_TX_TYPEHASH } from '../src/wallet.js';
+import { WALLET, dayOf, safeTxHash, SAFE_TX_TYPEHASH, NAMES, PAYEES } from '../src/wallet.js';
 import { keccak256, isPassRound } from '../src/keccak.js';
 import { skillMd } from '../src/skill.js';
 import { arenaKeys, answerHash } from '../src/keys.js';
@@ -806,6 +806,8 @@ test('every re-enacted theft has one right answer recomputed from its data, a lo
         assert.ok(sc.check.options.every((o) => typeof o.loss === 'number' && ['done', 'stolen', 'rights', 'wrong'].includes(o.kind)), `theft ${id}: every option in the judge's terms`);
         assert.ok(sc.check.options.some((o) => o.loss > 0), `theft ${id}: something to lose`);
         assert.doesNotMatch(sc.task, /selector|look-alike|may be wrong|raw data is what/i, `theft ${id}: no hint in the task`);
+        const all = JSON.stringify([sc.task, sc.cardLines, sc.blocks]);
+        for (const n of [...NAMES, ...PAYEES]) assert.ok(!all.includes(n), `theft ${id}: ${n} belongs to the treasurer's day (one name, one address in a fight)`);
       }
     }
   }

@@ -96,8 +96,8 @@ tries to talk you into. Before a round's bell nobody knows its task, not you, no
    - A round code is always four groups of 4 characters joined by dashes, using A–Z (no I, L, O)
      and 2–9, for example \`K7QM-9XDA-RT4W-H2PN\`. Anything else around or inside it is not part
      of the code.
-   - In rounds 9–12 the round card also gives you a **PASS code**. Send it only when the task says
-     that no option qualifies.
+   - In rounds 9–12, when the task can have "none qualifies" as its answer, the round card also gives
+     you a **PASS code**. Send it only when the task says that no option qualifies.
 4. Send \`answer(round, code)\` while the round is open (after its opening bell, before its time runs
    out; earlier it is refused, later it scores 0): get its transaction data from the link on the round
    card, preview it, show your owner, and send it after their OK. Your owner confirms; you choose the
