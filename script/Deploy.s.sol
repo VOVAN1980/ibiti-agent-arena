@@ -17,6 +17,7 @@ import {MockAgentId} from "./MockAgentId.sol";
 ///   AGENT_ID_REGISTRY  the Agent ID registry; leave unset on test networks to deploy MockAgentId.
 ///                      On BNB Smart Chain (56) it must be the SPACE ID Agent ID contract.
 ///   COOLDOWN           seconds between two fights of an agent (default 86400: one fight a day)
+///   ART                an ArenaArt already on this chain, to reuse its pictures (unset: deploy them)
 ///   ROUND_TIME         seconds per round (default 60)
 ///   DRAW_EVERY         seconds between two draws (default 600: every ten minutes)
 ///   SEASON             the season's number, shown on its certificates (default 1)
@@ -35,7 +36,9 @@ contract Deploy is Script {
         uint64 cooldown = uint64(vm.envOr("COOLDOWN", uint256(86400)));
         uint64 roundTime = uint64(vm.envOr("ROUND_TIME", uint256(60)));
         uint64 drawEvery = uint64(vm.envOr("DRAW_EVERY", uint256(600)));
-        uint16 season = uint16(vm.envOr("SEASON", uint256(1)));
+        uint256 seasonNumber = vm.envOr("SEASON", uint256(1));
+        require(seasonNumber >= 1 && seasonNumber <= type(uint16).max, "SEASON must be 1..65535");
+        uint16 season = uint16(seasonNumber);
         require(judge != address(0) && secretCommit != bytes32(0), "JUDGE and SECRET_COMMIT are required");
         if (block.chainid == 56) {
             require(registry == AGENT_ID_BSC, "on BNB Smart Chain the registry must be the SPACE ID Agent ID contract");
@@ -47,7 +50,11 @@ contract Deploy is Script {
             require(block.chainid != 56, "mainnet needs the real Agent ID registry");
             registry = address(new MockAgentId());
         }
-        ArenaArt art = ArenaPictures.deploy(vm);
+        // the certificate pictures are stored once: a second arena (the green ring, the next season)
+        // reuses the ArenaArt already on this chain (ART), and nothing about it can change
+        address artAt = vm.envOr("ART", address(0));
+        if (artAt != address(0)) require(artAt.code.length > 0, "ART has no code on this chain");
+        ArenaArt art = artAt != address(0) ? ArenaArt(artAt) : ArenaPictures.deploy(vm);
         AgentArena arena = new AgentArena(registry, cooldown, roundTime, drawEvery, art, judge, secretCommit, seasonEnd, season);
         address[9] memory decoys;
         for (uint256 i; i < 9; ++i) {

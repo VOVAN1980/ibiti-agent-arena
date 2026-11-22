@@ -395,6 +395,36 @@ challenges expire (an hour); the judge's key is not serialised across overlappin
 not inspected (the live log showed no query strings); a reorganisation deeper than two blocks is not
 rolled back on the site.
 
+## Eleventh review (2026-11-22): the certificate pictures and the season without challenges
+
+An independent reviewer, given only the code, read every contract change after dc19703: the medal
+certificates (ArenaArt, ArenaPicture, ArenaCertificate, script/ArenaPictures.sol) and the challenged
+agent in the judge's signed commitment. Two findings, both fixed with a test that fails on the old code:
+
+- **The certificate could carry a later registration's name.** `judgeFight` recorded
+  `entries[agent].name`, which a new `register()` overwrites. An agent whose fight was not judged yet
+  (a late judge, or fights judged out of order) could register again under any open name and have
+  that text printed on its certificate as "<text>.ai". Each fight now keeps the name it was fought
+  under (`Fight.name`, set when it opens), and the certificate records that one.
+- **".ai" twice on an upper-case Agent ID name.** The Agent ID check ignores case ("ORION.AI" is
+  orion.ai), the certificate's ".ai" did not: it printed "ORION.AI.ai". It now ignores case too.
+- Nit: the deploy script refuses a SEASON outside 1..65535 instead of truncating it.
+
+Checked and clean: the commitment digest (no replay across chains, arenas, agents or fights; the
+challenged agent cannot be swapped; a season server that signs only zero stops every challenge), the
+pairing window of mutual challenges, the season ranking and its close (no revert can block the judge,
+no winner can block the close), every base64 layer of tokenURI (no padding inside, well-formed JSON
+and SVG), names in JSON and SVG, the picture storage (STOP byte plus at most 24,575 bytes), the deploy
+script's order and read-back check. The deploy script also takes ART to reuse the pictures already on
+a chain, so a second arena (the green ring, a next season) stores none again.
+
+Slither 0.11.6 on this version gives 50 results (45 before). The five new ones are of the kinds the
+table below already explains: the timestamp of the certificate's record and close, the assembly that
+reads a picture (ArenaArt.encodedPicture, ArenaPicture's constructor), a local counter starting at zero
+in ArenaArt's constructor, and the SVG's long number literals (too-many-digits).
+
+Tests: 84 Foundry tests, 74 Node tests. AgentArena runtime 23,583 bytes.
+
 ## Slither 0.11.6 on this version: 45 results, all reviewed
 
 Command: `slither . --foundry-out-directory out --exclude-dependencies --filter-paths "test/|script/|lib/"`.

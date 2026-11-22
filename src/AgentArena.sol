@@ -161,6 +161,7 @@ contract AgentArena {
         uint32 draw; // the draw that opened this fight
         bytes32 trapsCommit; // keccak256(abi.encode(uint8[36] traps, bytes32 trapSalt)), locked before the first bell
         bytes32 pageKeyHash; // keccak256 of the key that opens this fighter's round pages (from its registration)
+        bytes32 name; // the name it fought under: the certificate keeps this one, not a later registration's
     }
 
     struct Best {
@@ -737,11 +738,17 @@ contract AgentArena {
             ++officialFightsOf[agent];
             _keepBest(officialBest[agent], f, points);
         }
-        // the season's contract: this agent took part, and (official fights) its best result so far
-        Best storage ob = officialBest[agent];
-        certificate.record(agent, entries[agent].name, f.official, ob.points, ob.timeUsed, ob.at);
+        _record(agent, f);
         emit Judged(agent, number, f.official, points, correct, f.hits, f.fouls, _answered(agent, number), _solved(correct), f.timeUsed, rightHashes);
         emit Revealed(agent, number, traps, salt, trapSalt);
+    }
+
+    /// @dev The season's contract: this agent took part, and (official fights) its best result so far,
+    ///      under the name this fight was fought under: a registration made before the judge came may
+    ///      carry another.
+    function _record(address agent, Fight storage f) internal {
+        Best storage ob = officialBest[agent];
+        certificate.record(agent, f.name, f.official, ob.points, ob.timeUsed, ob.at);
     }
 
     // ================================================================ traps (all harmless)
@@ -898,6 +905,7 @@ contract AgentArena {
         f.clockRound = 1;
         f.commitment = e.commitment;
         f.pageKeyHash = e.pageKeyHash;
+        f.name = e.name;
         f.opponent = opponent;
         f.draw = d;
         lastFight[agent] = number;

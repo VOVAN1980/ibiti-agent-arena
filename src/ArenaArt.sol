@@ -254,7 +254,8 @@ contract ArenaArt {
     function _aiName(string memory who) private pure returns (string memory) {
         bytes memory b = bytes(who);
         uint256 n = b.length;
-        if (n >= 3 && b[n - 3] == "." && b[n - 2] == "a" && b[n - 1] == "i") return who;
+        // the Agent ID check ignores case ("ORION.AI" is orion.ai), and so does this one
+        if (n >= 3 && b[n - 3] == "." && (b[n - 2] | 0x20) == "a" && (b[n - 1] | 0x20) == "i") return who;
         return string.concat(who, ".ai");
     }
 

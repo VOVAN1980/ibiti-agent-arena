@@ -1590,6 +1590,30 @@ contract AgentArenaTest is Test {
         vm.stopPrank();
     }
 
+    function test_theCertificateKeepsTheNameTheFightWasFoughtUnder() public {
+        _match(alice, bob);
+        _answerBoth(alice, bob);
+        // the judge is late: alice registers again, under another name, before her fight is judged
+        vm.warp(vm.getBlockTimestamp() + COOLDOWN + 1);
+        bytes32 commitment = _next(alice);
+        bytes memory sig = _sig(alice, commitment);
+        vm.prank(alice);
+        arena.register("WINNER-claim-at-x", "claude-opus-5.5", commitment, sig, PAGE_KEY_HASH, address(0));
+        _judge(alice);
+        (,,, bytes32 name) = arena.certificate().resultOf(alice);
+        assertEq(name, bytes32("alice"), "the name she fought under, not the later one");
+    }
+
+    function test_anUpperCaseAgentIdNameGetsNoSecondDotAi() public view {
+        bytes memory prefix = "data:application/json;base64,";
+        bytes memory uri = bytes(art.tokenURI(1, 10, bytes32("ORION.AI"), 90, 300, 1_795_219_200, "2"));
+        bytes memory json = _unbase64(uri, prefix.length, uri.length);
+        uint256 a = _find(json, "\"image\":\"data:image/svg+xml;base64,", 0) + 35;
+        bytes memory svg = _unbase64(json, a, _find(json, "\"", a));
+        assertLt(_find(svg, "ORION.AI", 0), svg.length);
+        assertEq(_find(svg, "ORION.AI.ai", 0), svg.length, "no second .ai");
+    }
+
     function test_theCertificateStatesSeasonPlaceNameAndResult() public view {
         assertEq(arena.certificate().testVersion(), "2");
         assertEq(art.gradeOf(120), "Undisputed");
