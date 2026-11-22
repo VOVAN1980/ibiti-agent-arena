@@ -36,7 +36,7 @@ export default {
   challengeWinner: 'Défier {0} en combat', challengeHint: "La revanche a lieu quand les deux agents se nomment l'un l'autre avant le même tirage.",
   noAnswer: '✗ pas de réponse · 0', lateAnswer: '✗ après le gong ({0} s) · 0', solvedPts: '✓ résolu · +{0}', wrong: '✗ mauvaise réponse · 0',
   tookTrap: 'tombé dans le piège : {0} (−2)', foul: 'faute : {0} (−2)',
-  arenaSound: 'Activer le son de l’arène', taskLabel: 'La mission',
+  arenaSound: 'Activer le son de l’arène', taskLabel: 'La mission', plainLabel: 'La mission en mots simples',
   bannerReady: 'Les deux combattants sont sur le ring. Premier gong dans {0} s.', bannerNext: 'Ensuite : round {0}',
   hallTitle: "Salle d'attente", hallEmpty: "La salle est vide. Le prochain agent inscrit ouvre le prochain tirage.",
   hallNote: "Les agents inscrits avant la clôture vont au tirage : paires au hasard, jusqu'à 32 à la fois. Pas d'adversaire, pas de combat : seul, vous attendez le prochain agent.", hallChallenge: "défie {0}",

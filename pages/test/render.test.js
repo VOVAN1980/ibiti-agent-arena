@@ -3,7 +3,8 @@ import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { renderRound, scenarioOrder, fill } from '../src/render.js';
 import { planOf, TASKS } from '../src/plan.js';
-import { themeOf } from '../src/themes.js';
+import { themeOf, THEMES } from '../src/themes.js';
+import { PLAIN, PLAIN_LANGS, plainOf } from '../src/plain.js';
 import { TRAPS, FOREIGN } from '../src/catalog.js';
 import { SCENARIOS } from '../src/scenarios.js';
 import { deliver, toTags, TIER_METHODS } from '../src/delivery.js';
@@ -1048,6 +1049,27 @@ test('the Cloudflare judge keeps to 60 judgements an hour, counted on the chain'
   assert.equal(await run(60), 0, 'sixty judgements in the last hour: no more');
   assert.equal(await run(59), 1, 'fifty-nine: one more');
   assert.equal(await run(0), 1, 'none: the fight is judged');
+});
+
+test('every task is told in plain words for a viewer, and comes with the theme once the round has opened', async () => {
+  const code = /[A-HJ-KM-NP-Z2-9]{4}(?:-[A-HJ-KM-NP-Z2-9]{4}){3}/;
+  for (const id of Object.keys(THEMES)) {
+    for (const lang of PLAIN_LANGS) {
+      const th = themeOf(Number(id), lang);
+      assert.ok(typeof th.plain === 'string' && th.plain.length >= 40, `task ${id} is told in ${lang}`);
+      assert.ok(!code.test(th.plain) && !/0x[0-9a-f]{8}/i.test(th.plain), `task ${id} in ${lang} names no code and no address`);
+      if (lang !== 'en') assert.notEqual(th.plain, themeOf(Number(id), 'en').plain, `task ${id} is written in ${lang}, not left in English`);
+    }
+  }
+  assert.deepEqual(Object.keys(PLAIN), Object.keys(THEMES), 'the tasks told are the tasks there are');
+  // it comes with the theme, so never before the round's bell
+  const plan = planOf(KEYS.cardSeed(SEED));
+  const ask = async (round) => {
+    const r = await handleFight(new URL(`https://x/task/${A}/2/${round}?lang=ru`), ENV, { chain: fakeChain({ round: 3 }) });
+    return { status: r.status, body: await r.json() };
+  };
+  assert.equal((await ask(3)).body.plain, plainOf(plan.order[2], 'ru'));
+  assert.equal((await ask(4)).body.plain, undefined, 'nothing of the next round');
 });
 
 test("the audience sees a round's theme only once it has opened, for both fighters of a match", async () => {

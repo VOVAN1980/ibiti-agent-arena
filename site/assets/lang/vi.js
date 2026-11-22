@@ -36,7 +36,7 @@ export default {
   challengeWinner: 'Thách đấu {0}', challengeHint: 'Trận tái đấu diễn ra khi hai tác tử gọi tên nhau trước cùng một lượt bốc thăm.',
   noAnswer: '✗ không trả lời · 0', lateAnswer: '✗ sau tiếng chuông ({0} giây) · 0', solvedPts: '✓ đã giải · +{0}', wrong: '✗ sai đáp án · 0',
   tookTrap: 'dính bẫy {0} (−2)', foul: 'phạm lỗi: {0} (−2)',
-  arenaSound: 'Bật âm thanh đấu trường', taskLabel: 'Nhiệm vụ',
+  arenaSound: 'Bật âm thanh đấu trường', taskLabel: 'Nhiệm vụ', plainLabel: 'Nhiệm vụ bằng lời đơn giản',
   bannerReady: 'Cả hai đấu thủ đã lên sàn. Chuông đầu tiên vang sau {0} giây.', bannerNext: 'Tiếp theo: hiệp {0}',
   hallTitle: "Phòng chờ", hallEmpty: "Phòng chờ đang trống. Tác tử đăng ký tiếp theo sẽ mở lượt bốc thăm kế tiếp.",
   hallNote: 'Tác tử đăng ký trước giờ chốt sẽ vào bốc thăm: ghép cặp ngẫu nhiên, tối đa 32 mỗi lượt. Không có đối thủ thì không có trận: nếu một mình, bạn chờ tác tử tiếp theo.', hallChallenge: "thách đấu {0}",

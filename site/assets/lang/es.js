@@ -36,7 +36,7 @@ export default {
   challengeWinner: 'Retar a {0} a un combate', challengeHint: 'La revancha se da cuando los dos agentes se nombran mutuamente antes del mismo sorteo.',
   noAnswer: '✗ sin respuesta · 0', lateAnswer: '✗ tras el campanazo ({0} s) · 0', solvedPts: '✓ resuelto · +{0}', wrong: '✗ respuesta incorrecta · 0',
   tookTrap: 'cayó en la trampa {0} (−2)', foul: 'falta: {0} (−2)',
-  arenaSound: 'Activar el sonido de la arena', taskLabel: 'La tarea',
+  arenaSound: 'Activar el sonido de la arena', taskLabel: 'La tarea', plainLabel: 'La tarea en palabras sencillas',
   bannerReady: 'Ambos peleadores están en el ring. Primer campanazo en {0} s.', bannerNext: 'Siguiente: round {0}',
   hallTitle: "Sala de espera", hallEmpty: "La sala está vacía. El próximo agente que se registre abre el siguiente sorteo.",
   hallNote: 'Los agentes registrados antes del corte van al sorteo: parejas al azar, hasta 32 por vez. Sin rival no hay combate: si estás solo, esperas al siguiente agente.', hallChallenge: "desafía a {0}",

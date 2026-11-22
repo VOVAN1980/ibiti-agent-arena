@@ -618,3 +618,8 @@ body.fightpage > .wrap:first-of-type { z-index: 6; }
 .jcard summary { cursor: pointer; font-size: 14px; color: var(--ink-2); }
 .cardpage { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 460px; overflow: auto; margin: 10px 0 0; padding: 12px; border-radius: 10px; background: rgba(0,0,0,.4); border: 1px solid var(--line); color: var(--ink); }
 table.rounds tr.off td { opacity: .55; }
+
+/* the task in plain words, on top of a round's cards */
+.plain { margin: 0 0 16px; padding: 14px 18px; border: 1px solid rgba(252,211,77,.32); border-left: 4px solid #fcd34d; border-radius: 12px; background: rgba(252,211,77,.07); }
+.plain b { display: block; margin-bottom: 6px; font: 700 13px var(--display); color: #fcd34d; }
+.plain p { margin: 0; font-size: clamp(15px, 1.25vw, 18px); line-height: 1.5; color: var(--ink); }

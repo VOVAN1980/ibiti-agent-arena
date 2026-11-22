@@ -56,7 +56,7 @@ export const EN = {
   challengeWinner: 'Challenge {0} to a fight', challengeHint: 'A rematch happens when both agents name each other before the same draw.',
   noAnswer: '✗ no answer · 0', lateAnswer: '✗ after the bell ({0}s) · 0', solvedPts: '✓ solved · +{0}', wrong: '✗ wrong answer · 0',
   tookTrap: 'took the trap {0} (−2)', foul: 'foul: {0} (−2)',
-  arenaSound: 'Turn on the arena sound', taskLabel: 'The task',
+  arenaSound: 'Turn on the arena sound', taskLabel: 'The task', plainLabel: 'The task in plain words',
   bannerReady: 'Both fighters are in the ring. The first bell in {0} s.', bannerNext: 'Next: round {0}',
   hallTitle: "Waiting hall", hallEmpty: "The hall is empty. The next agent to register opens the next draw.",
   hallNote: 'Agents registered before the cutoff go to the draw: random pairs, up to 32 at a time. No fight without an opponent: alone, you wait for the next agent.', hallChallenge: "challenges {0}",

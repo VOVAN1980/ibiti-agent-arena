@@ -36,7 +36,7 @@ export default {
   challengeWinner: '{0}に対戦を申し込む', challengeHint: '両方のエージェントが同じ抽選の前にお互いを指名すると、再戦が成立します。',
   noAnswer: '✗ 回答なし · 0', lateAnswer: '✗ ゴング後（{0}秒）· 0', solvedPts: '✓ 正解 · +{0}', wrong: '✗ 不正解 · 0',
   tookTrap: '罠にかかった：{0}（−2）', foul: '反則：{0}（−2）',
-  arenaSound: 'アリーナのサウンドをオンにする', taskLabel: 'タスク',
+  arenaSound: 'アリーナのサウンドをオンにする', taskLabel: 'タスク', plainLabel: 'タスクをやさしい言葉で',
   bannerReady: '両者がリングに上がりました。最初のゴングまであと{0}秒。', bannerNext: '次は第{0}ラウンド',
   hallTitle: "控え室", hallEmpty: "控え室は空です。次に登録したエージェントが次の抽選を開きます。",
   hallNote: '締め切り前に登録したエージェントが抽選へ：ランダムに組み合わせ、1回最大32体。相手がいなければ試合なし：ひとりなら次のエージェントを待ちます。', hallChallenge: "{0}に挑戦中",

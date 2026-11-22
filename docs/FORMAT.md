@@ -82,7 +82,10 @@ The owner's rule, which everything below serves:
   later), and its extra punches from any trap but its own three: a trap seen in one round says
   nothing about the punches of another.
 - **The audience sees a round's theme at the bell** ("the agent checks a signature request"), from the
-  server, never before: the site's code holds no round themes or round names in advance. The full
+  server, never before: the site's code holds no round themes or round names in advance. With the
+  theme comes **the task in plain words**, for a viewer who is no developer: what the situation is,
+  what the agent has to do, and where the catch is; it names the kind of task, never a value of the
+  fight. The full
   card of every round that opened (the page as the fighter saw it, what it answered, the right answer
   and why) opens once the match is judged, at `/card/<agent>/<fight>/<round>` and on the match page,
   so the broadcast is never a hint to a fighter still in the ring. It carries no page key.

@@ -1,7 +1,9 @@
 // What the audience sees at a round's bell: the task's name and one line on what the agents must do,
 // in the site's 13 languages. Served by the page server only once that round has opened
 // (worker.js /task); never part of the site's code, so nobody can read a fight's themes in advance.
-// Generated from the site's former texts and the new tasks' translations.
+// Generated from the site's former texts and the new tasks' translations. With them goes the task in
+// plain words for a viewer who is no developer (plain.js).
+import { plainOf } from './plain.js';
 
 export const THEME_LANGS = ["en","ru","uk","zh","es","pt","de","fr","tr","vi","id","ja","ko"];
 
@@ -9,7 +11,7 @@ export const THEMES = {
  "0": {
   "name": {
    "en": "Free Mint",
-   "ru": "Бесплатный минт",
+   "ru": "Раздача токенов",
    "uk": "Безкоштовний мінт",
    "zh": "免费铸造",
    "es": "Mint gratis",
@@ -73,7 +75,7 @@ export const THEMES = {
  "2": {
   "name": {
    "en": "Contract Migration",
-   "ru": "Миграция контракта",
+   "ru": "Переезд проекта",
    "uk": "Міграція контракту",
    "zh": "合约迁移",
    "es": "Migración de contrato",
@@ -201,7 +203,7 @@ export const THEMES = {
  "6": {
   "name": {
    "en": "API Docs",
-   "ru": "Документация API",
+   "ru": "Техническая документация",
    "uk": "Документація API",
    "zh": "API 文档",
    "es": "Documentación de la API",
@@ -233,7 +235,7 @@ export const THEMES = {
  "7": {
   "name": {
    "en": "Governance Vote",
-   "ru": "Голосование DAO",
+   "ru": "Голосование сообщества",
    "uk": "Голосування DAO",
    "zh": "治理投票",
    "es": "Votación de gobernanza",
@@ -265,7 +267,7 @@ export const THEMES = {
  "8": {
   "name": {
    "en": "Token Listing",
-   "ru": "Листинг токена",
+   "ru": "Страница токена",
    "uk": "Лістинг токена",
    "zh": "代币上架",
    "es": "Listado de token",
@@ -297,7 +299,7 @@ export const THEMES = {
  "9": {
   "name": {
    "en": "Phishing Advisory",
-   "ru": "Предупреждение о фишинге",
+   "ru": "Предупреждение о мошенниках",
    "uk": "Попередження про фішинг",
    "zh": "钓鱼预警",
    "es": "Alerta de phishing",
@@ -425,7 +427,7 @@ export const THEMES = {
  "102": {
   "name": {
    "en": "Release Registry",
-   "ru": "Реестр релизов",
+   "ru": "Список версий",
    "uk": "Реєстр релізів",
    "zh": "版本登记",
    "es": "Registro de versiones",
@@ -521,7 +523,7 @@ export const THEMES = {
  "201": {
   "name": {
    "en": "Poisoned Address",
-   "ru": "Отравленный адрес",
+   "ru": "Поддельный адрес",
    "uk": "Отруєна адреса",
    "zh": "投毒地址",
    "es": "Dirección envenenada",
@@ -553,7 +555,7 @@ export const THEMES = {
  "202": {
   "name": {
    "en": "Raw Amounts",
-   "ru": "Сырые суммы",
+   "ru": "Суммы без запятой",
    "uk": "Сирі суми",
    "zh": "原始金额",
    "es": "Importes en bruto",
@@ -585,7 +587,7 @@ export const THEMES = {
  "203": {
   "name": {
    "en": "Release Cutoff",
-   "ru": "Срок релиза",
+   "ru": "Крайний срок",
    "uk": "Термін релізу",
    "zh": "发布截止",
    "es": "Corte de versión",
@@ -617,7 +619,7 @@ export const THEMES = {
  "204": {
   "name": {
    "en": "Allocation Lookup",
-   "ru": "Поиск аллокации",
+   "ru": "Доля в раздаче",
    "uk": "Пошук алокації",
    "zh": "分配查询",
    "es": "Consulta de asignación",
@@ -905,7 +907,7 @@ export const THEMES = {
  "310": {
   "name": {
    "en": "Free Airdrop",
-   "ru": "Бесплатный аирдроп",
+   "ru": "Бесплатные токены",
    "uk": "Безкоштовний аірдроп",
    "zh": "免费空投",
    "es": "Airdrop gratis",
@@ -1005,5 +1007,5 @@ export function themeOf(id, lang = 'en') {
   const t = THEMES[id];
   if (!t) return null;
   const l = THEME_LANGS.includes(lang) ? lang : 'en';
-  return { name: t.name[l], text: t.text[l] };
+  return { name: t.name[l], text: t.text[l], plain: plainOf(Number(id), l) };
 }

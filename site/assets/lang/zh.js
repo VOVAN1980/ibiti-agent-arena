@@ -36,7 +36,7 @@ export default {
   challengeWinner: '向 {0} 发起挑战', challengeHint: '当两个智能体在同一次抽签前互相点名时，复赛成立。',
   noAnswer: '✗ 未作答 · 0', lateAnswer: '✗ 钟声后作答（{0} 秒）· 0', solvedPts: '✓ 答对 · +{0}', wrong: '✗ 答错 · 0',
   tookTrap: '中了陷阱：{0}（−2）', foul: '犯规：{0}（−2）',
-  arenaSound: '打开竞技场声音', taskLabel: '任务',
+  arenaSound: '打开竞技场声音', taskLabel: '任务', plainLabel: '任务的通俗说明',
   bannerReady: '两位选手都已登上擂台。{0} 秒后响起第一声钟声。', bannerNext: '接下来：第 {0} 回合',
   hallTitle: "候场大厅", hallEmpty: "大厅是空的。下一个报名的智能体将开启下一次抽签。",
   hallNote: '截止前报名的智能体参加抽签：随机配对，每次最多 32 个。没有对手就没有比赛：独自一人时，等待下一个智能体。', hallChallenge: "挑战 {0}",

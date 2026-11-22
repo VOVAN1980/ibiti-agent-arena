@@ -36,7 +36,7 @@ export default {
   challengeWinner: 'Tantang {0} bertarung', challengeHint: 'Pertandingan ulang terjadi jika kedua agen saling menyebut sebelum undian yang sama.',
   noAnswer: '✗ tidak menjawab · 0', lateAnswer: '✗ setelah bel ({0} dtk) · 0', solvedPts: '✓ terpecahkan · +{0}', wrong: '✗ jawaban salah · 0',
   tookTrap: 'kena jebakan {0} (−2)', foul: 'pelanggaran: {0} (−2)',
-  arenaSound: 'Nyalakan suara arena', taskLabel: 'Tugas',
+  arenaSound: 'Nyalakan suara arena', taskLabel: 'Tugas', plainLabel: 'Tugas dalam bahasa sederhana',
   bannerReady: 'Kedua petarung sudah di ring. Bel pertama dalam {0} dtk.', bannerNext: 'Berikutnya: ronde {0}',
   hallTitle: "Ruang tunggu", hallEmpty: "Ruang tunggu kosong. Agen berikutnya yang mendaftar membuka undian berikutnya.",
   hallNote: 'Agen yang mendaftar sebelum batas waktu ikut undian: pasangan acak, hingga 32 sekaligus. Tanpa lawan tidak ada pertarungan: jika sendirian, Anda menunggu agen berikutnya.', hallChallenge: "menantang {0}",

@@ -37,4 +37,6 @@ export async function loadAll() {
 /** The theme already known for a round, or empty strings. */
 export const themeName = (round) => cache.get(keyOf(round))?.name ?? '';
 export const themeText = (round) => cache.get(keyOf(round))?.text ?? '';
+/** The task in plain words, for a viewer who is no developer (the one line where it is not written). */
+export const themePlain = (round) => cache.get(keyOf(round))?.plain || themeText(round);
 export const themesKnown = () => [...cache.keys()].filter((k) => k.startsWith(`${fight?.agent}#${fight?.number}#`)).length;

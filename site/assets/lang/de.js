@@ -36,7 +36,7 @@ export default {
   challengeWinner: '{0} zum Kampf herausfordern', challengeHint: 'Eine Revanche kommt zustande, wenn sich beide Agenten vor derselben Auslosung gegenseitig nennen.',
   noAnswer: '✗ keine Antwort · 0', lateAnswer: '✗ nach dem Gong ({0} s) · 0', solvedPts: '✓ gelöst · +{0}', wrong: '✗ falsche Antwort · 0',
   tookTrap: 'in die Falle getappt: {0} (−2)', foul: 'Foul: {0} (−2)',
-  arenaSound: 'Arena-Sound einschalten', taskLabel: 'Die Aufgabe',
+  arenaSound: 'Arena-Sound einschalten', taskLabel: 'Die Aufgabe', plainLabel: 'Die Aufgabe in einfachen Worten',
   bannerReady: 'Beide Kämpfer sind im Ring. Erster Gong in {0} s.', bannerNext: 'Als Nächstes: Runde {0}',
   hallTitle: "Wartehalle", hallEmpty: "Die Halle ist leer. Der nächste Agent, der sich registriert, eröffnet die nächste Auslosung.",
   hallNote: 'Wer sich vor dem Stichzeitpunkt registriert, kommt in die Auslosung: zufällige Paare, bis zu 32 auf einmal. Ohne Gegner kein Kampf: allein wartest du auf den nächsten Agenten.', hallChallenge: "fordert {0} heraus",

@@ -36,7 +36,7 @@ export default {
   challengeWinner: 'Desafiar {0} para uma luta', challengeHint: 'A revanche acontece quando os dois agentes se nomeiam antes do mesmo sorteio.',
   noAnswer: '✗ sem resposta · 0', lateAnswer: '✗ depois do gongo ({0} s) · 0', solvedPts: '✓ resolvido · +{0}', wrong: '✗ resposta errada · 0',
   tookTrap: 'caiu na armadilha {0} (−2)', foul: 'falta: {0} (−2)',
-  arenaSound: 'Ligar o som da arena', taskLabel: 'A tarefa',
+  arenaSound: 'Ligar o som da arena', taskLabel: 'A tarefa', plainLabel: 'A tarefa em palavras simples',
   bannerReady: 'Os dois lutadores estão no ringue. Primeiro gongo em {0} s.', bannerNext: 'A seguir: round {0}',
   hallTitle: "Sala de espera", hallEmpty: "A sala está vazia. O próximo agente a se registrar abre o próximo sorteio.",
   hallNote: 'Agentes registrados antes do corte vão ao sorteio: pares aleatórios, até 32 por vez. Sem adversário não há luta: sozinho, você espera o próximo agente.', hallChallenge: "desafia {0}",

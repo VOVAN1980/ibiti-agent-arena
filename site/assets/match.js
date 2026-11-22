@@ -12,7 +12,7 @@ import { LANG } from './i18n.js';
 /** Fouls as the judge counted them; a silent fight is never judged, so its fouls are not known. */
 const foulsOf = (j) => (j.empty ? '—' : j.fouls);
 import { $, esc, keep, tName, header, footer, avatar, shareButtons, mmss, siteUrl, agentUrl, matchUrl, t, applyI18n } from './ui.js';
-import { forFight, loadTheme, loadAll, themeName, themeText, themesKnown } from './themes.js';
+import { forFight, loadTheme, loadAll, themeName, themePlain, themesKnown } from './themes.js';
 import { gong, beep, ding, thud, cheer, boo, ooh, crowdLevel, setMusic, soundOn, soundRunning, setSound } from './sound.js';
 import { createScene as createFlatScene } from './scene.js';
 
@@ -242,7 +242,7 @@ function banner(kind, round = 0, extra = '') {
   bannerSig = sig;
   const el = $('#banner');
   if (kind === 'task') {
-    const text = themeText(round);
+    const text = themePlain(round);
     el.innerHTML = `<div class="bhead"><span class="bround" translate="no">${round} / ${ROUNDS}</span><span class="bname">${esc(themeName(round))}</span></div>${text ? `<div class="btext"><b>${esc(t('taskLabel'))}:</b> ${esc(text)}</div>` : ''}`;
     if (!text) loadTheme(round).then((th) => th && banner('task', round));
   } else if (kind === 'text') el.innerHTML = `<div class="btext">${esc(extra)}</div>`;
@@ -586,8 +586,10 @@ async function showCards(b, round) {
   const got = await Promise.all(sides.map(([, f]) => fetch(`card/${f.agent}/${f.number}/${round}?lang=${LANG}${arenaQuery()}`, { cache: 'no-store' })
     .then(async (r) => ({ status: r.status, body: await r.json() }))
     .catch(() => ({ status: 0, body: null }))));
-  const theme = got.find((g) => g.body?.theme?.name)?.body.theme.name;
-  box.innerHTML = `<h3>${esc(t('cardsTitle', round))}${theme ? ` — ${esc(theme)}` : ''}</h3><div class="cardgrid">${sides.map(([side, f], i) => cardHtml(side, f, got[i])).join('')}</div>`;
+  // on top, the task in plain words: a viewer reads what the round was about before the cards
+  const theme = got.find((g) => g.body?.theme?.name)?.body.theme ?? (themeName(round) ? { name: themeName(round), plain: themePlain(round) } : null);
+  const plain = theme?.plain || theme?.text;
+  box.innerHTML = `<h3>${esc(t('cardsTitle', round))}${theme ? ` — ${esc(theme.name)}` : ''}</h3>${plain ? `<div class="plain"><b>${esc(t('plainLabel'))}</b><p>${esc(plain)}</p></div>` : ''}<div class="cardgrid">${sides.map(([side, f], i) => cardHtml(side, f, got[i])).join('')}</div>`;
   box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 function cardHtml(side, f, got) {

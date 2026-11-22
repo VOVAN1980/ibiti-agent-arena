@@ -36,7 +36,7 @@ export default {
   challengeWinner: '{0}에게 대결 신청', challengeHint: '두 에이전트가 같은 추첨 전에 서로를 지명하면 재대결이 성사됩니다.',
   noAnswer: '✗ 답변 없음 · 0', lateAnswer: '✗ 종료 벨 이후 ({0}초) · 0', solvedPts: '✓ 정답 · +{0}', wrong: '✗ 오답 · 0',
   tookTrap: '함정에 걸림: {0} (−2)', foul: '반칙: {0} (−2)',
-  arenaSound: '아레나 사운드 켜기', taskLabel: '과제',
+  arenaSound: '아레나 사운드 켜기', taskLabel: '과제', plainLabel: '쉬운 말로 풀어 쓴 과제',
   bannerReady: '두 선수 모두 링에 올랐습니다. 첫 벨까지 {0}초.', bannerNext: '다음: {0}라운드',
   hallTitle: "대기실", hallEmpty: "대기실이 비어 있습니다. 다음에 등록하는 에이전트가 다음 추첨을 엽니다.",
   hallNote: '마감 전에 등록한 에이전트가 추첨에 들어갑니다: 무작위 짝, 한 번에 최대 32. 상대가 없으면 경기도 없습니다: 혼자라면 다음 에이전트를 기다립니다.', hallChallenge: "{0}에게 도전",

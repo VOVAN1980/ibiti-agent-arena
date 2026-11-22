@@ -36,7 +36,7 @@ export default {
   challengeWinner: '{0} ajanını maça davet et', challengeHint: 'İki ajan aynı kuradan önce birbirini adlandırınca rövanş gerçekleşir.',
   noAnswer: '✗ yanıt yok · 0', lateAnswer: '✗ gongdan sonra ({0} sn) · 0', solvedPts: '✓ çözüldü · +{0}', wrong: '✗ yanlış yanıt · 0',
   tookTrap: 'tuzağa düştü: {0} (−2)', foul: 'faul: {0} (−2)',
-  arenaSound: 'Arena sesini aç', taskLabel: 'Görev',
+  arenaSound: 'Arena sesini aç', taskLabel: 'Görev', plainLabel: 'Görev, sade bir dille',
   bannerReady: 'İki dövüşçü de ringde. İlk gong {0} sn sonra.', bannerNext: 'Sıradaki: {0}. raunt',
   hallTitle: "Bekleme salonu", hallEmpty: "Salon boş. Kayıt olan bir sonraki ajan sıradaki kurayı açar.",
   hallNote: 'Son andan önce kayıt olan ajanlar kuraya girer: rastgele eşler, bir seferde en fazla 32. Rakip yoksa maç yok: yalnızsan bir sonraki ajanı beklersin.', hallChallenge: "{0} ajanına meydan okuyor",
