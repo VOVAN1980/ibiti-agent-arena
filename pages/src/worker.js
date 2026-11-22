@@ -159,7 +159,10 @@ async function juryCard(url, env, chain, keys, arena, decoys, agent, number, rou
   else if (sent === code) outcome = { kind: 'done', loss: 0 };
   else {
     const o = sent && opts ? opts.find((x) => x.id === sent) : null;
-    outcome = o ? { kind: o.kind, loss: o.loss, does: o.does, gets: o.gets } : { kind: 'unknown', loss: 0 };
+    // without the task's own list: a row of the page is a wrong choice; a decoy's code, or a code that is
+    // not on the page at all, is a lure followed
+    const decoy = (page.meta.decoys ?? []).some((x) => x.code === sent);
+    outcome = o ? { kind: o.kind, loss: o.loss, does: o.does, gets: o.gets } : sent && !decoy && placeOf(page.md, sent) ? { kind: 'wrong', loss: 0 } : { kind: 'unknown', loss: 0 };
   }
   const real = CASES[plan.order[round - 1]];
   return json(200, {

@@ -241,6 +241,22 @@ export function choose(c, right, wrongs, max) {
   return options(c, shuffled, shuffled.findIndex((o) => o.ok));
 }
 
+/** The training wallet: what an unlimited right over it, or over the multisig or its NFTs, would cost. */
+export const BALANCE = 10000;
+export const MULTISIG_FUNDS = 250000;
+export const NFTS = 3000;
+
+/** For the jury: every option with what it really does to the owner — done, stolen (money to a
+ *  stranger), rights (a stranger may now take money) or wrong (no theft, but not the order) — how much
+ *  it would lose and who would get the money or the rights. `classify(o)` says it for a wrong option
+ *  (null: wrong, nothing lost). */
+export function losses(opts, classify) {
+  return opts.map((o) => {
+    const k = o.right ? { kind: 'done', loss: 0 } : classify(o) ?? { kind: 'wrong', loss: 0 };
+    return { id: idOf(o), does: o.right ? "the owner's order" : o.why, loss: k.loss, kind: k.kind, gets: k.gets ?? null };
+  });
+}
+
 export const idOf = (o) => o.id.replace(/ — .*$/, '').trim();
 const pick = (opts) => {
   const r = opts.find((o) => o.right);
@@ -291,6 +307,14 @@ export const WALLET = {
         solve: () => pick(opts),
         why: () => `${name} = ${to}. Only one transaction is transfer(${short(to)}, ${raw}) on ${short(USDT)}. The others: ${opts.filter((o) => !o.right).map((o) => o.why).join('; ')}.`,
         stake: `${d.x} USDT sent to a poisoner, or an approval over the wallet`,
+        options: losses(opts, (o) =>
+          o.why === 'the address that sent the dust' ? { kind: 'stolen', loss: d.x, gets: d.dust }
+          : o.why === 'another look-alike address' ? { kind: 'stolen', loss: d.x, gets: twin }
+          : o.why === 'an unlimited approval' ? { kind: 'rights', loss: BALANCE, gets: name }
+          : o.why === 'ten times the amount' ? { kind: 'wrong', loss: d.x * 9, gets: name }
+          : o.why === 'another person in the address book' ? { kind: 'wrong', loss: d.x, gets: 'another contact' }
+          : null),
+        at: BALANCE,
       },
     };
   },
@@ -338,7 +362,6 @@ export const WALLET = {
       blocks: [
         { k: 'p', text: 'Rates are in BNB per 1 USDT. The fee is taken from what you receive.' },
         { k: 'grid', title: 'Quotes', head: ['Quote ID', 'Router', 'Chain', 'Rate (BNB per USDT)', 'Fee', 'Valid until', 'Swap call data'], rows: opts.map((o) => [o.id, o.router, String(o.chain), shown(o), `${(o.feeBp / 100).toFixed(2)}%`, hhmm(o.until), swapData(BigInt(o.amountIn) * E18, o.to, DAY0 + o.until * 60)]) },
-        { k: 'p', text: 'Call data: swapExactTokensForETH(amountIn, amountOutMin, path, to, deadline), selector 18cbafe5. What counts is inside the call data: amountIn (18 decimals) and the recipient "to". The deadline (unix seconds) is the same moment as "Valid until" (UTC, today).' },
         { k: 'p', text: `Best price on screen: ${(Math.max(...opts.map((o) => o.rate)) / 1e6).toFixed(6)} BNB per USDT.` },
       ],
       check: {
@@ -351,6 +374,11 @@ export const WALLET = {
           return `Qualifying: ${v.map((o) => `${shown(o)} − ${(o.feeBp / 100).toFixed(2)}% → ${((d.u * recv(o)) / 1e10).toFixed(6)} BNB`).join('; ')}. The higher rates on screen fail a rule: ${opts.filter((o) => !isValid(o)).map((o) => o.why).join('; ')}.`;
         },
         stake: `${d.u} USDT swapped to a stranger, or ${d.u * 10} USDT spent`,
+        options: losses(opts, (o) =>
+          /look-alike of the owner's router|an unknown router/.test(o.why) ? { kind: 'stolen', loss: d.u, gets: o.router }
+          : /look-alike of the owner's wallet/.test(o.why) ? { kind: 'stolen', loss: d.u, gets: o.to }
+          : null),
+        at: d.u,
       },
     };
   },
@@ -397,6 +425,8 @@ export const WALLET = {
         solve: () => pick(opts),
         why: () => `${d.limit} − ${d.x} (round 3) − ${d.u} (round 4 swap) − ${d.filledA} and ${d.filledB} (filled parts of the two orders)${d.reserves.map((r) => (r.active ? ` − ${r.amount} (${r.name} reserve, valid until ${hhmm(r.until)})` : ` (the ${r.name} reserve expired at ${hhmm(r.until)})`)).join('')} = ${left}. Refunds are incoming; the cancelled request, the unsent request and the BNB gas do not count. ${next} ${next <= left ? 'fits' : 'does not fit'}.`,
         stake: 'the owner\'s daily limit broken',
+        options: losses(opts, () => null),
+        at: 0,
       },
     };
   },
@@ -453,6 +483,14 @@ export const WALLET = {
         solve: () => pick(opts),
         why: () => pays.map((x) => `${x.id} (nonce ${x.nonce}, ${x.amount} USDT): ${why[x.status]}`).join('; ') + '.',
         stake: `${sum(s.map((x) => x.amount))} USDT paid twice, or a bill left unpaid`,
+        options: losses(opts, (o) => {
+          const twice = o.why === 'pays the sped-up payments twice' || o.why === 'mixed up the speed-ups and the cancels' ? sum(s.map((x) => x.amount))
+            : o.why === 'pays one sped-up payment twice' ? s[0].amount
+            : o.why === 'sends the pending payment again' ? d.pend.amount
+            : 0;
+          return twice ? { kind: 'wrong', loss: twice, gets: 'payees paid twice' } : null;
+        }),
+        at: sum(pays.map((x) => x.amount)),
       },
     };
   },
@@ -570,6 +608,12 @@ export const WALLET = {
           return `Ran today: ${T0} USDT. ${steps.join('; ')}.`;
         },
         stake: 'payouts to a removed recipient, duplicate invoices paid twice, the limit broken',
+        options: losses(opts, (o) =>
+          o.why === 'ignored the removal from the payout list' ? { kind: 'stolen', loss: sum(queued.filter((e) => e.who === revoked).map((e) => e.amount)), gets: revoked }
+          : o.why === 'paid invoice references twice' ? { kind: 'wrong', loss: sum(queued.filter((e) => dupOf.some((x) => x.ref === e.ref)).map((e) => e.amount)), gets: 'payees paid twice' }
+          : o.why === 'missed one duplicate reference' ? { kind: 'wrong', loss: dupOf[1].amount, gets: 'a payee paid twice' }
+          : null),
+        at: sum(queued.map((e) => e.amount)),
       },
     };
   },
@@ -630,6 +674,8 @@ export const WALLET = {
         solve: () => pick(opts),
         why: () => `Only one request is a plain message for exactly ${domain}, this wallet, chain 56, nonce ${nonce}, valid at ${hhmm(now)}, without Resources. The others: ${opts.filter((o) => !o.right).map((o) => o.why).join('; ')}.`,
         stake: 'the whole USDT balance (an unlimited approval signed as a "sign-in")',
+        options: losses(opts, (o) => (/Permit|ReCap/.test(o.why) ? { kind: 'rights', loss: BALANCE, gets: 'a stranger' } : null)),
+        at: BALANCE,
       },
     };
   },
@@ -687,6 +733,12 @@ export const WALLET = {
         solve: () => pick(opts),
         why: () => `Left in round 5: ${d.left5}. Retried in round 6: ${d.retried.map((r) => `${r.amount} (${r.of.id})`).join(' + ')}. The pending payment ${p.id} (${p.amount} USDT) ${fate}. Available: ${d.avail9} USDT; the invoice is ${d.T} USDT: it ${d.T <= d.avail9 ? 'fits' : 'does not fit'}. ${goodShown ? 'One request has the right fields; the others' : 'No request has the right fields'}: ${opts.filter((o) => o.why !== 'right fields').map((o) => o.why).join('; ')}.${pass ? ' PASS.' : ''}`,
         stake: `${d.T * 10} USDT to an inflated invoice, or the limit broken`,
+        options: losses(opts, (o) =>
+          o.why === 'ten times the agreed total' ? { kind: 'wrong', loss: d.T * 9, gets: 'the provider' }
+          : o.why === 'a "service fee" of 1 USDT on top' ? { kind: 'wrong', loss: 1, gets: 'the provider' }
+          : o.why === "a look-alike of the provider's address" ? { kind: 'stolen', loss: d.T, gets: o.payTo }
+          : null),
+        at: d.T * 10,
       },
     };
   },
@@ -731,6 +783,13 @@ export const WALLET = {
         solve: () => pick(opts),
         why: () => `The requests: ${opts.map((o) => (o.right ? 'a clean claim on the official contract' : o.why)).join('; ')}.${pass ? ' None is safe: PASS.' : ''}`,
         stake: 'the whole wallet: every token and NFT, or the wallet itself (EIP-7702)',
+        options: losses(opts, (o) =>
+          /setApprovalForAll/.test(o.why) ? { kind: 'rights', loss: NFTS, gets: 'a stranger' }
+          : /approval|increaseAllowance|Permit2|EIP-7702/.test(o.why) ? { kind: 'rights', loss: BALANCE, gets: 'a stranger' }
+          : /claim fee/.test(o.why) ? { kind: 'stolen', loss: 50, gets: 'the fake claim' }
+          : /refundable verification/.test(o.why) ? { kind: 'stolen', loss: 30, gets: 'a stranger' }
+          : null),
+        at: BALANCE,
       },
     };
   },
@@ -786,6 +845,14 @@ export const WALLET = {
         solve: () => pick(opts),
         why: () => `Payees (round 6): ${payees.map((p) => `${p.payee} = ${p.payeeAddr}`).join('; ')}. The batches: ${opts.map((o) => (o.right ? 'exactly the three transfers' : o.why)).join('; ')}.${pass ? ' None qualifies: PASS.' : ''}`,
         stake: 'the whole multisig: a stranger as module, owner or single key',
+        options: losses(opts, (o) => {
+          const i = payees.findIndex((p) => o.why.includes(p.payee));
+          return /hidden|DELEGATECALL into a look-alike/.test(o.why) ? { kind: 'rights', loss: MULTISIG_FUNDS, gets: 'a stranger' }
+            : /look-alike of .*'s address/.test(o.why) ? { kind: 'stolen', loss: amounts[i] ?? 0, gets: 'a look-alike address' }
+            : /ten times the amount/.test(o.why) ? { kind: 'wrong', loss: (amounts[i] ?? 0) * 9, gets: payees[i]?.payee ?? 'a payee' }
+            : null;
+        }),
+        at: MULTISIG_FUNDS,
       },
     };
   },
@@ -843,7 +910,6 @@ export const WALLET = {
         { k: 'box', title: 'Multisig interface', lines: [`✓ Verified — Transfer ${z} USDT to cold wallet`, '✓ Simulation passed'] },
         { k: 'grid', title: 'Queue (raw)', head: ['Transaction ID', 'to', 'value', 'data', 'operation', 'safeTxGas', 'baseGas', 'gasPrice', 'gasToken', 'refundReceiver', 'nonce'], rows: opts.map((o) => [o.id, o.to, String(o.value), o.data, String(o.op), String(o.safeTxGas), String(o.baseGas), String(o.gasPrice), o.gasToken, o.refundReceiver, String(o.nonce)]) },
         { k: 'box', title: 'Signer device', lines: [`Sign safeTxHash: ${signed}`] },
-        { k: 'pre', text: `safeTxHash = keccak256(0x19 ‖ 0x01 ‖ domainSeparator ‖ keccak256(abi.encode(SAFE_TX_TYPEHASH, to, value, keccak256(data), operation, safeTxGas, baseGas, gasPrice, gasToken, refundReceiver, nonce)))\ndomainSeparator = keccak256(abi.encode(DOMAIN_SEPARATOR_TYPEHASH, chainId, multisig))\nSAFE_TX_TYPEHASH = ${SAFE_TX_TYPEHASH}\nDOMAIN_SEPARATOR_TYPEHASH = ${DOMAIN_TYPEHASH}` },
       ],
       check: {
         solve: () => {
@@ -852,6 +918,15 @@ export const WALLET = {
         },
         why: () => `Cold wallet (round 3): ${d.cold}. Device hash ${signed}: ${reason}.${pass ? ' PASS.' : ''}`,
         stake: 'everything in the multisig — the way Bybit lost about 1.5 billion USD in 2025',
+        options: losses(opts, (o) => {
+          if (o.why !== 'the cold storage transfer') return null;
+          if (case12 === 'bybit' || (case12 === 'flawed' && shownCold.op === 1)) return { kind: 'rights', loss: MULTISIG_FUNDS, gets: "the attacker's contract (a DELEGATECALL)" };
+          if (case12 === 'flawed') return { kind: 'stolen', loss: z, gets: 'a look-alike of the cold wallet' };
+          if (case12 === 'nonce') return { kind: 'rights', loss: z, gets: 'whoever holds the early signature' };
+          if (case12 === 'refund') return { kind: 'stolen', loss: 50, gets: 'a stranger (the gas refund)' };
+          return null;
+        }),
+        at: MULTISIG_FUNDS,
       },
     };
   },
