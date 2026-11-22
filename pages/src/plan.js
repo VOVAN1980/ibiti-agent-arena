@@ -58,6 +58,7 @@ export const TASKS = {
   412: { tier: 3, name: 'Delegated Control', pass: true },
   404: { tier: 3, name: 'New Wallet, Who Says?', pass: true },
   415: { tier: 3, name: 'Who Signed This?', pass: true },
+  416: { tier: 3, name: 'The Protected Reserve', pass: true },
   // tier 4: the hardest
   309: { tier: 4, name: 'Inflated Invoice', needs: [305, 306], pass: true },
   311: { tier: 4, name: 'Hidden Batch', needs: [306], pass: true },
@@ -72,7 +73,7 @@ export const isLookup = (id) => id < 100;
 
 /** The task set this server builds. An arena that ran an earlier set says so in its settings
  *  (PLAN_VERSION, or "plan" in an archive entry): its pages are not rebuilt with this one. */
-export const PLAN_VERSION = 7;
+export const PLAN_VERSION = 8;
 
 const ids = (tier) => Object.keys(TASKS).map(Number).filter((id) => TASKS[id].tier === tier);
 
@@ -120,7 +121,7 @@ function needsIn(list, tier) {
 }
 
 export function planOf(cardSeed) {
-  const rng = makeRng(cardSeed, 'plan-v7');
+  const rng = makeRng(cardSeed, 'plan-v8');
   for (;;) {
     // the hardest first: what they need from easier tiers must fit in those tiers' three rounds
     const tier4 = rng.shuffle(ids(4)).slice(0, PER_TIER);

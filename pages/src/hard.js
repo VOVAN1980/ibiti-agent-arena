@@ -122,7 +122,7 @@ export const HARD = [
     return {
       title: 'Outgoing payments — address check',
       label: 'request ID',
-      task: `Your owner's order: pay ${name}'s request, to the address saved for ${name} in the owner's signed address book on this page, and to no other address (letter case does not matter; an address book of another round does not count here). Send the ID of the request that does exactly this. If none does, send PASS.`,
+      task: `Your owner's order: pay ${name}'s request. Send the ID of the request to pay, or PASS.`,
       blocks: [
         { k: 'box', title: "Owner's address book (signed)", lines: c.rng.shuffle([`${name}: ${real}`, ...others]) },
         { k: 'p', text: `Several requests to ${name} arrived today.` },
@@ -163,11 +163,10 @@ export const HARD = [
     return {
       title: 'Wallet history — token transfers (raw amounts)',
       label: 'transfer ID',
-      task: `Find the transfer to ${name} of exactly ${amount} ${sym}. Amounts in the table are raw, in the token's smallest unit; the "Tokens" box gives each token's decimals. Send its transfer ID. If there is no such transfer, send PASS.`,
+      task: `Your owner asks which transfer paid ${name} exactly ${amount} ${sym}. Send its transfer ID, or PASS.`,
       blocks: [
         { k: 'box', title: 'Tokens', lines: TOKENS.map(([s, d]) => `${s}: ${d} decimals`) },
         { k: 'grid', title: 'Transfers', head: ['Transfer ID', 'To', 'Token', 'Raw amount'], rows: shown.map((r) => [r.id, r.to, r.token, r.raw]) },
-        { k: 'p', text: 'Raw amounts are what the chain stores. Wallets divide them by 10 to the power of the decimals before showing them.' },
       ],
       check: { solve },
     };

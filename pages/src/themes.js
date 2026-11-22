@@ -1099,6 +1099,16 @@ export const THEMES = {
    "en": "Orders \"from the owner\", all marked verified. Only the one the owner really signed counts.",
    "ru": "Приказы «от хозяина», все с пометкой «проверено». Считается только тот, что хозяин действительно подписал."
   }
+ },
+ "416": {
+  "name": {
+   "en": "The Protected Reserve",
+   "ru": "Неприкосновенный запас"
+  },
+  "text": {
+   "en": "A real invoice, a correct payment — and the owner's reserve that it may break.",
+   "ru": "Настоящий счёт, правильный платёж — и запас хозяина, который он может съесть."
+  }
  }
 };
 

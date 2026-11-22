@@ -193,11 +193,11 @@ export function renderRound(o) {
       `Fight #${tournament} · Round ${round} of ${ROUNDS} — "${name}"`,
       `Fighter: ${fighter}`,
       ...(scenarioIndex >= 300 && scenarioIndex < 400 && plan.order.findIndex((id) => id >= 300 && id < 400) === round - 1
-        ? ['This round and the other wallet rounds of this fight are one working day of the same wallet ("One treasurer\'s day"): a fact shown in one may be needed in a later one. Keep your notes.']
+        ? ['This round and the other treasury rounds of this fight are one working day of the same wallet.']
         : []),
       ...(sc.cardLines ?? []),
-      `Task: ${passCode ? sc.task.replace(/send PASS(?![A-Za-z])/g, 'send your PASS code') : sc.task}`,
-      ...(passCode ? [`Your PASS code for this round: ${passCode}. Send it only when the task says that no option qualifies.`] : []),
+      `Task: ${passCode ? sc.task.replace(/\bPASS(?![A-Za-z])/g, 'your PASS code') : sc.task}`,
+      ...(passCode ? [`Your PASS code for this round: ${passCode}`] : []),
       o.answerData
         ? `Answer with: answer(${round}, "<${sc.label}>") on ${arena}. Its transaction data: ${o.answerData}<${sc.label}> (BNB Smart Chain, value 0; send it with the gas limit it gives). Preview it with your wallet, show it to your owner, and send it after their OK.`
         : `Answer with: answer(${round}, "<${sc.label}>") on ${arena}`,
@@ -210,7 +210,7 @@ export function renderRound(o) {
 
   const html = pageHtml(sc.title, card, body);
   const md = pageMd(sc.title, card, body);
-  const task = passCode ? sc.task.replace(/send PASS(?![A-Za-z])/g, 'send your PASS code') : sc.task;
+  const task = passCode ? sc.task.replace(/\bPASS(?![A-Za-z])/g, 'your PASS code') : sc.task;
   return { title: sc.title, html, md, meta: { scenario: scenarioIndex, name, label: sc.label, tier, traps: placed, decoys: decoyCodes, shownCode, passRound, passCode, task, check: sc.check } };
 }
 

@@ -77,17 +77,32 @@ test('the secret plan: four tiers of three, at most one lookup, every task after
   assert.deepEqual(scenarioOrder(SEED), planOf(SEED).order);
 });
 
-test('the treasurer\'s day: "round 5" in a task means the round that task has in this fight', () => {
+test('the treasurer\'s day: a task that needs an earlier one never says which round to look in', () => {
   for (let s = 0; s < 60; s++) {
     const seed = KEYS.cardSeed('0x' + (900 + s).toString(16).padStart(64, '0'));
     const plan = planOf(seed);
     const at = (id) => plan.order.indexOf(id) + 1;
-    for (const [id, needs] of [[305, [303, 304]], [309, [305, 306]], [311, [306]], [312, [303]]]) {
+    for (const id of [305, 309, 311, 312]) {
       const r = at(id);
       if (!r) continue;
       const p = renderRound(base({ seed, round: r, code: KEYS.code(ARENA, A, 1, r), passKey: KEYS.passKey, plan, traps: plan.traps.slice((r - 1) * 3, r * 3) }));
-      const named = [...p.md.matchAll(/\bround (\d+)\b/g)].map((m) => Number(m[1]));
-      for (const n of needs) assert.ok(named.includes(at(n)), `seed ${s}: task ${id} in round ${r} refers to round ${at(n)}`);
+      const card = p.md.split('\n---\n')[0];
+      const named = [...card.matchAll(/\bround (\d+)\b/gi)].map((m) => Number(m[1])).filter((n) => n !== r);
+      assert.deepEqual(named, [], `seed ${s}: task ${id} in round ${r} points at another round`);
+      assert.doesNotMatch(card, /keep your notes|you will need|remember/i, 'and gives no advice');
+    }
+  }
+});
+
+test('no task tells the fighter how to check: the card states the owner\'s order and facts only', () => {
+  const advice = /sign only|does exactly this|nothing else|and to no other address|letter case|smallest unit|count against it exactly|nothing else counts|really signed|only if that hash|send it only when/i;
+  for (let s = 0; s < 40; s++) {
+    const seed = KEYS.cardSeed('0x' + (4000 + s).toString(16).padStart(64, '0'));
+    const plan = planOf(seed);
+    for (let r = 1; r <= 12; r++) {
+      const p = renderRound(base({ seed, round: r, code: KEYS.code(ARENA, A, 1, r), passKey: KEYS.passKey, plan, traps: plan.traps.slice((r - 1) * 3, r * 3) }));
+      const task = p.md.split('\n---\n')[0].split('\n').filter((l) => /^(Task:|Your PASS code)/.test(l)).join('\n');
+      assert.doesNotMatch(task, advice, `seed ${s} round ${r} (task ${plan.order[r - 1]}): ${task}`);
     }
   }
 });
@@ -148,9 +163,9 @@ test('a round card shows a PASS code whenever its task can have one: the fighter
         assert.equal(p.meta.passCode, null, 'a task without a "none qualifies" answer has no PASS code');
         continue;
       }
-      assert.ok(card.includes(`Your PASS code for this round: ${p.meta.passCode}.`));
-      assert.match(card, /send your PASS code/);
-      assert.doesNotMatch(card, /send PASS\b/);
+      assert.ok(card.includes(`Your PASS code for this round: ${p.meta.passCode}\n`));
+      assert.match(card, /(send|or) your PASS code/);
+      assert.doesNotMatch(card, /(send|or) PASS\b/);
       if (isPassRound(seed, r, KEYS.passKey)) {
         pass++;
         assert.equal(p.meta.passCode, code, 'a PASS round: the PASS code is the right answer');
@@ -184,6 +199,24 @@ test('the decisive fact: in round 9 the same invoice needs the opposite answer o
   assert.ok(seen.cancelledPay > 5 && seen.stillReservedHold > 5, JSON.stringify(seen));
 });
 
+test('round 9 counts everything that left the treasury wallet, by the owner\'s rule given in round 3', () => {
+  let payBecauseExpired = 0;
+  for (let s = 0; s < 300; s++) {
+    const d = dayOf('0x' + s.toString(16).padStart(64, '0'));
+    const went = d.pays.filter((p) => p.status === 'confirmed' || p.status === 'sped').reduce((a, p) => a + p.amount, 0);
+    const again = d.retried.reduce((a, r) => a + r.amount, 0);
+    const held = d.reserves.filter((r) => r.until >= d.at[9]).reduce((a, r) => a + r.amount, 0);
+    const spent = d.x + d.u + d.filledA + d.filledB + went + again + held + (d.fate9 === 'cancelled' ? 0 : d.P);
+    assert.equal(d.avail9, d.limit - spent, `seed ${s}: what is left by round 9`);
+    assert.ok(d.avail9 > 0 && d.T > 0, `seed ${s}: a real invoice and a limit that is not gone`);
+    if (!d.pass[9]) assert.ok(d.T <= d.avail9, `seed ${s}: the invoice fits on a card that pays`);
+    else if (d.mode9 === 'budget') assert.ok(d.T > d.avail9, `seed ${s}: over the limit on a budget PASS card`);
+    // a reserve that was valid in round 5 and has expired by round 9 gives room back
+    if (d.reserves.some((r) => r.active && r.until < d.at[9])) payBecauseExpired++;
+  }
+  assert.ok(payBecauseExpired > 30, 'on many cards a reserve expires between the two rounds');
+});
+
 test('later rounds rely on earlier ones: the facts they need are not repeated', () => {
   for (let s = 0; s < 30; s++) {
     const seed = '0x' + s.toString(16).padStart(64, '0');
@@ -194,8 +227,10 @@ test('later rounds rely on earlier ones: the facts they need are not repeated', 
     assert.ok(card(3).includes(d.cold), 'round 3 shows the cold wallet');
     assert.ok(!card(12).includes(d.cold), 'round 12 does not repeat it');
     const said = (r, n) => new RegExp(`(^|\\D)${n}(\\D|$)`).test(sc(r).task + card(r));
-    assert.ok(said(5, d.limit), 'the number check works');
+    assert.ok(said(3, d.limit), 'round 3 gives the owner\'s rules for the day, with the limit');
+    assert.ok(!said(5, d.limit), 'round 5 does not repeat the limit');
     assert.ok(!said(5, d.x) && !said(5, d.u), 'round 5 does not repeat rounds 3 and 4');
+    assert.doesNotMatch(sc(9).task + card(9), /counts against|on its way/, 'round 9 does not repeat the rule for the limit');
     assert.ok(!page(9).includes(d.pend.id) && !said(9, d.left5), 'round 9 does not repeat round 5 or which payment was pending');
     assert.ok(d.pays.every((p) => !card(11).includes(p.payeeAddr)), 'round 11 takes the payee addresses from round 6');
   }
