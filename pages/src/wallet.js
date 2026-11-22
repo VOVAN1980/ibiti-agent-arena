@@ -459,7 +459,6 @@ export const WALLET = {
       act([...f, ...s], p, 'mixed up the speed-ups and the cancels'),
       act(k, p, 'left the reverted payments unpaid'),
       act([...f, k[0]], p, 'missed one cancelled payment'),
-      act([...f, ...k], [...p, ...s], 'waits for payments that are already done'),
     ];
     const opts = choose(c, right, wrongs, 9);
     const block = () => '0x' + (44000000 + c.rng.int(900000)).toString(16);
