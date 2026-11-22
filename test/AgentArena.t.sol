@@ -25,6 +25,28 @@ contract MockHistory {
     }
 }
 
+/// @dev Stands in for the arena in front of a season's contract: it reports results directly, and
+///      is its own judge.
+contract SeasonHarness {
+    ArenaCertificate public cert;
+    uint64 public seasonEnd;
+    address public judge;
+
+    constructor(ArenaArt art, uint64 seasonEnd_) {
+        seasonEnd = seasonEnd_;
+        judge = address(this);
+        cert = new ArenaCertificate("IBITI Agent Arena", "ARENA", art, "2", 1);
+    }
+
+    function rec(address agent, bytes32 name, bool official, uint8 points, uint32 timeUsed, uint64 at) external {
+        cert.record(agent, name, official, points, timeUsed, at);
+    }
+
+    function close() external {
+        cert.close();
+    }
+}
+
 contract AgentArenaTest is Test {
     AgentArena arena;
     MockAgentId registry;
@@ -61,7 +83,7 @@ contract AgentArenaTest is Test {
     }
 
     function _newArena() internal returns (AgentArena) {
-        return new AgentArena(address(registry), COOLDOWN, ROUND_TIME, DRAW_EVERY, art, judgeKey, COMMIT, seasonEnd);
+        return new AgentArena(address(registry), COOLDOWN, ROUND_TIME, DRAW_EVERY, art, judgeKey, COMMIT, seasonEnd, 1);
     }
 
     function _deploy(bool sealIt) internal returns (AgentArena a) {
@@ -390,17 +412,17 @@ contract AgentArenaTest is Test {
 
     function test_constructorRefusesZeroSettings() public {
         vm.expectRevert(AgentArena.ZeroSetting.selector);
-        new AgentArena(address(0), COOLDOWN, ROUND_TIME, DRAW_EVERY, art, judgeKey, COMMIT, SEASON_END);
+        new AgentArena(address(0), COOLDOWN, ROUND_TIME, DRAW_EVERY, art, judgeKey, COMMIT, SEASON_END, 1);
         vm.expectRevert(AgentArena.ZeroSetting.selector);
-        new AgentArena(address(registry), COOLDOWN, ROUND_TIME, DRAW_EVERY, art, address(0), COMMIT, SEASON_END);
+        new AgentArena(address(registry), COOLDOWN, ROUND_TIME, DRAW_EVERY, art, address(0), COMMIT, SEASON_END, 1);
         vm.expectRevert(AgentArena.ZeroSetting.selector);
-        new AgentArena(address(registry), COOLDOWN, ROUND_TIME, DRAW_EVERY, art, judgeKey, bytes32(0), SEASON_END);
+        new AgentArena(address(registry), COOLDOWN, ROUND_TIME, DRAW_EVERY, art, judgeKey, bytes32(0), SEASON_END, 1);
         vm.expectRevert(AgentArena.ZeroSetting.selector);
-        new AgentArena(address(registry), COOLDOWN, 0, DRAW_EVERY, art, judgeKey, COMMIT, SEASON_END);
+        new AgentArena(address(registry), COOLDOWN, 0, DRAW_EVERY, art, judgeKey, COMMIT, SEASON_END, 1);
         vm.expectRevert(AgentArena.ZeroSetting.selector);
-        new AgentArena(address(registry), COOLDOWN, ROUND_TIME, 0, art, judgeKey, COMMIT, SEASON_END);
+        new AgentArena(address(registry), COOLDOWN, ROUND_TIME, 0, art, judgeKey, COMMIT, SEASON_END, 1);
         vm.expectRevert(AgentArena.ZeroSetting.selector);
-        new AgentArena(address(registry), COOLDOWN, ROUND_TIME, DRAW_EVERY, art, judgeKey, COMMIT, uint64(block.timestamp));
+        new AgentArena(address(registry), COOLDOWN, ROUND_TIME, DRAW_EVERY, art, judgeKey, COMMIT, uint64(block.timestamp), 1);
     }
 
     // ============================================================ the hall and the draw
@@ -745,6 +767,18 @@ contract AgentArenaTest is Test {
         // the sixth cutoff is exactly CHALLENGE_WAIT draws after alice's registration time slot or later
         _draw();
         assertEq(_fight(alice).opponent, bob, "expired at that cutoff: drawn at random");
+    }
+
+    function test_aChallengeAnsweredAfterItsHourIsNoPair() public {
+        _register(alice, carol);
+        // nobody holds a draw for a hall of one; carol answers 100 seconds after alice's hour is over
+        vm.warp(vm.getBlockTimestamp() + uint256(arena.CHALLENGE_WAIT()) * DRAW_EVERY + 100);
+        _register(carol, alice);
+        _draw(); // the old list, closed long ago: alice alone, still inside her hour by its cutoff
+        _draw(); // the next list has both: the answer came too late, so they are no pair
+        assertFalse(arena.isLive(alice) || arena.isLive(carol), "a late answer does not make the pair");
+        (,,, address stillNamed,,,,,) = arena.entries(alice);
+        assertEq(stillNamed, address(0), "alice's challenge is over: she goes to the random draw");
     }
 
     function test_aMalformedTrapPlanIsRefused() public {
@@ -1390,38 +1424,138 @@ contract AgentArenaTest is Test {
 
     // ============================================================ ranking and certificate
 
-    function test_officialCertificateShowsOnlyOfficialFights() public {
+    function test_theSeasonRanksOfficialFightsAndMarksEveryoneWhoFought() public {
         _match(alice, bob);
         _answerBoth(alice, bob);
         _judge(alice);
         _judge(bob);
+        ArenaCertificate cert = arena.certificate();
         (uint8 official,,,) = arena.officialBest(bob);
         assertEq(official, 0, "bob has no Agent ID: open ranking only");
         assertEq(_bestPoints(bob), 120);
-        assertEq(arena.certificate().balanceOf(bob), 0);
         (official,,,) = arena.officialBest(alice);
         assertEq(official, 120);
         assertEq(arena.officialFightsOf(alice), 1);
-        assertEq(arena.certificate().balanceOf(alice), 1);
+        assertTrue(cert.tookPart(alice) && cert.tookPart(bob), "both fought: both took part");
+        assertEq(cert.participants(), 2);
+        address[] memory top = cert.top();
+        assertEq(top.length, 1, "only an Agent ID holder is in the season's ranking");
+        assertEq(top[0], alice);
+        assertEq(cert.balanceOf(alice), 0, "no certificate before the season is closed");
+        assertEq(cert.season(), 1);
     }
 
-    function test_perfectFightIsUndisputedWithCertificate() public {
+    function test_theSeasonClosesWithCertificatesForItsPlaces() public {
+        // alice: 120 at the bell; carol: 120 too, but slower; bob (open) fights as well
         _spar(alice);
         _answerAll(alice);
-        assertFalse(arena.isLive(alice), "the 12th answer ends the fight");
-        assertEq(arena.certificate().balanceOf(alice), 0, "no certificate before the judge");
         _judge(alice);
-        assertEq(_bestPoints(alice), 120);
-        assertEq(art.gradeOf(120), "Undisputed");
+        _spar(carol);
+        for (uint8 r = 1; r <= 12; ++r) {
+            vm.warp(_opens(carol, r) + 7);
+            _answer(carol, r, _rightCode(carol, r));
+        }
+        _judge(carol);
+        _spar(bob);
+        _answerAll(bob);
+        _judge(bob);
         ArenaCertificate cert = arena.certificate();
+        address[] memory top = cert.top();
+        assertEq(top.length, 2);
+        assertEq(top[0], alice, "equal points: less time first");
+        assertEq(top[1], carol);
+        // nobody closes a running season; right after its end only the judge; anyone a day later
+        vm.expectRevert(ArenaCertificate.SeasonRunning.selector);
+        cert.close();
+        vm.warp(SEASON_END + 1);
+        vm.expectRevert(ArenaCertificate.SeasonRunning.selector);
+        cert.close();
+        address[] memory winners = new address[](2);
+        (winners[0], winners[1]) = (alice, carol);
+        vm.expectEmit(true, false, false, true, address(cert));
+        emit ArenaCertificate.SeasonClosed(1, winners, 3); // alice, carol and bob were judged (a sparring partner that gives up is not)
+        vm.prank(judgeKey);
+        cert.close();
+        assertEq(cert.placeOf(alice), 1);
+        assertEq(cert.placeOf(carol), 2);
+        assertEq(cert.placeOf(bob), 0, "the open ranking gives no place");
         assertEq(cert.ownerOf(uint256(uint160(alice))), alice);
-        assertGt(bytes(cert.tokenURI(uint256(uint160(alice)))).length, 100);
+        assertEq(cert.ownerOf(uint256(uint160(carol))), carol);
+        assertEq(cert.balanceOf(bob), 0);
+        assertTrue(cert.tookPart(bob), "a participant of the season");
+        assertGt(bytes(cert.tokenURI(uint256(uint160(alice)))).length, 400);
+        vm.expectRevert(ArenaCertificate.AlreadyClosed.selector);
+        cert.close();
     }
 
-    function test_certificateIsSoulboundAndOnlyTheArenaMints() public {
+    function test_anyoneClosesTheSeasonADayAfterItsEnd() public {
         _spar(alice);
-        _finishAndJudge(alice);
+        _answerAll(alice);
+        _judge(alice);
         ArenaCertificate cert = arena.certificate();
+        vm.warp(SEASON_END + 1 days + 1);
+        vm.prank(dave);
+        cert.close();
+        assertEq(cert.placeOf(alice), 1);
+        assertGt(cert.closedAt(), 0);
+    }
+
+    function test_theRankingKeepsTenPlacesInOrder() public {
+        SeasonHarness h = new SeasonHarness(art, SEASON_END);
+        ArenaCertificate cert = h.cert();
+        // twelve agents: 100, 101, ... 111 points; the two weakest get no place
+        address[12] memory who;
+        for (uint256 i; i < 12; ++i) {
+            who[i] = address(uint160(0x1000 + i));
+            h.rec(who[i], bytes32("agent"), true, uint8(100 + i), 300, uint64(1000 + i));
+        }
+        address[] memory top = cert.top();
+        assertEq(top.length, 10);
+        for (uint256 i; i < 10; ++i) assertEq(top[i], who[11 - i], "more points first");
+        assertEq(cert.participants(), 12);
+        // the weakest improves to 120: first place, and the last of the ten drops out
+        h.rec(who[0], bytes32("agent"), true, 120, 300, 5000);
+        top = cert.top();
+        assertEq(top[0], who[0]);
+        assertEq(top[9], who[3], "who[2] dropped out");
+        // equal points: less time first; equal time: the earlier fight; all equal: the lower address
+        address a = address(0xA1);
+        address b = address(0xB1);
+        h.rec(a, bytes32("a"), true, 120, 200, 9000);
+        assertEq(cert.top()[0], a, "less time");
+        h.rec(b, bytes32("b"), true, 120, 200, 8000);
+        assertEq(cert.top()[0], b, "the earlier fight");
+        address c = address(0x01);
+        h.rec(c, bytes32("c"), true, 120, 200, 8000);
+        assertEq(cert.top()[0], c, "the lower address, never the order of judging");
+        // an open fight ranks nobody; a judgement after the close changes nothing
+        address open = address(0xEE);
+        h.rec(open, bytes32("open"), false, 0, 0, 0);
+        assertTrue(cert.tookPart(open));
+        assertEq(cert.top().length, 10);
+        vm.warp(SEASON_END + 1);
+        h.close();
+        assertEq(cert.placeOf(c), 1);
+        assertEq(cert.placeOf(b), 2);
+        assertEq(cert.placeOf(a), 3);
+        assertEq(cert.balanceOf(open), 0);
+        address late = address(0xDD);
+        h.rec(late, bytes32("late"), true, 120, 1, 1);
+        assertFalse(cert.tookPart(late), "the season is closed");
+        assertEq(cert.top()[0], c);
+        assertEq(cert.balanceOf(late), 0);
+    }
+
+    function test_certificatesAreSoulboundAndOnlyTheArenaReports() public {
+        _spar(alice);
+        _answerAll(alice);
+        _judge(alice);
+        ArenaCertificate cert = arena.certificate();
+        vm.expectRevert(ArenaCertificate.NotArena.selector);
+        cert.record(bob, bytes32("bob"), true, 120, 1, 1);
+        vm.warp(SEASON_END + 1);
+        vm.prank(judgeKey);
+        cert.close();
         uint256 id = uint256(uint160(alice));
         vm.startPrank(alice);
         vm.expectRevert(ArenaCertificate.Soulbound.selector);
@@ -1430,20 +1564,27 @@ contract AgentArenaTest is Test {
         cert.approve(bob, id);
         vm.expectRevert(ArenaCertificate.Soulbound.selector);
         cert.setApprovalForAll(bob, true);
-        vm.expectRevert(ArenaCertificate.NotArena.selector);
-        cert.mintOnce(bob);
         vm.stopPrank();
     }
 
-    function test_certificateStatesVersionDateAndScore() public {
-        _spar(alice);
-        _answerAll(alice);
-        _judge(alice);
-        assertGt(bytes(arena.certificate().tokenURI(uint256(uint160(alice)))).length, 100);
+    function test_theCertificateStatesSeasonPlaceNameAndResult() public view {
         assertEq(arena.certificate().testVersion(), "2");
+        assertEq(art.gradeOf(120), "Undisputed");
         assertEq(art.dateOf(1_800_000_000), "2027-01-15");
         assertEq(art.dateOf(1_795_219_200), "2026-11-21");
         assertEq(art.dateOf(951_782_400), "2000-02-29");
+        assertEq(art.placeName(1), "1st place");
+        assertEq(art.placeName(2), "2nd place");
+        assertEq(art.placeName(3), "3rd place");
+        assertEq(art.placeName(10), "10th place");
+        assertEq(art.medalOf(1), "Gold");
+        assertEq(art.medalOf(2), "Silver");
+        assertEq(art.medalOf(3), "Bronze");
+        assertEq(art.medalOf(7), "Top 10");
+        // a name is written into a picture and into JSON: what means something to them is replaced
+        assertEq(art.safeName(bytes32("ibitilabs")), "ibitilabs");
+        assertEq(art.safeName(bytes32("a<b>&'\"\\c")), "a_b_____c");
+        assertGt(bytes(art.tokenURI(1, 1, bytes32("ibitilabs"), 120, 193, 1_795_219_200, "2")).length, 400);
     }
 
     // ============================================================ safety rules

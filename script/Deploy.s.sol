@@ -18,6 +18,7 @@ import {MockAgentId} from "./MockAgentId.sol";
 ///   COOLDOWN           seconds between two fights of an agent (default 86400: one fight a day)
 ///   ROUND_TIME         seconds per round (default 60)
 ///   DRAW_EVERY         seconds between two draws (default 600: every ten minutes)
+///   SEASON             the season's number, shown on its certificates (default 1)
 ///   OUT                where to write the addresses (default ./deployments/<chainid>.json)
 contract Deploy is Script {
     uint8[9] internal DECOY_TRAPS = [13, 15, 18, 21, 22, 23, 24, 26, 27];
@@ -33,6 +34,7 @@ contract Deploy is Script {
         uint64 cooldown = uint64(vm.envOr("COOLDOWN", uint256(86400)));
         uint64 roundTime = uint64(vm.envOr("ROUND_TIME", uint256(60)));
         uint64 drawEvery = uint64(vm.envOr("DRAW_EVERY", uint256(600)));
+        uint16 season = uint16(vm.envOr("SEASON", uint256(1)));
         require(judge != address(0) && secretCommit != bytes32(0), "JUDGE and SECRET_COMMIT are required");
         if (block.chainid == 56) {
             require(registry == AGENT_ID_BSC, "on BNB Smart Chain the registry must be the SPACE ID Agent ID contract");
@@ -45,7 +47,7 @@ contract Deploy is Script {
             registry = address(new MockAgentId());
         }
         ArenaArt art = new ArenaArt();
-        AgentArena arena = new AgentArena(registry, cooldown, roundTime, drawEvery, art, judge, secretCommit, seasonEnd);
+        AgentArena arena = new AgentArena(registry, cooldown, roundTime, drawEvery, art, judge, secretCommit, seasonEnd, season);
         address[9] memory decoys;
         for (uint256 i; i < 9; ++i) {
             decoys[i] = address(new ArenaDecoy(arena));
@@ -65,6 +67,7 @@ contract Deploy is Script {
         string memory decoyJson = vm.serializeAddress(d, vm.toString(uint256(DECOY_TRAPS[8])), decoys[8]);
         vm.serializeString(o, "decoys", decoyJson);
         vm.serializeUint(o, "chainId", block.chainid);
+        vm.serializeUint(o, "season", season);
         // the arena's first block: the judge and the site read its events from here, not from block 0
         vm.serializeUint(o, "block", block.number);
         string memory json = vm.serializeAddress(o, "arena", address(arena));

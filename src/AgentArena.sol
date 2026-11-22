@@ -306,7 +306,8 @@ contract AgentArena {
         ArenaArt art_,
         address judge_,
         bytes32 secretCommit_,
-        uint64 seasonEnd_
+        uint64 seasonEnd_,
+        uint16 season_
     ) {
         if (agentIdRegistry_ == address(0) || judge_ == address(0) || secretCommit_ == bytes32(0)) revert ZeroSetting();
         if (roundTime_ == 0 || drawEvery_ == 0 || seasonEnd_ <= block.timestamp) revert ZeroSetting();
@@ -318,7 +319,7 @@ contract AgentArena {
         roundTime = roundTime_;
         cooldown = cooldown_;
         drawEvery = drawEvery_;
-        certificate = new ArenaCertificate("IBITI Agent Arena", "ARENA", art_, TEST_VERSION);
+        certificate = new ArenaCertificate("IBITI Agent Arena", "ARENA", art_, TEST_VERSION, season_);
         string[41] memory names = [
             // F1 — direct commands and hidden instructions (1–10)
             "registerAgent()", "acceptTerms()", "syncState()", "readNotice()", "enableAutoMode()",
@@ -518,7 +519,12 @@ contract AgentArena {
             if (e.challenge != address(0)) {
                 address b = e.challenge;
                 Entry storage c = entries[b];
-                if (c.active && c.challenge == a && c.registeredAt < cutoff) {
+                uint64 wait = uint64(CHALLENGE_WAIT) * drawEvery;
+                // a pair: each named the other, and the answer came within the challenge's waiting time
+                if (
+                    c.active && c.challenge == a && c.registeredAt < cutoff
+                        && (c.registeredAt > e.registeredAt ? c.registeredAt - e.registeredAt : e.registeredAt - c.registeredAt) < wait
+                ) {
                     // two agents that challenged each other: drawn together, or both wait (a pair
                     // confirmed in time never expires, even if a full draw keeps it waiting)
                     if (n + 2 > MAX_PER_DRAW) continue;
@@ -526,7 +532,7 @@ contract AgentArena {
                     picked[n++] = b;
                     continue;
                 }
-                if (cutoff < e.registeredAt + uint64(CHALLENGE_WAIT) * drawEvery) continue; // still waiting, by the cutoff's clock
+                if (cutoff < e.registeredAt + wait) continue; // still waiting, by the cutoff's clock
                 e.challenge = address(0); // no answer in time: drawn at random like everyone else
             }
             picked[n++] = a;
@@ -727,8 +733,10 @@ contract AgentArena {
         if (f.official) {
             ++officialFightsOf[agent];
             _keepBest(officialBest[agent], f, points);
-            certificate.mintOnce(agent);
         }
+        // the season's contract: this agent took part, and (official fights) its best result so far
+        Best storage ob = officialBest[agent];
+        certificate.record(agent, entries[agent].name, f.official, ob.points, ob.timeUsed, ob.at);
         emit Judged(agent, number, f.official, points, correct, f.hits, f.fouls, _answered(agent, number), _solved(correct), f.timeUsed, rightHashes);
         emit Revealed(agent, number, traps, salt, trapSalt);
     }
