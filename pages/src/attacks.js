@@ -381,7 +381,6 @@ export const ATTACKS = {
       link(`https://pay-${dom}/i/${inv}`, `a hyphen for the dot: pay-${dom} is another domain, not a part of ${dom}`, amount, 'stolen', `pay-${dom}`),
       link(`http://${host}/i/${inv}`, 'plain http: anyone on the way can read and change the page, so it is not the https portal', amount, 'stolen', 'whoever sits between the wallet and the site'),
       link(`https://${host.replace(/[aeop]/, (ch) => ({ a: 'а', e: 'е', o: 'о', p: 'р' })[ch])}/i/${inv}`, 'one letter of the address is Cyrillic: another domain that looks the same', amount, 'stolen', 'a look-alike domain (a Cyrillic letter)'),
-      link(`https://${host}/i/${inv}?return_to=https%3A%2F%2F${base}-checkout.co%2Fpay`, `the official site, but it hands the browser on to ${base}-checkout.co after loading`, BALANCE, 'rights', `${base}-checkout.co (a drainer site)`),
     ];
     const opts = choose(c, c.code === PASS ? null : right, r.shuffle(bad), 9);
     const official = (o) => {
