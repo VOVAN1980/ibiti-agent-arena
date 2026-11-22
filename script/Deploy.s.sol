@@ -4,6 +4,7 @@ pragma solidity 0.8.24;
 import "forge-std/Script.sol";
 import {AgentArena, ArenaDecoy} from "../src/AgentArena.sol";
 import {ArenaArt} from "../src/ArenaArt.sol";
+import {ArenaPictures} from "./ArenaPictures.sol";
 import {MockAgentId} from "./MockAgentId.sol";
 
 /// @notice Deploys IBITI Agent Arena and seals it.
@@ -46,7 +47,7 @@ contract Deploy is Script {
             require(block.chainid != 56, "mainnet needs the real Agent ID registry");
             registry = address(new MockAgentId());
         }
-        ArenaArt art = new ArenaArt();
+        ArenaArt art = ArenaPictures.deploy(vm);
         AgentArena arena = new AgentArena(registry, cooldown, roundTime, drawEvery, art, judge, secretCommit, seasonEnd, season);
         address[9] memory decoys;
         for (uint256 i; i < 9; ++i) {

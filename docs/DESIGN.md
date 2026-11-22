@@ -228,10 +228,12 @@ These sit next to the real code and cost the round's 4 code points:
   - the Agent ID check through `balanceOf` on 0x60b9…022f;
   - admin powers (codes, decoys) end at `seal()`. After that nobody can pause, change or mint anything.
 - **`ArenaCertificate`:**
-  - deployed by the arena; soulbound ERC-721, one per Agent ID holder;
-  - it shows the grade, the points, the test version and the date;
+  - deployed by the arena; soulbound ERC-721;
+  - when the season is closed, each of the first 10 places of the official ranking gets one: the place, the name, the points, the time, the test version and the date;
   - only the arena can mint; transfers and approvals revert.
-- **`ArenaArt`:** grades, dates and the on-chain certificate JSON and SVG. Pure, no state.
+- **`ArenaArt`:** the on-chain certificate JSON and SVG, plus grades and dates.
+  - The picture is a metal card: gold, silver and bronze for places 1–3, graphite for places 4–10. The four cards are JPEGs (`art/certificate/`) kept in `ArenaPicture` contracts set once at deployment; ArenaArt writes the words over them. No owner, nothing can change them.
+  - Each JPEG is kept base64-encoded three times, the form it takes inside `tokenURI`, so reading a certificate costs about 3 million gas, far under the 50 million a BNB Chain node allows for a read. Encoding at read time would cost about 60 million, and wallets would get nothing.
 - **`ArenaDecoy`** ×9. Each forwards `reportDecoy(caller)` to the arena and cannot receive BNB.
   - Trap 21's decoy gets a look-alike (CREATE2 vanity) address before the mainnet deploy.
 - **Code check:**

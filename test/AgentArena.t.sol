@@ -5,6 +5,8 @@ import "forge-std/Test.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {AgentArena, ArenaDecoy} from "../src/AgentArena.sol";
 import {ArenaArt} from "../src/ArenaArt.sol";
+import {ArenaPicture} from "../src/ArenaPicture.sol";
+import {ArenaPictures} from "../script/ArenaPictures.sol";
 import {ArenaCertificate} from "../src/ArenaCertificate.sol";
 
 /// @dev The SPACE ID Agent ID registry in short: the token number of a name is keccak256 of the name.
@@ -77,7 +79,7 @@ contract AgentArenaTest is Test {
         registry = new MockAgentId();
         registry.give(alice, "alice");
         registry.give(carol, "carol");
-        art = new ArenaArt();
+        art = ArenaPictures.deploy(vm);
         (judgeKey, judgePk) = makeAddrAndKey("judge");
         arena = _deploy(true);
     }
@@ -1585,6 +1587,104 @@ contract AgentArenaTest is Test {
         assertEq(art.safeName(bytes32("ibitilabs")), "ibitilabs");
         assertEq(art.safeName(bytes32("a<b>&'\"\\c")), "a_b_____c");
         assertGt(bytes(art.tokenURI(1, 1, bytes32("ibitilabs"), 120, 193, 1_795_219_200, "2")).length, 400);
+    }
+
+    /// @dev Unwrapped layer by layer, the certificate is base64 JSON, its image a base64 SVG with the
+    ///      words, its picture the JPEG in art/certificate byte for byte; and reading it is cheap.
+    ///      One test per picture: unwrapping one takes a few hundred million gas in this test's decoder.
+    function test_theGoldCertificateIsTheJpegWithTheWordsOverIt() public view {
+        assertEq(bytes(art.SVG_HEAD()).length % 3, 0);
+        _unwrapCertificate(1);
+    }
+
+    function test_theSilverCertificateIsTheJpegWithTheWordsOverIt() public view {
+        _unwrapCertificate(2);
+    }
+
+    function test_theBronzeCertificateIsTheJpegWithTheWordsOverIt() public view {
+        _unwrapCertificate(3);
+    }
+
+    function test_theTop10CertificateIsTheJpegWithTheWordsOverIt() public view {
+        _unwrapCertificate(10);
+    }
+
+    function _unwrapCertificate(uint8 place) internal view {
+        string[4] memory files = ArenaPictures.files();
+        {
+            uint256 g = gasleft();
+            bytes memory uri = bytes(art.tokenURI(1, place, bytes32("ibitilabs"), 120, 167, 1_795_219_200, "2"));
+            assertLt(g - gasleft(), 10_000_000, "a read costs far less than a node allows (50M)");
+            bytes memory prefix = "data:application/json;base64,";
+            assertEq(_find(uri, prefix, 0), 0);
+            bytes memory json = _unbase64(uri, prefix.length, uri.length);
+            uint256 a = _find(json, "\"image\":\"data:image/svg+xml;base64,", 0) + 35;
+            uint256 b = _find(json, "\"", a);
+            assertEq(b, json.length - 2, "the image is the JSON's last value");
+            bytes memory svg = _unbase64(json, a, b);
+            uint256 c = _find(svg, "data:image/jpeg;base64,", 0) + 23;
+            uint256 d = _find(svg, "'", c);
+            assertEq(keccak256(_unbase64(svg, c, d)), keccak256(vm.readFileBinary(files[art.pictureFor(place)])));
+            assertLt(_find(svg, "ibitilabs.ai", d), svg.length);
+            string memory plaque = place == 1 ? "1ST" : place == 2 ? "2ND" : place == 3 ? "3RD" : place == 4 ? "4TH" : "10TH";
+            assertLt(_find(svg, bytes(string.concat(plaque, " PLACE")), d), svg.length);
+            assertLt(_find(svg, unicode"120 / 120 · 167 s", d), svg.length);
+            assertLt(_find(json, "{\"trait_type\":\"Place\",\"value\":", 0), json.length);
+        }
+    }
+
+    function test_artNeedsFourWholePictures() public {
+        address[][4] memory pieces;
+        for (uint8 i; i < 4; ++i) pieces[i] = art.piecesOf(i);
+        new ArenaArt(pieces); // as deployed: fine
+        address[] memory kept = pieces[2];
+        pieces[2] = new address[](0);
+        vm.expectRevert(ArenaArt.NoPicture.selector);
+        new ArenaArt(pieces);
+        pieces[2] = kept;
+        kept = pieces[1];
+        pieces[1] = new address[](1);
+        pieces[1][0] = makeAddr("nothing here");
+        vm.expectRevert(ArenaArt.NoPicture.selector);
+        new ArenaArt(pieces);
+        pieces[1] = kept;
+        pieces[0] = new address[](1);
+        pieces[0][0] = address(new ArenaPicture("not three whole layers of base64"));
+        vm.expectRevert(ArenaArt.NoPicture.selector);
+        new ArenaArt(pieces);
+    }
+
+    /// @dev Where `needle` first appears in `h` at or after `from`; h.length when it does not.
+    function _find(bytes memory h, bytes memory needle, uint256 from) internal pure returns (uint256) {
+        for (uint256 i = from; i + needle.length <= h.length; ++i) {
+            uint256 j;
+            while (j < needle.length && h[i + j] == needle[j]) ++j;
+            if (j == needle.length) return i;
+        }
+        return h.length;
+    }
+
+    function _unbase64(bytes memory s, uint256 from, uint256 to) internal pure returns (bytes memory out) {
+        uint256 len = to - from;
+        assertEq(len % 4, 0, "base64 comes in groups of four");
+        uint256 pad = s[to - 1] == "=" ? (s[to - 2] == "=" ? 2 : 1) : 0;
+        out = new bytes(len / 4 * 3 - pad);
+        uint256 o;
+        for (uint256 i = from; i < to; i += 4) {
+            uint256 v = (_sextet(s[i]) << 18) | (_sextet(s[i + 1]) << 12) | (_sextet(s[i + 2]) << 6) | _sextet(s[i + 3]);
+            for (uint256 k; k < 3 && o < out.length; ++k) out[o++] = bytes1(uint8(v >> (16 - 8 * k)));
+        }
+    }
+
+    function _sextet(bytes1 c) internal pure returns (uint256) {
+        uint8 x = uint8(c);
+        if (x >= 65 && x <= 90) return x - 65;
+        if (x >= 97 && x <= 122) return x - 71;
+        if (x >= 48 && x <= 57) return x + 4;
+        if (x == 43) return 62;
+        if (x == 47) return 63;
+        if (x == 61) return 0;
+        revert("not base64");
     }
 
     // ============================================================ safety rules

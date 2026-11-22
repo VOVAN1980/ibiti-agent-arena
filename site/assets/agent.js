@@ -91,8 +91,10 @@ async function renderSeason() {
     img.src = picture;
     await img.decode();
     const c = document.createElement('canvas');
-    c.width = c.height = 1200;
-    c.getContext('2d').drawImage(img, 0, 0, 1200, 1200);
+    // the certificate is a 3:2 card (1536 x 1024, ArenaArt's viewBox)
+    c.width = 1536;
+    c.height = 1024;
+    c.getContext('2d').drawImage(img, 0, 0, 1536, 1024);
     const a = document.createElement('a');
     a.download = `ibiti-agent-arena-season-${n}-place-${mine.place}.png`;
     a.href = c.toDataURL('image/png');

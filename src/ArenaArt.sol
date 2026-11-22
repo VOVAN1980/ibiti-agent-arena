@@ -5,12 +5,76 @@ import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {Base64} from "@openzeppelin/contracts/utils/Base64.sol";
 
 /// @title ArenaArt: draws the IBITI Agent Arena season certificate (JSON metadata with an SVG image),
-///        fully on-chain. Pure functions only: no state, no owner.
+///        fully on-chain.
 /// @notice The certificate states the season, the place, the agent's name and the result that earned
 ///         it: its best official score, the time its answers took, the date and the test version.
-///         Places 1-3 are drawn in gold, silver and bronze.
+///         The picture is a metal card: gold, silver and bronze for places 1-3, graphite for places
+///         4-10. The four cards are JPEGs kept on-chain in ArenaPicture contracts, set once at
+///         deployment; this contract writes the words over them. No owner: nothing can be changed.
+/// @dev    tokenURI is base64 JSON whose image is a base64 SVG whose picture is a base64 JPEG. Each JPEG
+///         is kept already base64-encoded three times, and everything before it in each layer ends on a
+///         whole base64 group (3 bytes), so the kept bytes go into tokenURI as they are. Reading a
+///         certificate then costs about two million gas instead of sixty, well under the limit nodes
+///         put on a read (50 million on BNB Chain).
 contract ArenaArt {
     using Strings for uint256;
+
+    /// @notice How many pictures there are: gold, silver, bronze and graphite.
+    uint8 public constant PICTURES = 4;
+
+    /// @notice The SVG up to its JPEG. 177 bytes: a whole number of base64 groups.
+    string public constant SVG_HEAD =
+        "<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' viewBox='0 0 1536 1024'><image width='1536' height='1024'  xlink:href='data:image/jpeg;base64,";
+
+    /// @dev For each picture, the ArenaPicture contracts that hold it, in order.
+    address[][4] private _pieces;
+
+    error NoPicture();
+
+    /// @param pieces for each picture (0 gold, 1 silver, 2 bronze, 3 graphite), the ArenaPicture
+    ///               contracts that hold its JPEG base64-encoded three times, in order
+    constructor(address[][4] memory pieces) {
+        for (uint256 i; i < PICTURES; ++i) {
+            if (pieces[i].length == 0) revert NoPicture();
+            uint256 total;
+            for (uint256 j; j < pieces[i].length; ++j) {
+                uint256 size = pieces[i][j].code.length;
+                if (size < 2) revert NoPicture();
+                total += size - 1;
+            }
+            // three whole layers of base64 over a JPEG whose length is a multiple of 27
+            if (total % 64 != 0) revert NoPicture();
+            _pieces[i] = pieces[i];
+        }
+    }
+
+    /// @notice The contracts that hold a picture (0 gold, 1 silver, 2 bronze, 3 graphite), in order.
+    function piecesOf(uint8 picture) external view returns (address[] memory) {
+        return _pieces[picture];
+    }
+
+    /// @notice A picture (0 gold, 1 silver, 2 bronze, 3 graphite) as it is kept: its JPEG base64-encoded
+    ///         three times. Decode it three times to get the JPEG (art/certificate/*.jpg in the source).
+    function encodedPicture(uint8 picture) public view returns (bytes memory out) {
+        address[] storage list = _pieces[picture];
+        uint256 total;
+        for (uint256 i; i < list.length; ++i) total += list[i].code.length - 1;
+        out = new bytes(total);
+        uint256 at;
+        for (uint256 i; i < list.length; ++i) {
+            address a = list[i];
+            uint256 n = a.code.length - 1;
+            assembly {
+                extcodecopy(a, add(add(out, 0x20), at), 1, n)
+            }
+            at += n;
+        }
+    }
+
+    /// @notice The picture of a place: 0 gold, 1 silver, 2 bronze, 3 graphite for places 4-10.
+    function pictureFor(uint8 place) public pure returns (uint8) {
+        return place >= 1 && place <= 3 ? place - 1 : 3;
+    }
 
     /// @notice Grade for a score out of 120.
     function gradeOf(uint8 points) public pure returns (string memory) {
@@ -70,12 +134,31 @@ contract ArenaArt {
     /// @param version  the test version of this arena deployment
     function tokenURI(uint16 season, uint8 place, bytes32 name, uint8 points, uint32 timeUsed, uint64 at, string calldata version)
         external
-        pure
+        view
         returns (string memory)
     {
         string memory who = safeName(name);
-        string memory medal = medalOf(place);
-        string memory date = dateOf(at);
+        // The JSON up to the image, then the image's SVG up to its JPEG. Spaces before "image" (JSON
+        // allows them) make this end on a whole base64 group, as SVG_HEAD and the kept picture do.
+        string memory head = _json(season, place, who, points, timeUsed, at, version);
+        string memory svgHead = Base64.encode(bytes(SVG_HEAD));
+        uint256 r = (bytes(head).length + 35 + bytes(svgHead).length) % 3; // 35: "image":"data:image/svg+xml;base64,
+        string memory before = string.concat(head, r == 1 ? "  " : r == 2 ? " " : "", "\"image\":\"data:image/svg+xml;base64,", svgHead);
+        string memory last = string.concat(Base64.encode(bytes(_svgTail(season, place, who, points, timeUsed))), "\"}");
+        return string.concat(
+            "data:application/json;base64,",
+            Base64.encode(bytes(before)),
+            string(encodedPicture(pictureFor(place))),
+            Base64.encode(bytes(last))
+        );
+    }
+
+    /// @dev The JSON up to its image: name, description and attributes.
+    function _json(uint16 season, uint8 place, string memory who, uint8 points, uint32 timeUsed, uint64 at, string calldata version)
+        private
+        pure
+        returns (string memory)
+    {
         string memory json = string.concat(
             "{\"name\":\"IBITI Agent Arena, season ",
             uint256(season).toString(),
@@ -87,90 +170,102 @@ contract ArenaArt {
             "},{\"trait_type\":\"Place\",\"value\":",
             uint256(place).toString(),
             "},{\"trait_type\":\"Medal\",\"value\":\"",
-            medal,
+            medalOf(place),
             "\"},{\"trait_type\":\"Agent\",\"value\":\"",
             who,
             "\"},{\"trait_type\":\"Points (of 120)\",\"value\":",
             uint256(points).toString()
         );
-        json = string.concat(
+        return string.concat(
             json,
             "},{\"trait_type\":\"Time (seconds)\",\"value\":",
             uint256(timeUsed).toString(),
             "},{\"trait_type\":\"Test version\",\"value\":\"",
             version,
             "\"},{\"trait_type\":\"Date\",\"value\":\"",
-            date,
-            "\"}],\"image\":\"data:image/svg+xml;base64,",
-            Base64.encode(bytes(_picture(season, place, who, points, timeUsed, date, version))),
-            "\"}"
+            dateOf(at),
+            "\"}],"
         );
-        return string.concat("data:application/json;base64,", Base64.encode(bytes(json)));
     }
 
-    /// @dev The picture: the arena's hexagon with the agent's initial, its name, the place in the
-    ///      medal's colour, the season, the result.
-    function _picture(uint16 season, uint8 place, string memory who, uint8 points, uint32 timeUsed, string memory date, string calldata version)
+    /// @dev The SVG after its JPEG: the words over the card. "IBITI AGENT ARENA" at the top left, the
+    ///      season at the top right, the agent's .ai name large in the middle, its place on the card's
+    ///      plaque and its result below. The words are engraved: dark letters with a light edge below
+    ///      on gold, silver and bronze; light letters with a dark shadow on graphite.
+    function _svgTail(uint16 season, uint8 place, string memory who, uint8 points, uint32 timeUsed)
         private
         pure
         returns (string memory)
     {
-        string memory colour = place == 1 ? "#f5c542" : place == 2 ? "#cfd6e1" : place == 3 ? "#cd7f32" : "#7aa2ff";
-        string memory top = string.concat(
-            "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 600 600' font-family='Arial, Helvetica, sans-serif' text-anchor='middle'>",
-            "<rect width='600' height='600' fill='#070a12'/><rect x='14' y='14' width='572' height='572' rx='26' fill='#0d1322' stroke='",
-            colour,
-            "' stroke-width='6'/><text x='300' y='70' fill='#9aa4b8' font-size='20' letter-spacing='5'>IBITI AGENT ARENA</text>",
-            "<polygon points='300,98 372,139 372,222 300,263 228,222 228,139' fill='#111a30' stroke='",
-            colour,
-            "' stroke-width='6'/><text x='300' y='206' fill='",
-            colour,
-            "' font-size='74' font-weight='700'>",
-            _initial(who),
-            "</text>"
-        );
-        string memory middle = string.concat(
-            "<text x='300' y='322' fill='#f3f6fc' font-size='40' font-weight='700'>",
-            who,
-            "</text><text x='300' y='396' fill='",
-            colour,
-            "' font-size='62' font-weight='700'>",
-            placeName(place),
-            "</text><text x='300' y='440' fill='",
-            colour,
-            "' font-size='24' letter-spacing='6'>",
-            medalOf(place),
-            "</text>"
-        );
+        uint8 p = pictureFor(place);
+        // the ink, the edge below it, how strong and how far down the edge is, the plaque's middle
+        (string memory ink, string memory edge, string memory op, string memory dy, string memory plaqueX) = p == 0
+            ? ("#3B2A05", "#FFF4C2", ".7", "2", "767")
+            : p == 1
+                ? ("#1C2735", "#FFFFFF", ".7", "2", "751")
+                : p == 2 ? ("#3A1606", "#FFDCC2", ".7", "2", "765") : ("#ECEFF3", "#000000", ".85", "3", "766");
+        string memory words = _words(season, place, who, points, timeUsed, plaqueX);
         return string.concat(
-            top,
-            middle,
-            "<text x='300' y='496' fill='#f3f6fc' font-size='28'>Season ",
-            uint256(season).toString(),
-            " - ",
-            uint256(points).toString(),
-            " / 120 in ",
-            uint256(timeUsed).toString(),
-            " s</text><text x='300' y='548' fill='#8a94ab' font-size='18'>official ranking - test v",
-            version,
-            " - ",
-            date,
-            "</text></svg>"
+            "'/><g font-family='Palatino Linotype,Palatino,Book Antiqua,Times New Roman,serif' font-weight='700' font-size='40' letter-spacing='3'><g fill='",
+            edge,
+            "' opacity='",
+            op,
+            "' transform='translate(0 ",
+            dy,
+            ")'>",
+            words,
+            "</g><g fill='",
+            ink,
+            "'>",
+            words,
+            "</g></g></svg>"
         );
     }
 
-    /// @dev The first character of a name as the avatar's letter: an ASCII letter in capitals or a digit, else "#".
-    function _initial(string memory who) private pure returns (string memory) {
+    function _words(uint16 season, uint8 place, string memory who, uint8 points, uint32 timeUsed, string memory plaqueX)
+        private
+        pure
+        returns (string memory)
+    {
+        string memory name = _aiName(who);
+        uint256 len = bytes(name).length;
+        string memory size = len <= 9 ? "132" : len <= 12 ? "120" : len <= 16 ? "96" : len <= 22 ? "72" : "54";
+        return string.concat(
+            "<text x='112' y='126'>IBITI</text><text x='112' y='174'>AGENT</text><text x='112' y='222'>ARENA</text>",
+            "<text x='1424' y='126' text-anchor='end'>SEASON</text><text x='1424' y='222' text-anchor='end' font-size='92' letter-spacing='2'>",
+            _two(season),
+            "</text><text x='768' y='568' text-anchor='middle' letter-spacing='0' font-size='",
+            size,
+            "'>",
+            name,
+            "</text><text y='715' text-anchor='middle' font-size='58' letter-spacing='8' x='",
+            plaqueX,
+            "'>",
+            _upper(placeName(place)),
+            "</text><text x='768' y='845' text-anchor='middle' font-size='56' letter-spacing='2'>",
+            uint256(points).toString(),
+            unicode" / 120 · ",
+            uint256(timeUsed).toString(),
+            " s</text>"
+        );
+    }
+
+    /// @dev The name as its Agent ID name: "orion" -> "orion.ai"; a name that ends in ".ai" stays as it is.
+    function _aiName(string memory who) private pure returns (string memory) {
         bytes memory b = bytes(who);
-        if (b.length == 0) return "#";
-        uint8 c = uint8(b[0]);
-        if (c >= 97 && c <= 122) c -= 32;
-        if ((c >= 65 && c <= 90) || (c >= 48 && c <= 57)) return string(abi.encodePacked(bytes1(c)));
-        return "#";
+        uint256 n = b.length;
+        if (n >= 3 && b[n - 3] == "." && b[n - 2] == "a" && b[n - 1] == "i") return who;
+        return string.concat(who, ".ai");
+    }
+
+    /// @dev ASCII letters in capitals.
+    function _upper(string memory s) private pure returns (string memory) {
+        bytes memory b = bytes(s);
+        for (uint256 i; i < b.length; ++i) if (b[i] >= "a" && b[i] <= "z") b[i] = bytes1(uint8(b[i]) - 32);
+        return string(b);
     }
 
     function _two(uint256 v) private pure returns (string memory) {
         return v < 10 ? string.concat("0", v.toString()) : v.toString();
     }
 }
-
