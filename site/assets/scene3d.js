@@ -421,6 +421,10 @@ const POSES = {
   fail: (t) => ({ spot: [0, 0], reach: 'head', seat: true, bounce: 0, turn: 0, lean: 0.35, look: 0.55 + Math.sin(t * 1.4) * 0.08, shake: Math.sin(t * 2.2) * 0.3, a0x: -2.1, a0z: 0.35, e0: -1.6, a1x: -2.1, a1z: -0.35, e1: -1.6 }),
   // the fight is over, waiting for the judge
   idle: (t) => ({ spot: [0, 0], seat: true, bounce: 0, turn: 0, lean: -0.1, look: 0, ...ARMS_DOWN, a0x: -0.3, a1x: -0.3, e0: -0.6 + Math.sin(t) * 0.05, e1: -0.6 }),
+  // the fight is over: up from the chair and out in front of the desk, facing the ring, waiting for the referee
+  stand: (t) => ({ spot: [0, 1.45], seat: false, bounce: 0, turn: 0, lean: 0, look: -0.05 + Math.sin(t * 0.9) * 0.03, ...ARMS_DOWN, a0z: -0.12 + Math.sin(t * 1.3) * 0.02, a1z: 0.12 - Math.sin(t * 1.3) * 0.02 }),
+  // beaten: it stays where it stood, head and shoulders down
+  sad: (t) => ({ spot: [0, 1.45], seat: false, bounce: 0, turn: Math.sin(t * 0.6) * 0.12, lean: 0.22, look: 0.55 + Math.sin(t * 1.1) * 0.05, ...ARMS_DOWN, e0: -0.05, e1: -0.05 }),
   // the winner: out to the front, jumping, arms up, turning to every stand
   win: (t) => {
     // the champion: jumping, both fists pumping above the head
@@ -462,7 +466,7 @@ const POSES = {
     return { spot: [0, 0], seat: false, bounce: 0, turn: 0, lean: 0, look: 0, a0x: lerp(0, -1.4, chop), a0z: lerp(-1.5 * up, 0, chop), e0: 0, a1x: lerp(0, -1.4, chop), a1z: lerp(1.5 * up, 0, chop), e1: 0 };
   },
   refRaise: (t, side) => {
-    const up = ease((t - 0.8) / 0.4);
+    const up = ease((t - 1.9) / 0.5); // it walks over first
     const arm = side === 'red' ? { a0x: 0, a0z: -2.95 * up, e0: -0.1 } : { a1x: 0, a1z: 2.95 * up, e1: -0.1 };
     return { spot: [0, 0], seat: false, bounce: 0, turn: 0, lean: 0, look: -0.15, a0x: 0.2, a0z: -0.1, e0: -0.4, a1x: 0.2, a1z: 0.1, e1: -0.4, ...arm };
   },
@@ -1106,12 +1110,12 @@ export async function createScene(root) {
     bot.root.position.set(f.pos.x - HIP * Math.sin(flip) * Math.sin(bot.yaw), lift + HIP * (1 - Math.cos(flip)), f.pos.y - HIP * Math.sin(flip) * Math.cos(bot.yaw));
     if (bot.pose) {
       let reach = null;
-      if (p.reach === 'keys') {
+      if (p.reach === 'keys' && !walking) {
         const j = Math.sin(t * 22) * 0.012;
         reach = [f.st.g.localToWorld(new THREE.Vector3(-0.13, 0.8 + j, 0.3)), f.st.g.localToWorld(new THREE.Vector3(0.13, 0.8 - j, 0.3))];
-      } else if (p.reach === 'head') reach = 'head';
-      bot.pose(c, p, t, walking && !p.seat, dt, reach);
-    } else applyLimbs(bot, c, p, t, walking && !p.seat);
+      } else if (p.reach === 'head' && !walking) reach = 'head';
+      bot.pose(c, p, t, walking, dt, reach); // on the way to its chair it walks; it sits down once there
+    } else applyLimbs(bot, c, p, t, walking);
   }
 
   function applyLimbs(bot, c, p, t, walking) {

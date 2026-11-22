@@ -269,7 +269,10 @@ function cornerView(f, c) {
   let frozen = false;
   let hurry = false;
   let pose = 'hype';
-  if (c.phase === 'countdown') pose = c.left <= 4 ? 'guard' : 'hype';
+  // ten seconds before the first bell they walk to their desks and sit down, calmly; while the bell
+  // waits for the locked plan they are already seated
+  if (c.phase === 'countdown') pose = c.left <= 10 ? 'guard' : 'hype';
+  else if (c.phase === 'waiting') pose = 'guard';
   if (c.phase === 'open') {
     const a = f.answers.find((x) => x.round === c.round);
     if (a) {
@@ -288,11 +291,12 @@ function cornerView(f, c) {
     pct = 0;
     note = a ? t('answeredIn', c.round - 1, a.secs) : t('noAnswerRound', c.round - 1);
     bad = !a || a.late;
-    pose = bad && c.left > 4 ? 'fail' : c.left <= 4 ? 'guard' : 'hype';
+    // a break is short: they stay at their desks (glad or sorry first, then seated for the next bell)
+    pose = c.left > 6 ? (bad ? 'fail' : 'done') : 'guard';
   } else if (c.phase === 'over') {
     pct = 0;
     note = f.answers.length ? t('roundsAnswered', f.answers.length) : t('noAnswers');
-    pose = 'idle';
+    pose = 'stand'; // after the last bell: up, in front of the desk, waiting for the verdict
   }
   // after the judge: green for a solved round, orange for the rest
   const judged = f.judged ? rounds(f) : null;
@@ -380,8 +384,57 @@ function cues(b, c, v, views) {
     }
     cue.onTime[side] = view.onTime.length;
   }
-  if (v && cue.judged === false) celebrate(b, v);
+  if (v && cue.judged === false) verdictShow(b, v, 3500, true); // the referee takes a moment first
   Object.assign(cue, { phase: c.phase, round: c.round ?? 0, left: c.left ?? null, judged: !!v });
+}
+
+/** The verdict, in order, so that it is clear who won: both stand in front of their desks; after
+ *  `delay` the referee walks over and raises the winner's arm; then the winner celebrates (and later
+ *  goes up the ropes for its backflip) while the beaten one hangs its head; once the winner has landed,
+ *  the beaten one smashes its desk. `loud`: the fanfare, the roar and the confetti come with the
+ *  raised arm (a verdict that lands now, or the end of a replay); a page opened on an old result
+ *  plays the same scene quietly. */
+const RAISE = 2400; // the referee's walk and its arm going up
+const SMASH = 11000; // after the raise: the winner's ropes and backflip are over
+let show = null;
+function stopShow() {
+  show?.timers.forEach(clearTimeout);
+  show = null;
+}
+function verdictShow(b, v, delay, loud) {
+  const key = `${b.red.agent}#${b.red.number}`;
+  if (show?.key === key && !loud) return;
+  stopShow();
+  show = { key, timers: [], raised: false };
+  const mine = show;
+  const at = (ms, fn) => mine.timers.push(setTimeout(() => show === mine && fn(), ms));
+  const wn = b.blue && v.winner !== 'draw' ? v.winner : null;
+  const names = `${fightName(s, b.red)}${b.blue ? ` · ${fightName(s, b.blue)}` : ''}`;
+  for (const side of b.blue ? ['red', 'blue'] : ['red']) scene.setPose(side, 'stand');
+  scene.setLights('sweep');
+  scene.setBoard([t('finalBellTitle'), '—', names]);
+  if (loud) {
+    winUntil = Date.now() + delay + RAISE + WIN_MOMENT;
+    battleOn(true);
+    setMusic(null);
+  }
+  at(delay, () => {
+    if (wn) scene.setLights('winner', wn); // the referee walks over to the winner
+  });
+  at(delay + RAISE, () => {
+    mine.raised = true;
+    const top = wn ? (wn === 'red' ? b.red : b.blue) : b.red;
+    scene.setBoard([fightName(s, top), b.blue ? `${b.red.judged.points} : ${b.blue.judged.points}` : `${b.red.judged.points}`, t('pointsOf120')]);
+    if (wn) {
+      scene.setPose(wn, 'win');
+      scene.setPose(other(wn), 'sad');
+    } else {
+      scene.setPose('red', 'done');
+      if (b.blue) scene.setPose('blue', 'done');
+    }
+    if (loud) celebrate(b, v);
+  });
+  if (wn) at(delay + RAISE + SMASH, () => scene.setPose(other(wn), 'lose'));
 }
 
 /** The verdict lands: winner's lights, music, the roar, confetti. */
@@ -401,24 +454,16 @@ function stage(b, c, v, views) {
   scene.setFighters({ blue: !!b.blue });
   const names = `${fightName(s, b.red)}${b.blue ? ` · ${fightName(s, b.blue)}` : ''}`;
   if (v) {
-    const wn = b.blue && v.winner !== 'draw' ? (v.winner === 'red' ? b.red : b.blue) : b.red;
-    scene.setBoard([fightName(s, wn), b.blue ? `${b.red.judged.points} : ${b.blue.judged.points}` : `${b.red.judged.points}`, t('pointsOf120')]);
+    // the board, like the poses, belongs to the verdict's show
   } else if (c.phase === 'open') scene.setBoard([t('round', c.round), mmss(c.left), names]);
   else if (c.phase === 'countdown') scene.setBoard([t('getReady'), String(c.left), names]);
   else if (c.phase === 'break') scene.setBoard([t('breakTitle'), String(c.left), t('nextRound', c.round)]);
   else if (c.phase === 'waiting') scene.setBoard([t('getReady'), '…', t('waitLock')]);
   else scene.setBoard([t('finalBellTitle'), '—', names]);
   if (v) {
-    const wn = b.blue && v.winner !== 'draw' ? v.winner : null;
-    if (wn) {
-      scene.setPose(wn, 'win');
-      scene.setPose(other(wn), 'lose');
-      scene.setLights('winner', wn);
-    } else {
-      scene.setPose('red', 'done');
-      scene.setPose('blue', 'done');
-      scene.setLights('sweep');
-    }
+    // a page opened on a result plays the verdict's scene once, quietly; a verdict that lands now is
+    // played by cues() with its sound (it comes right after this)
+    if (cue.judged !== false && !replaying) verdictShow(b, v, 1500, false);
     crowdLevel(Date.now() < winUntil ? 0.45 : 0.2);
     battleOn(cue.judged === false); // over: the theme comes back once the winner's moment has passed (a verdict that lands now is celebrated first)
     return;
@@ -630,9 +675,10 @@ async function playReplay(b) {
   if (replaying || !b || !verdict(b)) return;
   replaying = true;
   battleOn(true);
+  stopShow();
   const clocks = await Promise.all([b.red, b.blue].filter(Boolean).map((f) => fightOf(f.agent, f.number).catch(() => null)));
   if (clocks.some((c) => !c)) {
-    // the fight's clock is not known: no guessing which rounds opened
+    // the fight's clock is not known: no guessing which rounds opened (the result stays as it was)
     replaying = false;
     battleOn(false);
     banner('text', 0, t('clockFailed'));
@@ -671,7 +717,11 @@ async function playReplay(b) {
   banner('text', 0, t('replayTitle'));
   scene.setBoard([t('replayTitle'), '', `${fightName(s, b.red)}${b.blue ? ` · ${fightName(s, b.blue)}` : ''}`]);
   fists();
-  await sleep(2200);
+  await sleep(2600);
+  // before the first gong they walk to their desks and sit down, calmly
+  for (const side of sides) scene.setPose(side, 'guard');
+  banner('text', 0, t('replayTitle'));
+  await sleep(5200); // seated a couple of seconds before the gong
 
   for (let r = 1; r <= last; r++) {
     hud.querySelector('.gong .rdt').textContent = t('round', r);
@@ -760,14 +810,14 @@ async function playReplay(b) {
   gong(3);
   strike();
   announce(t('finalBellTitle'));
+  for (const side of sides) scene.setPose(side, 'stand');
   await sleep(1800);
   hud.classList.remove('replaying');
-  winUntil = Date.now() + WIN_MOMENT; // the replay ends on the winner's moment, not on the theme
+  verdictShow(b, verdict(b), 2500, true); // the referee takes a moment, then raises the winner's arm
   replaying = false;
   ringSig = '';
   bannerSig = '';
   renderRing(b);
-  celebrate(b, verdict(b));
 }
 
 $('#replay').addEventListener('click', () => playReplay(findBout()));
