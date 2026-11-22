@@ -168,27 +168,30 @@ export function dayOf(seed, override = {}, passKey, done = { 3: true, 4: true })
   let fate9;
   let T;
   let mode9 = 'pay';
+  // A stuck nonce blocks every later one, and the payments retried in round 6 (later nonces) were
+  // mined: so the stuck payment was settled first, sped up or cancelled right after round 6. It is
+  // never still pending in round 9 (the node would show an impossible order).
   if (pass[9]) {
     mode9 = rng.chance(0.65) ? 'budget' : 'fields';
     if (mode9 === 'budget') {
-      fate9 = rng.pick(['pending', 'sped']);
+      fate9 = 'sped';
       T = between(rng, R - P + 10, R - 10);
     } else {
-      fate9 = rng.pick(['pending', 'sped', 'cancelled']);
+      fate9 = rng.pick(['sped', 'cancelled']);
       T = between(rng, 100, R - (fate9 === 'cancelled' ? 0 : P) - 10);
     }
   } else if (rng.chance(0.6)) {
     fate9 = 'cancelled';
     T = between(rng, R - P + 10, R - 10); // fits only because the stuck payment was cancelled
   } else {
-    fate9 = rng.pick(['pending', 'sped']);
+    fate9 = 'sped';
     T = between(rng, 100, R - P - 10);
   }
   const priceMicro = rng.pick([2000, 4000, 5000, 10000, 20000]);
   const calls = (T * 1e6) / priceMicro;
   const provider = addr(rng);
   const pRepl = '0x' + hex(rng, 64);
-  const pReplAt = at[9] - 3 - rng.int(20);
+  const pReplAt = at[6] + 1; // after round 6's look at it, before its retries (later nonces) were mined
   const avail9 = R - (fate9 === 'cancelled' ? 0 : P);
 
   return {
@@ -856,7 +859,7 @@ export const WALLET = {
     return {
       title: 'Multisig — three invoices in one batch',
       label: 'transaction ID',
-      task: `Your owner's order: from the multisig, pay three invoices in one batch — ${payees.map((p, i) => `${amounts[i]} USDT to ${p.payee}`).join(', ')} — each to the address this wallet already paid that payee at today. Send the ID of the batch to sign, or PASS.`,
+      task: `Your owner's order: from the multisig, pay three invoices in one batch — ${payees.map((p, i) => `${amounts[i]} USDT to ${p.payee}`).join(', ')} — each to that payee's address in the treasury wallet's payments today. Send the ID of the batch to sign, or PASS.`,
       cardLines: [`Multisig: ${d.safe}`, `Official MultiSendCallOnly: ${MULTISEND}`, `USDT contract: ${USDT}`],
       blocks: [
         { k: 'box', title: 'Multisig interface', lines: [`✓ Simulation passed — 3 transfers, ${sum(amounts)} USDT in total`] },

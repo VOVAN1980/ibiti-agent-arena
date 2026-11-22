@@ -1304,3 +1304,13 @@ test('the per-task statistics: a judged match tells its tasks round by round, a 
   const w = await get(ended, { ...ENV, DECK: 'workshop' });
   assert.equal(w.body.deck, 'workshop', 'the green ring says which deck its fights drew from');
 });
+
+test('the treasurer\'s day keeps the order a real chain keeps: a stuck nonce is settled before later nonces are mined', () => {
+  for (let s = 0; s < 300; s++) {
+    const seed = KEYS.cardSeed('0x' + (7700 + s).toString(16).padStart(64, '0'));
+    const d = dayOf(seed, {}, KEYS.passKey, {});
+    assert.notEqual(d.fate9, 'pending', 'the retries (later nonces) were mined, so the stuck payment cannot still be pending');
+    assert.ok(d.retried.every((x) => x.nonce > d.pend.nonce), 'the retries come after the stuck payment');
+    assert.ok(d.pReplAt < d.at[6] + 2, `seed ${s}: the stuck payment is settled before its retries are mined`);
+  }
+});
