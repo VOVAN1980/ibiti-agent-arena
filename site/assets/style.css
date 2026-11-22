@@ -623,3 +623,8 @@ table.rounds tr.off td { opacity: .55; }
 .plain { margin: 0 0 16px; padding: 14px 18px; border: 1px solid rgba(252,211,77,.32); border-left: 4px solid #fcd34d; border-radius: 12px; background: rgba(252,211,77,.07); }
 .plain b { display: block; margin-bottom: 6px; font: 700 13px var(--display); color: #fcd34d; }
 .plain p { margin: 0; font-size: clamp(15px, 1.25vw, 18px); line-height: 1.5; color: var(--ink); }
+
+/* while the browser holds the theme back: a button in sight, bottom left */
+.musicgate { position: fixed; left: 16px; bottom: 16px; z-index: 60; padding: 12px 20px; border-radius: 999px; border: 1px solid rgba(245,179,1,.8); background: rgba(6,9,18,.94); color: #fff; font: 700 15px var(--font); cursor: pointer; box-shadow: 0 0 0 0 rgba(245,179,1,.5), 0 14px 40px rgba(0,0,0,.6); animation: gate 2.2s infinite; }
+.musicgate:hover { background: rgba(30,36,56,.95); }
+@media (prefers-reduced-motion: reduce) { .musicgate { animation: none; } }

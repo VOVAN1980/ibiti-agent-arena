@@ -24,7 +24,17 @@ function audio() {
     comp.ratio.value = 4;
     master = ctx.createGain();
     master.gain.value = on ? 0.9 : 0;
-    master.connect(comp).connect(ctx.destination);
+    // the mix was made quiet (the murmur measured about 25 dB under a normal page's music): brought up
+    // to the level of the arena's theme, with a limiter at the end so the gong and the roar never clip
+    const loud = ctx.createGain();
+    loud.gain.value = 3.2;
+    const limit = ctx.createDynamicsCompressor();
+    limit.threshold.value = -3;
+    limit.knee.value = 0;
+    limit.ratio.value = 20;
+    limit.attack.value = 0.002;
+    limit.release.value = 0.12;
+    master.connect(comp).connect(loud).connect(limit).connect(ctx.destination);
     noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
     const d = noiseBuf.getChannelData(0);
     let b = 0;
@@ -161,7 +171,7 @@ function crowdStart() {
   // a murmur that swells and falls a little, and follows how excited the hall is
   setInterval(() => {
     if (!ctx) return;
-    const level = (0.014 + crowdTarget * 0.045) * (0.8 + Math.random() * 0.4); // a murmur, not a roar
+    const level = (0.03 + crowdTarget * 0.08) * (0.8 + Math.random() * 0.4); // a murmur you hear, not a roar
     crowd.g.gain.setTargetAtTime(level, ctx.currentTime, 0.4);
   }, 350);
 }

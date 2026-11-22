@@ -34,6 +34,22 @@ export function musicVolume() {
 let audio = null;
 let allowed = false; // this page may play music (not the ring)
 let waiting = false;
+let label = ''; // the words on the button shown while the browser holds the music back
+let gate = null;
+
+/** A button in sight while the browser holds the music back (it starts at any touch; this one says so). */
+function showGate() {
+  if (gate || !label || !document.body) return;
+  gate = document.createElement('button');
+  gate.type = 'button';
+  gate.className = 'musicgate';
+  gate.textContent = `🔊 ${label}`;
+  document.body.append(gate); // a touch on it starts the music like any other touch
+}
+const hideGate = () => {
+  gate?.remove();
+  gate = null;
+};
 
 function track() {
   if (audio) return audio;
@@ -41,6 +57,7 @@ function track() {
   audio.loop = true;
   audio.preload = 'auto';
   audio.volume = musicVolume();
+  audio.addEventListener('playing', hideGate);
   const at = Number(read(session(), AT));
   if (at > 0) audio.addEventListener('loadedmetadata', () => (audio.currentTime = at % (audio.duration || Infinity)), { once: true });
   const keep = () => write(session(), AT, String(audio.currentTime));
@@ -59,8 +76,10 @@ function atFirstTouch() {
     kinds.forEach((k) => removeEventListener(k, go, true));
     waiting = false;
     if (allowed && musicOn()) track().play().catch(() => {});
+    else hideGate();
   };
   kinds.forEach((k) => addEventListener(k, go, true));
+  showGate();
 }
 
 function play() {
@@ -69,9 +88,11 @@ function play() {
     .catch(() => atFirstTouch());
 }
 
-/** Called once per page: `ring` is true on the fight page, where the music never plays. */
-export function music(ring) {
+/** Called once per page: `ring` is true on the fight page, where the music never plays; `words` label
+ *  the button shown while the browser holds the music back. */
+export function music(ring, words = '') {
   allowed = !ring;
+  label = words;
   if (allowed && musicOn()) play();
 }
 
@@ -79,7 +100,10 @@ export function setMusic(on) {
   write(local(), ON, on ? 'on' : 'off');
   if (!allowed) return;
   if (on) play();
-  else audio?.pause();
+  else {
+    audio?.pause();
+    hideGate();
+  }
 }
 
 /** Whether the theme is sounding now (for checks). */
