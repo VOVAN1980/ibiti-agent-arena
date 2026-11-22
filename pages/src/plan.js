@@ -64,6 +64,10 @@ export const TASKS = {
 /** A lookup round: "find the one code the page points to". At most one in a fight. */
 export const isLookup = (id) => id < 100;
 
+/** The task set this server builds. An arena that ran an earlier set says so in its settings
+ *  (PLAN_VERSION, or "plan" in an archive entry): its pages are not rebuilt with this one. */
+export const PLAN_VERSION = 7;
+
 const ids = (tier) => Object.keys(TASKS).map(Number).filter((id) => TASKS[id].tier === tier);
 
 /** A task and everything it needs, directly or not. */

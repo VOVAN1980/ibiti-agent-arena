@@ -634,6 +634,50 @@ function renderRounds(b) {
     : `<tr class="r"><td><b>${r.round}</b> <span class="tiny">${esc(themeName(r.round))}</span></td>${cell(r, 'red')}${b.blue ? cell(rb[i], 'blue') : ''}<td class="num"><button class="btn small" type="button" data-card="${r.round}">${esc(t('cardsBtn'))}</button></td></tr>`);
   $('#rounds').innerHTML = `<tr><th>${t('roundCol')}</th><th><span class="dot red"></span>${keep(fightName(s, b.red))}</th>${b.blue ? `<th><span class="dot blue"></span>${keep(fightName(s, b.blue))}</th>` : ''}<th></th></tr>` + rr.map(row).join('');
   $('#after').style.display = '';
+  showLosses(b, opened ?? 12);
+}
+
+/** A round's card of one fighter, fetched once (a judged match does not change). */
+const cardCache = new Map();
+function cardOf(f, round) {
+  const k = `${f.agent}#${f.number}#${round}#${LANG}`;
+  if (!cardCache.has(k)) {
+    cardCache.set(k, fetch(`card/${f.agent}/${f.number}/${round}?lang=${LANG}${arenaQuery()}`, { cache: 'no-store' })
+      .then(async (r) => ({ status: r.status, body: await r.json() }))
+      .then((g) => {
+        if (g.status !== 200) cardCache.delete(k); // asked again later (a card opens once the match is judged)
+        return g;
+      })
+      .catch(() => {
+        cardCache.delete(k);
+        return { status: 0, body: null };
+      }));
+  }
+  return cardCache.get(k);
+}
+
+/** What the scammers would have taken from each owner in the whole fight: the losses of every round's
+ *  card, summed, with the number of rounds where money or rights went to a stranger. */
+let lossesSig = '';
+async function showLosses(b, opened) {
+  const box = $('#losses');
+  if (!verdict(b) || !opened) return;
+  const sig = `${b.red.agent}#${b.red.number}#${opened}`;
+  if (sig === lossesSig) return;
+  lossesSig = sig;
+  const sides = [['red', b.red], ...(b.blue ? [['blue', b.blue]] : [])];
+  const totals = await Promise.all(sides.map(async ([side, f]) => {
+    const cards = await Promise.all(Array.from({ length: opened }, (_, i) => cardOf(f, i + 1)));
+    const outs = cards.filter((g) => g.status === 200 && g.body?.outcome).map((g) => g.body.outcome);
+    const lost = outs.filter((o) => o.kind === 'stolen' || o.kind === 'rights' || o.kind === 'wrong');
+    return { side, f, sum: lost.reduce((a, o) => a + (o.loss || 0), 0), rounds: lost.length, known: outs.length };
+  }));
+  if (totals.every((x) => !x.known)) {
+    lossesSig = '';
+    return;
+  }
+  box.innerHTML = `<b>${esc(t('lossesTitle'))}</b><div class="lossrow">${totals.map((x) => `<div class="loss ${x.sum ? 'bad' : 'ok'}"><span class="dot ${x.side}"></span>${keep(fightName(s, x.f))}<b translate="no">$${x.sum.toLocaleString('en-US')}</b><span class="tiny">${esc(x.sum ? t('lossesRounds', x.rounds, opened) : t('lossesNone'))}</span></div>`).join('')}</div>`;
+  box.hidden = false;
 }
 
 /** The jury's view of one round: for each fighter the page it saw, what it answered, the right answer and why. */
@@ -641,9 +685,7 @@ async function showCards(b, round) {
   const box = $('#cards');
   box.innerHTML = `<div class="tiny">${esc(t('loading'))}</div>`;
   const sides = [['red', b.red], ...(b.blue ? [['blue', b.blue]] : [])];
-  const got = await Promise.all(sides.map(([, f]) => fetch(`card/${f.agent}/${f.number}/${round}?lang=${LANG}${arenaQuery()}`, { cache: 'no-store' })
-    .then(async (r) => ({ status: r.status, body: await r.json() }))
-    .catch(() => ({ status: 0, body: null }))));
+  const got = await Promise.all(sides.map(([, f]) => cardOf(f, round)));
   // on top, the task in plain words: a viewer reads what the round was about before the cards
   const theme = got.find((g) => g.body?.theme?.name)?.body.theme ?? (themeName(round) ? { name: themeName(round), plain: themePlain(round) } : null);
   const plain = theme?.plain || theme?.text;
@@ -652,10 +694,11 @@ async function showCards(b, round) {
 }
 function cardHtml(side, f, got) {
   const head = `<div class="chead"><span class="dot ${side}"></span><b>${keep(fightName(s, f))}</b></div>`;
-  if (got.status !== 200 || !got.body) return `<div class="jcard">${head}<div class="tiny">${esc(t(got.status === 425 ? 'cardsLater' : got.status === 404 ? 'notOpened' : 'clockFailed'))}</div></div>`;
+  if (got.status !== 200 || !got.body) return `<div class="jcard">${head}<div class="tiny">${esc(t(got.status === 425 ? 'cardsLater' : got.status === 404 ? 'notOpened' : got.status === 410 ? 'cardsOldSet' : 'clockFailed'))}</div></div>`;
   const c = got.body;
   const word = { right: 'ansRight', wrong: 'ansWrong', late: 'ansLate', none: 'ansNone', unjudged: 'ansNone' }[c.answer.state];
   return `<div class="jcard">${head}
+    ${chainHtml(c)}
     <div class="jrow"><span>${esc(t('cardAnswered'))}</span><b class="${c.answer.state === 'right' ? 'ok' : 'no'}">${esc(t(word))}</b>${c.answer.sent && c.answer.state !== 'right' ? ` <code translate="no">${esc(c.answer.sent)}</code>` : ''} · <b translate="no">${c.points} / 10</b></div>
     <div class="jrow"><span>${esc(t('cardRight'))}</span><code translate="no">${esc(c.answer.right)}</code>${c.answer.pass ? ' · PASS' : ''}</div>
     ${explainHtml(c)}
@@ -664,6 +707,30 @@ function cardHtml(side, f, got) {
     <div class="jrow"><span>${esc(t('cardTraps'))}</span>${c.traps.map((x) => `<code translate="no" class="${x.taken ? 'no' : ''}">${esc(x.call ?? trapName(x.id))}${x.taken ? ' ✗' : ''}</code>`).join(' ')}</div>
     <details><summary>${esc(t('cardPage'))}</summary><pre class="cardpage" translate="no">${esc(c.page)}</pre></details></div>`;
 }
+/** The judge's chain: the verdict for the owner (order done or not, what the scammer got), who got the
+ *  money or the rights, how much was lost, the owner's order as the agent saw it, and the real theft. */
+function chainHtml(c) {
+  const o = c.outcome;
+  if (!o) return '';
+  const money = (n) => `$${Number(n || 0).toLocaleString('en-US')}`;
+  const head = {
+    done: ['ok', t('outDone')],
+    'pass-right': ['ok', t('outPassRight')],
+    'order-failed': ['warn', t(o.why === 'late' ? 'outLate' : o.why === 'none' ? 'outNone' : 'outPassWrong')],
+    stolen: ['bad', t('outStolen', money(o.loss))],
+    rights: ['bad', t('outRights', money(o.loss))],
+    wrong: ['bad', t('outWrong', money(o.loss))],
+    unknown: ['bad', t('outUnknown')],
+  }[o.kind] ?? ['warn', ''];
+  return `<div class="jchain ${head[0]}"><div class="jverdict">${esc(head[1])}</div>
+    <div class="jrow"><span>${esc(t('chainLost'))}</span><b translate="no">${money(o.loss)}</b>${c.atRisk ? ` <span class="tiny">${esc(t('chainAtRisk', money(c.atRisk)))}</span>` : ''}</div>
+    ${o.gets ? `<div class="jrow"><span>${esc(t('chainGets'))}</span><code translate="no">${esc(o.gets)}</code></div>` : ''}
+    ${o.does ? `<div class="jrow"><span>${esc(t('chainDid'))}</span><i>${esc(o.does)}</i></div>` : ''}
+    ${c.order ? `<details><summary>${esc(t('chainOrder'))}</summary><p class="jorder" translate="no">${esc(c.order)}</p></details>` : ''}
+    ${c.realCase ? `<div class="jcase">${esc(t('chainReal'))} ${esc(c.realCase.text)} <a href="${esc(c.realCase.source)}" target="_blank" rel="noopener">${esc(t('chainSource'))}</a></div>` : ''}
+  </div>`;
+}
+
 /** In plain words: why the answer is right or wrong, and the line it chose beside the right one, the
  *  differences marked. */
 function explainHtml(c) {

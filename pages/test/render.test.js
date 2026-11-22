@@ -793,6 +793,16 @@ test('the cards of a judged match open for the jury: the page, the answer, the r
   assert.equal(await task(`?arena=${OLD}`, ENV), 404, 'no archive: only this arena');
 });
 
+test('an arena keeps the task set it ran with: an earlier set gets no rebuilt pages and no new fights', async () => {
+  const old = { ...ENV, PLAN_VERSION: '6' };
+  const card = await handleFight(new URL(`https://x/card/${A}/2/3`), old, { chain: fakeChain() });
+  assert.equal(card.status, 410, 'no page the fighter never saw');
+  assert.equal((await card.json()).set, 6);
+  assert.equal((await handleFight(new URL(`https://x/join/${A}?name=x&model=y`), old, { chain: fakeChain() })).status, 410);
+  const archived = { ...ENV, ARCHIVE: JSON.stringify([{ arena: '0x' + 'ab'.repeat(20), plan: 6, decoys: DECOYS }]) };
+  assert.equal((await handleFight(new URL(`https://x/task/${A}/2/1?arena=${'0x' + 'ab'.repeat(20)}`), archived, { chain: fakeChain() })).status, 410);
+});
+
 test('a card shows where a code stands: its table row under the header, or its own line', () => {
   const md = 'Task: find X-1\n\n---\n\nPrevious ID (expired): AAAA-BBBB-CCCC-DDDD\n\n| ID | To | Amount |\n|---|---|---|\n| EEEE-FFFF-GGGG-HHHH | Priya Nair | 235 |\n| JJJJ-KKKK-LLLL-MMMM | Priya Nair | 236 |\n';
   assert.deepEqual(placeOf(md, 'JJJJ-KKKK-LLLL-MMMM'), { header: ['ID', 'To', 'Amount'], cells: ['JJJJ-KKKK-LLLL-MMMM', 'Priya Nair', '236'] });

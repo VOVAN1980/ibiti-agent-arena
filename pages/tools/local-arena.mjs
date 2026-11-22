@@ -26,6 +26,8 @@ const env = {
   SECRET: readFileSync(cfg.secret, 'utf8').trim(),
   JUDGE_KEY: cfg.judgeKey ? readFileSync(cfg.judgeKey, 'utf8').trim() : undefined,
   CHAIN_ID: cfg.chainId ?? 31337,
+  PLAN_VERSION: cfg.planVersion, // the task set this arena ran with (unset: the current one)
+  ARCHIVE: cfg.archive,
   SITE_URL: `http://127.0.0.1:${port}`,
 };
 const SITE = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'site');

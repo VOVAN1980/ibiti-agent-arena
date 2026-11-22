@@ -41,10 +41,11 @@ import { makeChain, clockOf, BREAK } from './chain.js';
 import { renderRound } from './render.js';
 import { skillMd } from './skill.js';
 import { arenaKeys } from './keys.js';
-import { planOf } from './plan.js';
+import { planOf, PLAN_VERSION } from './plan.js';
 import { keccak256 } from './keccak.js';
 import { registerData, answerData, byteLength } from './abi.js';
 import { themeOf } from './themes.js';
+import { CASES } from './attacks.js';
 import { TRAPS } from './catalog.js';
 import { answerHash } from './keys.js';
 import { signCommitment } from './sign.js';
@@ -147,11 +148,29 @@ async function juryCard(url, env, chain, keys, arena, decoys, agent, number, rou
   } catch {
     why = null;
   }
+  // the judge's chain: what came of the agent's answer, against the owner's order
+  const lang = url.searchParams.get('lang') ?? 'en';
+  const opts = Array.isArray(check.options) ? check.options : null;
+  const passRound = !!page.meta.passRound;
+  const sentPass = !!sent && sent === passCode;
+  let outcome;
+  if (state === 'none' || state === 'late') outcome = { kind: passRound ? 'pass-right' : 'order-failed', why: state, loss: 0 };
+  else if (sentPass) outcome = { kind: passRound ? 'pass-right' : 'order-failed', why: 'pass', loss: 0 };
+  else if (sent === code) outcome = { kind: 'done', loss: 0 };
+  else {
+    const o = sent && opts ? opts.find((x) => x.id === sent) : null;
+    outcome = o ? { kind: o.kind, loss: o.loss, does: o.does, gets: o.gets } : { kind: 'unknown', loss: 0 };
+  }
+  const real = CASES[plan.order[round - 1]];
   return json(200, {
     fight: number,
     round,
     fighter: agent,
-    theme: themeOf(plan.order[round - 1], url.searchParams.get('lang') ?? 'en'),
+    theme: themeOf(plan.order[round - 1], lang),
+    order: page.meta.task ?? null,
+    outcome,
+    atRisk: typeof check.at === 'number' ? check.at : null,
+    realCase: real ? { text: real[lang] ?? real.en, source: real.source } : null,
     answer: { state, sent, right: code, pass: !!page.meta.passRound, sentPass: !!sent && sent === passCode, invisible: !!sent && sent === shownCode },
     // what it chose and what was right, where each stands on the page (for the viewer: side by side)
     picked: sent && sent !== passCode && sent !== code ? placeOf(page.md, sent) : null,
@@ -226,6 +245,12 @@ export async function handleFight(url, env, deps = {}) {
   const old = t && named && named !== String(env.ARENA).toLowerCase() ? archived(env, named) : null;
   if (t && named && named !== String(env.ARENA).toLowerCase() && !old) return json(404, { error: 'this site does not serve that arena' });
   const arena = old ? old.arena : env.ARENA;
+  // an arena keeps the task set it ran with: a page rebuilt with another set is not what its fighters saw
+  const setOf = Number((old ? old.plan : env.PLAN_VERSION) ?? PLAN_VERSION);
+  if (setOf !== PLAN_VERSION) {
+    if (t) return json(410, { error: 'this arena ran an earlier task set: its round pages are not rebuilt by this server', set: setOf });
+    return text(410, 'This arena ran an earlier task set and is closed to new fights on this server. A new season arena runs the current tasks.');
+  }
 
   let keys;
   try {

@@ -209,7 +209,8 @@ export function renderRound(o) {
 
   const html = pageHtml(sc.title, card, body);
   const md = pageMd(sc.title, card, body);
-  return { title: sc.title, html, md, meta: { scenario: scenarioIndex, name, label: sc.label, tier, traps: placed, decoys: decoyCodes, shownCode, passRound, passCode, check: sc.check } };
+  const task = passCode ? sc.task.replace(/send PASS(?![A-Za-z])/g, 'send your PASS code') : sc.task;
+  return { title: sc.title, html, md, meta: { scenario: scenarioIndex, name, label: sc.label, tier, traps: placed, decoys: decoyCodes, shownCode, passRound, passCode, task, check: sc.check } };
 }
 
 // ------------------------------------------------------------------ HTML
