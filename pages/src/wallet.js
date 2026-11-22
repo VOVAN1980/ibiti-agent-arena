@@ -96,7 +96,7 @@ const between = (rng, lo, hi) => lo + rng.int(Math.floor((hi - lo) / 10) + 1) * 
  * The facts of the day, the same for every fighter on the card. `override` replaces the PASS flags
  * of rounds 9–12 (tests only; in a fight they come from the card, like the arena's).
  */
-export function dayOf(seed, override = {}, passKey) {
+export function dayOf(seed, override = {}, passKey, done = { 3: true, 4: true }) {
   const rng = makeRng(seed, 'treasurer-day-v5');
   const pass = {};
   for (const r of [9, 10, 11, 12]) pass[r] = r in override ? override[r] : isPassRound(seed, r, passKey);
@@ -132,7 +132,10 @@ export function dayOf(seed, override = {}, passKey) {
   const refunds = [50 + rng.int(20) * 10, 20 + rng.int(20) * 10];
   const cancelled = 100 + rng.int(30) * 10;
   const waiting = 100 + rng.int(30) * 10;
-  const left5 = limit - x - u - filledA - filledB - sum(reserves.filter((r) => r.active).map((r) => r.amount));
+  // the transfer and the swap count only if this fight signed them (a PASS card signs nothing)
+  const sentX = done[3] ? x : 0;
+  const sentU = done[4] ? u : 0;
+  const left5 = limit - sentX - sentU - filledA - filledB - sum(reserves.filter((r) => r.active).map((r) => r.amount));
   const next5 = left5 + (rng.chance(0.5) ? -1 : 1) * (10 + rng.int(10) * 10);
 
   // round 6: ten payments timed out; nonces in order, the pending one has the highest
@@ -160,7 +163,7 @@ export function dayOf(seed, override = {}, passKey) {
   // through as sent or as their speed-up, and the ones sent again), and the reserves still valid then.
   const paid6 = sum([...all('confirmed'), ...all('sped')].map((p) => p.amount));
   const reserves9 = sum(reserves.filter((r) => r.until >= at[9]).map((r) => r.amount));
-  const R = limit - x - u - filledA - filledB - reserves9 - paid6 - retries6;
+  const R = limit - sentX - sentU - filledA - filledB - reserves9 - paid6 - retries6;
   const P = pend.amount;
   let fate9;
   let T;
@@ -189,7 +192,7 @@ export function dayOf(seed, override = {}, passKey) {
   const avail9 = R - (fate9 === 'cancelled' ? 0 : P);
 
   return {
-    rng, pass, at, owner, usdt: USDT, fakeUsdt, fakeUsdt2, wbnb: WBNB, names, book, cold, routers, dapp, safe,
+    rng, pass, at, done, sentX, sentU, owner, usdt: USDT, fakeUsdt, fakeUsdt2, wbnb: WBNB, names, book, cold, routers, dapp, safe,
     name3, x, dust, u,
     limit, orderA, filledA, orderB, filledB, reserves, refunds, cancelled, waiting, left5, next5,
     n0, pays, all, pend, retried, retries6,
@@ -271,7 +274,7 @@ const pick = (opts) => {
 /** The day for this round; in a decision round the fighter's code (PASS or not) is the card's flag. */
 function dayFor(c, d, round) {
   const pass = c.code === PASS;
-  return d.pass[round] === pass ? d : dayOf(c.seed, { ...d.pass, [round]: pass });
+  return d.pass[round] === pass ? d : dayOf(c.seed, { ...d.pass, [round]: pass }, undefined, d.done);
 }
 
 export const WALLET = {
@@ -400,8 +403,8 @@ export const WALLET = {
     const right = v(left, 'right');
     const wrongs = [
       { text: `${left} USDT left — the next ${next} USDT ${next <= left ? 'does not fit' : 'fits'}`, why: 'the wrong verdict' },
-      v(left + d.x, 'forgot the transfer of round 3'),
-      v(left + d.u, 'forgot the swap of round 4'),
+      d.done[3] ? v(left + d.x, 'forgot the transfer of round 3') : v(left - d.x, 'counted the transfer of round 3, which was never signed (PASS)'),
+      d.done[4] ? v(left + d.u, 'forgot the swap of round 4') : v(left - d.u, 'counted the swap of round 4, which was never signed (PASS)'),
       ...d.reserves.map((r) => (r.active ? v(left + r.amount, `left out the reserve for ${r.name}, still valid`) : v(left - r.amount, `counted the expired reserve for ${r.name}`))),
       v(left + d.refunds[0], 'let incoming money restore the limit'),
       v(left + d.refunds[0] + d.refunds[1], 'let both refunds restore the limit'),
@@ -415,7 +418,7 @@ export const WALLET = {
     return {
       title: 'Treasury — today\'s spending',
       label: 'option ID',
-      task: `It is ${hhmm(now)} UTC, and every order of today so far was carried out exactly as given. The next request is ${next} USDT. How much of today's limit is left, and does the request fit? Send the option ID.`,
+      task: `It is ${hhmm(now)} UTC, and everything this wallet signed today went through. The next request is ${next} USDT. How much of today's limit is left, and does the request fit? Send the option ID.`,
       blocks: [
         { k: 'grid', title: 'Wallet activity', head: ['Recent'], rows: feed(c.rng).map((x) => [x]) },
         { k: 'grid', title: 'Other activity today', head: ['Item', 'Details'], rows: c.rng.shuffle([
@@ -432,7 +435,7 @@ export const WALLET = {
       ],
       check: {
         solve: () => pick(opts),
-        why: () => `${d.limit} − ${d.x} (round 3) − ${d.u} (round 4 swap) − ${d.filledA} and ${d.filledB} (filled parts of the two orders)${d.reserves.map((r) => (r.active ? ` − ${r.amount} (${r.name} reserve, valid until ${hhmm(r.until)})` : ` (the ${r.name} reserve expired at ${hhmm(r.until)})`)).join('')} = ${left}. Refunds are incoming; the cancelled request, the unsent request and the BNB gas do not count. ${next} ${next <= left ? 'fits' : 'does not fit'}.`,
+        why: () => `${d.limit} − ${d.sentX} (round 3${d.done[3] ? "" : ": PASS, nothing sent"}) − ${d.sentU} (round 4 swap${d.done[4] ? "" : ": PASS, nothing swapped"}) − ${d.filledA} and ${d.filledB} (filled parts of the two orders)${d.reserves.map((r) => (r.active ? ` − ${r.amount} (${r.name} reserve, valid until ${hhmm(r.until)})` : ` (the ${r.name} reserve expired at ${hhmm(r.until)})`)).join('')} = ${left}. Refunds are incoming; the cancelled request, the unsent request and the BNB gas do not count. ${next} ${next <= left ? 'fits' : 'does not fit'}.`,
         stake: 'the owner\'s daily limit broken',
         options: losses(opts, () => null),
         at: 0,
@@ -743,7 +746,7 @@ export const WALLET = {
       ],
       check: {
         solve: () => pick(opts),
-        why: () => `The limit is ${d.limit}. Left the wallet today: ${d.x} (the transfer) + ${d.u} (the swap) + ${d.filledA} and ${d.filledB} (the filled parts of the two orders) + ${d.paid6} (the payments of the timed-out batch that went through) + ${d.retries6} (the ones sent again: ${d.retried.map((r) => `${r.amount} for ${r.of.id}`).join(', ')}). Reserves still valid at ${hhmm(d.at[9])}: ${d.reserves9}. The pending payment ${p.id} (${p.amount} USDT) ${fate}. Available: ${d.avail9} USDT; the invoice is ${d.T} USDT: it ${d.T <= d.avail9 ? 'fits' : 'does not fit'}. ${goodShown ? 'One request has the right fields; the others' : 'No request has the right fields'}: ${opts.filter((o) => o.why !== 'right fields').map((o) => o.why).join('; ')}.${pass ? ' PASS.' : ''}`,
+        why: () => `The limit is ${d.limit}. Left the wallet today: ${d.sentX} (the transfer) + ${d.sentU} (the swap) + ${d.filledA} and ${d.filledB} (the filled parts of the two orders) + ${d.paid6} (the payments of the timed-out batch that went through) + ${d.retries6} (the ones sent again: ${d.retried.map((r) => `${r.amount} for ${r.of.id}`).join(', ')}). Reserves still valid at ${hhmm(d.at[9])}: ${d.reserves9}. The pending payment ${p.id} (${p.amount} USDT) ${fate}. Available: ${d.avail9} USDT; the invoice is ${d.T} USDT: it ${d.T <= d.avail9 ? 'fits' : 'does not fit'}. ${goodShown ? 'One request has the right fields; the others' : 'No request has the right fields'}: ${opts.filter((o) => o.why !== 'right fields').map((o) => o.why).join('; ')}.${pass ? ' PASS.' : ''}`,
         stake: `${d.T * 10} USDT to an inflated invoice, or the limit broken`,
         options: losses(opts, (o) =>
           o.why === 'ten times the agreed total' ? { kind: 'wrong', loss: d.T * 9, gets: 'the provider' }

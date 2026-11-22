@@ -36,6 +36,15 @@ function renumber(value, at) {
 }
 
 /** The task of each round of a fight: its secret plan (plan.js), from the card seed. */
+/** Whether this fight signed the treasurer's transfer (303) and swap (304): not on a PASS card. */
+function doneOfDay(order, seed, passKey) {
+  const signed = (id) => {
+    const r = order.indexOf(id) + 1;
+    return r > 0 && !isPassRound(seed, r, passKey);
+  };
+  return { 3: signed(303), 4: signed(304) };
+}
+
 export function scenarioOrder(seed) {
   return planOf(seed).order;
 }
@@ -154,7 +163,7 @@ export function renderRound(o) {
   };
   const sc =
     scenarioIndex >= 400 ? ATTACKS[scenarioIndex](ctx)
-    : scenarioIndex >= 300 ? renumber(WALLET[scenarioIndex - 300](ctx, dayOf(seed, {}, o.passKey)), roundsOfDay(plan.order))
+    : scenarioIndex >= 300 ? renumber(WALLET[scenarioIndex - 300](ctx, dayOf(seed, {}, o.passKey, doneOfDay(plan.order, seed, o.passKey))), roundsOfDay(plan.order))
     : scenarioIndex >= 200 ? HARD[scenarioIndex - 200](ctx)
     : scenarioIndex >= 100 ? DECISIONS[scenarioIndex - 100](ctx)
     : SCENARIOS[scenarioIndex](ctx);

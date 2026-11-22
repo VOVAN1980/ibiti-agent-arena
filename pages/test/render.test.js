@@ -206,7 +206,7 @@ test('round 9 counts everything that left the treasury wallet, by the owner\'s r
     const went = d.pays.filter((p) => p.status === 'confirmed' || p.status === 'sped').reduce((a, p) => a + p.amount, 0);
     const again = d.retried.reduce((a, r) => a + r.amount, 0);
     const held = d.reserves.filter((r) => r.until >= d.at[9]).reduce((a, r) => a + r.amount, 0);
-    const spent = d.x + d.u + d.filledA + d.filledB + went + again + held + (d.fate9 === 'cancelled' ? 0 : d.P);
+    const spent = d.sentX + d.sentU + d.filledA + d.filledB + went + again + held + (d.fate9 === 'cancelled' ? 0 : d.P);
     assert.equal(d.avail9, d.limit - spent, `seed ${s}: what is left by round 9`);
     assert.ok(d.avail9 > 0 && d.T > 0, `seed ${s}: a real invoice and a limit that is not gone`);
     if (!d.pass[9]) assert.ok(d.T <= d.avail9, `seed ${s}: the invoice fits on a card that pays`);
