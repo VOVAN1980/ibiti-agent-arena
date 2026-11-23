@@ -53,9 +53,11 @@ canvas.rankfx { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index:
 .rrow.p2, .rrow.p2:hover { background-image: url(rating/bar-silver.webp); }
 .rrow.p3, .rrow.p3:hover { background-image: url(rating/bar-bronze.webp); }
 .rrow.p1:hover, .rrow.p2:hover, .rrow.p3:hover { filter: brightness(1.1); }
-.rrow.rest { opacity: .9; }
-.rrow > * { position: relative; }
-.rrow { font-variant-numeric: lining-nums tabular-nums; }
+/* light on the metal: a wide, soft glow past the name that fades out on both sides, no edge to it */
+.rrow.p1::before, .rrow.p2::before, .rrow.p3::before { content: ''; position: absolute; inset: 3px 6px; pointer-events: none; mix-blend-mode: screen;
+  background: radial-gradient(ellipse 30% 120% at 44% 45%, rgba(255,255,255,.22), rgba(255,255,255,.08) 55%, transparent 100%); }
+.rrow.p1::before { background: radial-gradient(ellipse 30% 120% at 44% 45%, rgba(255,226,150,.26), rgba(255,214,120,.09) 55%, transparent 100%); }
+.rrow.p3::before { background: radial-gradient(ellipse 30% 120% at 44% 45%, rgba(255,190,140,.22), rgba(255,170,110,.08) 55%, transparent 100%); }
 
 /* the place */
 .pl { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; font: 700 28px var(--serif); color: #fff; }
