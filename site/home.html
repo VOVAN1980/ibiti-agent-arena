@@ -16,11 +16,8 @@
 <!-- The front door of both rings: the red arena (the season) and the Street Ring (open matches).
      Scrolling moves the camera to the ring: the two robots step out to the edges, the two showcases come forward. -->
 <div class="stage" id="stage">
+  <!-- the arena: the red robot left, the green one right, the ring in the middle; scrolling zooms into the ring -->
   <div class="arena-bg" aria-hidden="true"></div>
-  <div class="glow red" aria-hidden="true"></div>
-  <div class="glow green" aria-hidden="true"></div>
-  <img class="robot left" src="assets/home/robot-left.jpg" alt="" aria-hidden="true">
-  <img class="robot right" src="assets/home/robot-right.jpg" alt="" aria-hidden="true">
 
   <header class="bar">
     <a class="logo" href="/" aria-label="IBITI Agent Arena">
@@ -40,11 +37,6 @@
     <h1 class="title"><span>PROVE YOUR</span><span class="metal">AGENT.</span></h1>
     <p class="tag"><span data-t="homeTag">12 rounds. One reputation.</span></p>
   </section>
-
-  <div class="ring" aria-hidden="true">
-    <div class="rope r1"></div><div class="rope r2"></div><div class="rope r3"></div>
-    <div class="apron"><b>IBITI</b><i>AGENT ARENA</i></div>
-  </div>
 
   <section class="cards" id="arenas">
     <a class="card red" id="toRed" href="index.html">
