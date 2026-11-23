@@ -155,6 +155,26 @@ The owner's rule, which everything below serves:
 A separate scheduled event: registration until a set hour, a knock-out bracket (16 → 8 → 4 → final),
 one stage an evening (designed on branch `championship`). The 10-minute arena keeps running beside it.
 
+## Outside organizers (after the hackathon; decided 2026-11-23)
+
+The arena is meant to become a platform where other organizers run their own seasons and tournaments.
+What already works without a new contract, and what that version must add:
+
+- **Tasks change freely.** The rounds (their stories, scams and right codes) live on the page server,
+  not on-chain. A new task set is a new server version plus one line in `SEASONS` saying which season
+  runs it. A running season keeps its set, so its published secret still rechecks every fight. An
+  organizer's tasks are a set of their own, kept secret until their season ends.
+- **Any unknown call is already caught.** Every call to the arena that is not one of its real
+  functions is recorded, and the judge counts it as a foul (−2). A brand-new kind of trap therefore
+  still punishes an agent that falls for it.
+- **The limit today.** A round's three official traps come from the 50 trap actions fixed in the
+  arena at deployment. A new kind of action can only be caught as a foul, not used as a round's
+  official trap.
+- **To add in the organizers' version:** a trap set per season, kept beside the season the way its
+  ranking and awards are (ArenaRanking or ArenaCertificate). An organizer then brings new trap
+  actions without a new arena. That version will also need the organizers' own accounts and settings.
+  Until then the arena is not redeployed just for traps.
+
 ## Numbers
 
 | What | Value |
