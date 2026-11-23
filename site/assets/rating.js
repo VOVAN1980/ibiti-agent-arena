@@ -5,7 +5,7 @@
 // off, and the new holder gathers there from dust and pieces (rankfx.js), with a sound when the arena's
 // sound is on.
 // ?fx=demo shows the effect on the rows there are, moving one up now and then, and says it is a preview.
-import { CFG, emptyState, refresh, rating, seasonState, seasonTable, nameOf } from './arena.js';
+import { CFG, emptyState, refresh, rating, seasonState, seasonTable, lastAwards, nameOf } from './arena.js';
 import { $, esc, keep, header, footer, t, applyI18n, agentUrl, matchUrl, seasonLine, RING } from './ui.js';
 import { shatter, assemble, soundShatter, soundLand, reduced, GATHER } from './rankfx.js';
 
@@ -17,9 +17,11 @@ applyI18n();
 const AWARDS = RING === 'red'; // the street ring gives no award for now
 const DEMO = new URLSearchParams(location.search).get('fx') === 'demo';
 const s = emptyState();
-let tab = 'season';
+// the view: the season, or #open / #official (a link can name it)
+let tab = ['open', 'official'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'season';
 let season = null; // the season's line: until when it runs, its winners once closed
 let table = null; // the season's table (seasonTable)
+let awards = null; // the certificates given: the last closed season's places (lastAwards)
 let shown = ''; // the view on screen: a switch of tab never animates
 let demoRows = null;
 
@@ -36,12 +38,16 @@ const CHECK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1.8 20.8
 const placeCell = (rank) => (rank <= 3 ? `<img class="laurel" src="assets/rating/laurel-${rank}.webp" alt="${rank}" width="260" height="236">` : `<span class="pl" translate="no">${rank}</span>`);
 const METAL = { 1: 'gold', 2: 'silver', 3: 'bronze' };
 const tier = (rank) => (rank <= 3 ? `p${rank}` : rank <= 10 ? 'ten' : 'rest');
-const withAwards = () => AWARDS && tab === 'season';
+const withAwards = () => AWARDS;
+/** The certificate an agent holds: its place in the last closed season (0: none). */
+const certPlace = (agent) => awards?.places.get(agent.toLowerCase()) ?? 0;
 
 function award(r) {
-  if (r.rank > 10) return '';
-  const title = table?.closed ? t('awardGiven') : t('awardSoon');
-  return `<img class="plate" src="assets/rating/plate-${METAL[r.rank] ?? 'graphite'}.webp" alt="${esc(title)}" title="${esc(title)}" width="254" height="102">`;
+  // the season view: the place it is heading for; the other views: the certificate it already holds
+  const place = tab === 'season' ? r.rank : certPlace(r.agent);
+  if (!place || place > 10) return '';
+  const title = tab !== 'season' || table?.closed ? t('awardGiven') : t('awardSoon');
+  return `<img class="plate" src="assets/rating/plate-${METAL[place] ?? 'graphite'}.webp" alt="${esc(title)}" title="${esc(title)}" width="254" height="102">`;
 }
 
 function rowHtml(r) {
@@ -115,8 +121,12 @@ function render() {
     }
     el.className = `rrow ${tier(r.rank)}${withAwards() ? ' awards' : ''}`;
     el.dataset.rank = String(r.rank);
-    box().appendChild(el);
     return { el, r };
+  });
+
+  // into their order, moving only the rows not already in place (moving a row would replay its entrance)
+  els.forEach(({ el }, i) => {
+    if (box().children[i] !== el) box().insertBefore(el, box().children[i] ?? null);
   });
 
   if (fresh || reduced) {
@@ -124,6 +134,7 @@ function render() {
       el.style.animation = 'none';
       void el.offsetWidth;
       el.style.animation = `rowin .5s ${i * 0.05}s both`;
+      el.addEventListener('animationend', () => (el.style.animation = ''), { once: true });
     });
     return;
   }
@@ -168,6 +179,7 @@ function renderTop() {
 
 document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {
   tab = b.dataset.tab;
+  history.replaceState(null, '', tab === 'season' ? location.pathname + location.search : `#${tab}`);
   renderTop();
   render();
 }));
@@ -189,7 +201,7 @@ if (DEMO) {
 async function loop() {
   try {
     await refresh(s);
-    [season, table] = await Promise.all([seasonState().catch(() => season), seasonTable(s).catch(() => table)]);
+    [season, table, awards] = await Promise.all([seasonState().catch(() => season), seasonTable(s).catch(() => table), lastAwards().catch(() => awards)]);
     renderTop();
     render();
   } catch (e) {

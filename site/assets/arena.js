@@ -493,6 +493,26 @@ export async function podiumSeason() {
   return { season: pick.n, closed: pick.closed, top };
 }
 
+let awardsRead = null;
+/** The certificates already given: the places of the last closed season, { season, places: Map(agent -> place) }
+ *  (lowercase addresses), or null before any season is closed. */
+export async function lastAwards() {
+  if (CFG.archived) return null;
+  if (awardsRead && Date.now() - awardsRead.read < 60000) return awardsRead.value;
+  const count = num((await bookCall(BOOK.seasonCount))[0] ?? '0');
+  let value = null;
+  for (let n = count; n >= 1 && !value; n--) {
+    const w = await bookCall(BOOK.seasons + BigInt(n).toString(16).padStart(64, '0'));
+    const cert = addrOf(w[4]);
+    if (!num((await seasonCall(cert, SEASON.closedAt))[0] ?? '0')) continue;
+    const topW = await seasonCall(cert, SEASON.top);
+    const agents = topW.slice(2, 2 + num(topW[1] ?? '0')).map(addrOf);
+    value = { season: n, places: new Map(agents.map((a, i) => [a.toLowerCase(), i + 1])) };
+  }
+  awardsRead = { read: Date.now(), value };
+  return value;
+}
+
 let tableRead = null;
 /** The season shown as a table: its official first places (final once closed), each with its season
  *  result from the season's contract and the fight that earned it, found among this site's judged
