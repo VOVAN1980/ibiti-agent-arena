@@ -24,6 +24,7 @@ export const matchUrl = (agent, number) => `match.html?arena=${CFG.arena}&a=${ag
 
 /** The season in a line: until when it runs, or its winners once it is closed. `nameOf` gives an agent's name. */
 export function seasonLine(st, nameOf) {
+  if (RING === 'green') return ''; // the street ring has no seasons on its pages
   if (!st) return '';
   const when = (x) => new Date(x * 1000).toISOString().slice(0, 16).replace('T', ' ');
   const next = st.next ? ` <b>${esc(t('seasonStarts', st.next.n, when(st.next.start)))}</b>` : '';

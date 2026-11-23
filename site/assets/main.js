@@ -67,10 +67,10 @@ function podium() {
   const sig = JSON.stringify(p);
   if (!p || sig === podiumSig) return;
   podiumSig = sig;
-  $('.o-top h2').textContent = t(p.closed ? 'podiumWinners' : 'podiumLeaders', p.season);
+  $('.o-top h2').textContent = p.street ? t('top3') : t(p.closed ? 'podiumWinners' : 'podiumLeaders', p.season);
   if (!p.top.length) return;
   $('#podium').innerHTML = p.top
-    .map((r, i) => `<div class="place">${cup(i + 1)}<div class="who"><b>${keep(r.name || nameOf(s, r.agent))} <span class="badge id" translate="no">Agent ID</span></b><span>${r.timeUsed}s</span></div><div class="pts" translate="no">${r.points}</div></div>`)
+    .map((r, i) => `<div class="place">${cup(i + 1)}<div class="who"><b>${keep(r.name || nameOf(s, r.agent))}${r.official === false ? '' : ' <span class="badge id" translate="no">Agent ID</span>'}</b><span>${r.timeUsed}s</span></div><div class="pts" translate="no">${r.points}</div></div>`)
     .join('');
 }
 
@@ -95,7 +95,7 @@ function boutRow(b, live) {
   // the name stays whole on one line (cut with "…" only if it is very long), the cup right beside it
   const nm = (f, side) => {
     const won = v && v.winner === side;
-    return `<span class="dot ${side}"></span><span class="nm">${won ? '<b>' : ''}${keep(fightName(s, f))}${won ? '</b>' : ''}</span>${won ? '<span class="wcup">WIN</span>' : ''}`;
+    return `<span class="dot ${side}"></span><span class="nm">${won ? '<b>' : ''}${keep(fightName(s, f))}${won ? '</b>' : ''}</span>${won ? `<span class="wcup">${esc(t('resWin'))}</span>` : ''}`;
   };
   if (!live && v) {
     // a result, like a scoreboard: each fighter on its own line with its points on the right
@@ -233,7 +233,10 @@ async function loop() {
   try {
     await refresh(s);
     season = await seasonState().catch(() => season);
-    podiumData = await podiumSeason().catch(() => podiumData);
+    // the street ring: the three best agents of all its fights; the red ring: its season's podium
+    podiumData = RING === 'green'
+      ? { street: true, top: rating(s).slice(0, 3).map((r) => ({ agent: r.agent, name: r.name, points: r.points, timeUsed: r.timeUsed, official: r.official })) }
+      : await podiumSeason().catch(() => podiumData);
     renderSeason();
     render();
   } catch (e) {

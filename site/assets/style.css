@@ -813,3 +813,9 @@ table.rating th { text-transform: uppercase; letter-spacing: .14em; font-size: 1
 /* small words read clearly on the dark: a little lighter grey, no thinning */
 :root { --ink-2: #ccd3e1; --ink-3: #a7b0c2; }
 html, body { -webkit-font-smoothing: auto; -moz-osx-font-smoothing: auto; }
+
+/* the music button waits small in a corner; on the ranking it goes to the right, the robot sits on the left */
+.musicgate { padding: 9px 14px; font-size: 11px; }
+body.rankpage .musicgate { left: auto; right: 16px; }
+/* the ring's sound button sits below the corner banner, not on it */
+.soundgate { top: 56%; }

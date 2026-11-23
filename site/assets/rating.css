@@ -10,14 +10,14 @@ body.rankpage #bg { display: none; }
    nothing beside it, nothing over it, its top and its robot whole. --pw and --ph are its width and height;
    the title, the table and the rows are placed and sized by it, so they sit on the picture the same way
    on every screen. */
-:root { --bar-h: 62px; --pw: 100vw; --pl: 0px; --ph: calc(100vw * 941 / 1672); --rh: clamp(38px, calc(var(--pw) * .027), 54px); }
+:root { --bar-h: 62px; --ph: max(calc(100vw * 941 / 1672), calc(100vh - var(--bar-h))); --pw: calc(var(--ph) * 1672 / 941); --pl: 0px; --rh: clamp(38px, calc(min(var(--pw), 100vw) * .027), 54px); }
 .rbg { position: absolute; top: 0; left: 0; width: 100%; height: calc(var(--bar-h) + var(--ph)); z-index: 0; overflow: hidden; background: #07080c; }
-.rpic { position: absolute; left: 0; top: var(--bar-h); width: 100%; height: var(--ph); background: url(rating/wide.jpg) 0 0 / 100% 100% no-repeat;
+.rpic { position: absolute; left: 0; top: var(--bar-h); width: var(--pw); height: var(--ph); background: url(rating/wide.jpg) 0 0 / 100% 100% no-repeat;
   -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 36px, #000 calc(100% - 90px), transparent 100%); mask-image: linear-gradient(180deg, transparent 0, #000 36px, #000 calc(100% - 90px), transparent 100%); }
 /* only the middle, behind the table, is shaded: the robot and the lights stay as they are */
 .rbg::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse 40% 52% at 49% 60%, rgba(7,8,12,.45), rgba(7,8,12,.1) 70%, transparent 100%); }
 @media (orientation: portrait) {
-  :root { --bar-h: 150px; --ph: calc(100vw * 1672 / 941); }
+  :root { --bar-h: 150px; --ph: max(calc(100vw * 1672 / 941), calc(100vh - var(--bar-h))); --pw: calc(var(--ph) * 941 / 1672); }
   .rpic { background-image: url(rating/tall.jpg); }
 }
 canvas.rankfx { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 61; pointer-events: none; }
