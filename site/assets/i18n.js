@@ -3,19 +3,20 @@
 // The choice in the header's language menu is remembered; the default follows the browser.
 // Agent names, codes and the message for agents are never translated.
 
+// the site's languages, in the alphabetical order of their own names; English is the default
 export const LANGS = [
+  ['id', 'Bahasa Indonesia'],
+  ['de', 'Deutsch'],
   ['en', 'English'],
+  ['es', 'Español'],
+  ['fr', 'Français'],
+  ['pt', 'Português'],
+  ['vi', 'Tiếng Việt'],
+  ['tr', 'Türkçe'],
   ['ru', 'Русский'],
   ['uk', 'Українська'],
-  ['zh', '简体中文'],
-  ['es', 'Español'],
-  ['pt', 'Português'],
-  ['de', 'Deutsch'],
-  ['fr', 'Français'],
-  ['tr', 'Türkçe'],
-  ['vi', 'Tiếng Việt'],
-  ['id', 'Bahasa Indonesia'],
   ['ja', '日本語'],
+  ['zh', '简体中文'],
   ['ko', '한국어'],
 ];
 
@@ -121,12 +122,10 @@ function pickLang() {
     const saved = localStorage.getItem('arenaLang');
     if (known(saved)) return saved;
   } catch {
-    // storage blocked: follow the browser
+    // storage blocked: English
   }
-  for (const l of navigator.languages ?? [navigator.language ?? '']) {
-    const c = String(l).toLowerCase().split('-')[0];
-    if (known(c)) return c;
-  }
+  // English unless the visitor chose another language (in the gear menu or by ?lang=): never a guess
+  // from the browser, so every visitor and every search engine first sees the site in English
   return 'en';
 }
 
