@@ -33,7 +33,7 @@ const env = {
   SITE_URL: `http://127.0.0.1:${port}`,
 };
 const SITE = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'site');
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.glb': 'model/gltf-binary', '.mp3': 'audio/mpeg' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.glb': 'model/gltf-binary', '.mp3': 'audio/mpeg', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.mp4': 'video/mp4' };
 // only reading methods pass through to the node
 const READ_ONLY = new Set(['eth_blockNumber', 'eth_getBlockByNumber', 'eth_getLogs', 'eth_call', 'eth_chainId']);
 
@@ -50,13 +50,13 @@ createServer(async (req, res) => {
   const started = Date.now();
   let r;
   try {
-    const path = url.pathname === '/' ? '/index.html' : url.pathname;
+    const path = url.pathname === '/' ? '/home.html' : url.pathname;
     if (path === '/config.js') r = new Response(siteConfig(), { headers: { 'content-type': TYPES['.js'], 'cache-control': 'no-store' } });
     else if (path === '/rpc' && req.method === 'POST') {
       const q = JSON.parse(await body(req));
       if (!READ_ONLY.has(q.method)) r = new Response(JSON.stringify({ jsonrpc: '2.0', id: q.id, error: { code: -32601, message: 'read-only' } }), { headers: { 'content-type': 'application/json' } });
       else r = new Response(await (await fetch(cfg.rpc, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(q) })).text(), { headers: { 'content-type': 'application/json' } });
-    } else if (/^\/(index|match|rating|agent|rules)\.html$/.test(path)) {
+    } else if (/^\/(home|index|match|rating|agent|rules)\.html$/.test(path)) {
       // the page, with the tags a chat app reads for its link preview
       const site = `http://${req.headers.host ?? `127.0.0.1:${port}`}`;
       const html = await withPreview(readFileSync(join(SITE, path), 'utf8'), new URL(path + url.search, site), { rpc: cfg.rpc, arena: dep.arena, deployBlock: 0, site });

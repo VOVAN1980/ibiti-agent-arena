@@ -19,7 +19,7 @@ import { handleFight } from './worker.js';
 import { withPreview } from './og.js';
 import { judgeRun } from './judge-cron.js';
 
-const PAGES = /^\/(index|match|rating|agent|rules)\.html$/;
+const PAGES = /^\/(home|index|match|rating|agent|rules)\.html$/;
 // only reading methods pass through to the node
 const READ_ONLY = new Set(['eth_blockNumber', 'eth_getBlockByNumber', 'eth_getLogs', 'eth_call', 'eth_chainId']);
 const NO_STORE = { 'cache-control': 'no-store' };
@@ -230,7 +230,7 @@ async function rpc(request, env) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    const path = url.pathname === '/' ? '/index.html' : url.pathname;
+    const path = url.pathname === '/' ? '/home.html' : url.pathname; // the front door: both rings
     try {
       if (path === '/config.js') return new Response(siteConfig(env), { headers: { ...NO_STORE, 'content-type': 'text/javascript; charset=utf-8' } });
       if (path === '/rpc') return await rpc(request, env);
