@@ -43,10 +43,11 @@ const withAwards = () => AWARDS;
 const certPlace = (agent) => awards?.places.get(agent.toLowerCase()) ?? 0;
 
 function award(r) {
-  // the season view: the place it is heading for; the other views: the certificate it already holds
-  const place = tab === 'season' ? r.rank : certPlace(r.agent);
-  if (!place || place > 10) return '';
-  const title = tab !== 'season' || table?.closed ? t('awardGiven') : t('awardSoon');
+  // every view: the plate of the row's place (1-10); the title says whether it is given yet
+  const place = r.rank;
+  if (place > 10) return '';
+  const given = tab === 'season' ? table?.closed : certPlace(r.agent) === place;
+  const title = given ? t('awardGiven') : t('awardSoon');
   return `<img class="plate" src="assets/rating/plate-${METAL[place] ?? 'graphite'}.webp" alt="${esc(title)}" title="${esc(title)}" width="254" height="102">`;
 }
 
@@ -73,6 +74,9 @@ function rowsNow() {
   if (tab === 'season') {
     const rows = (table?.rows ?? []).map((r) => ({ ...r, official: true }));
     if (DEMO) {
+      // the preview fills the table to ten rows with sample agents (the page says it is a preview)
+      const sample = ['falcon', 'kestrel', 'nova', 'atlas', 'lyra', 'pulse', 'aether', 'vega', 'orion', 'helix'];
+      for (let i = 0; rows.length < 10; i++) rows.push({ agent: `0x${String(i + 1).padStart(40, 'd')}`, name: `${sample[i]}.ai`, model: 'demo', points: 100 - rows.length * 3, timeUsed: 200 + rows.length * 13, solved: Math.max(3, 11 - rows.length), number: null, official: true, rank: rows.length + 1 });
       if (!demoRows || demoRows.length !== rows.length) demoRows = rows.map((r) => ({ ...r }));
       return demoRows.map((r, i) => ({ ...r, rank: i + 1 }));
     }

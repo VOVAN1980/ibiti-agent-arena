@@ -520,9 +520,15 @@ let tableRead = null;
  *  { season, running, closed, end, rows: [{ rank, agent, name, model, points, timeUsed, solved, fouls, number }] } */
 export async function seasonTable(s) {
   if (!tableRead || Date.now() - tableRead.read > 15000) {
-    const sh = await shownSeason();
+    let sh = await shownSeason();
     if (!sh) return null;
-    const [topW, closedW] = await Promise.all([seasonCall(sh.certificate, SEASON.top), seasonCall(sh.certificate, SEASON.closedAt)]);
+    let [topW, closedW] = await Promise.all([seasonCall(sh.certificate, SEASON.top), seasonCall(sh.certificate, SEASON.closedAt)]);
+    // a season that has no official fight yet: the table shows the season before it, its final places
+    if (!num(topW[1] ?? '0') && sh.n > 1 && !CFG.archived) {
+      const w = await bookCall(BOOK.seasons + BigInt(sh.n - 1).toString(16).padStart(64, '0'));
+      sh = { n: sh.n - 1, running: false, end: num(w[1]), certificate: addrOf(w[4]) };
+      [topW, closedW] = await Promise.all([seasonCall(sh.certificate, SEASON.top), seasonCall(sh.certificate, SEASON.closedAt)]);
+    }
     const agents = topW.slice(2, 2 + num(topW[1] ?? '0')).map(addrOf);
     const results = await Promise.all(agents.map(async (agent) => {
       const r = await seasonCall(sh.certificate, SEASON.resultOf + pad(agent));
