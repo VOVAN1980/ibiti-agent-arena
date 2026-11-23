@@ -54,7 +54,12 @@ canvas.rankfx { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index:
 .fxdemo { display: inline-block; margin: 0 0 10px; padding: 6px 12px; font: 600 12px var(--font); letter-spacing: .12em; text-transform: uppercase; color: #ffd9a0; border: 1px solid rgba(255,200,120,.45); background: rgba(40,26,8,.6); }
 
 /* the board */
-.rboard { position: relative; padding: 4px 0 10px; background: linear-gradient(180deg, rgba(6,8,12,.35), rgba(6,8,12,.55)); }
+.rboard { position: relative; isolation: isolate; padding: 4px 0 10px; }
+/* the table has no box: a dark veil behind the rows that is full in the middle and melts away at the top,
+   the bottom and the sides, so the picture shows through the edges */
+.rboard::before { content: ''; position: absolute; z-index: -1; inset: -26px -30px -22px; pointer-events: none; background: rgba(6,8,12,.62);
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 16%, #000 84%, transparent 100%), linear-gradient(90deg, transparent 0, #000 5%, #000 95%, transparent 100%);
+  -webkit-mask-composite: source-in; mask-image: linear-gradient(180deg, transparent 0, #000 16%, #000 84%, transparent 100%), linear-gradient(90deg, transparent 0, #000 5%, #000 95%, transparent 100%); mask-composite: intersect; }
 .rhead, .rrow { display: grid; grid-template-columns: 8% minmax(0, 1fr) 12% 15% 10% 17%; align-items: center; column-gap: 8px; }
 .rhead.awards, .rrow.awards { grid-template-columns: 8% minmax(0, 1fr) 11% 14% 9% 15% 12%; }
 .rhead { padding: 6px 20px; font: 700 12px var(--font); letter-spacing: .2em; text-transform: uppercase; color: rgba(255,255,255,.85); border-bottom: 1px solid rgba(255,255,255,.14); }
@@ -146,7 +151,7 @@ canvas.rankfx { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index:
 @media (prefers-reduced-motion: reduce) { .rrow.landed, .rrow.landed::after { animation: none; } }
 
 /* the season's line: one quiet line under the tabs, so ten rows fit a screen */
-.rankpage .seasonbox { margin: 8px 0 0; padding: 6px 12px; font-size: 13px; background: rgba(6,8,12,.45); border-color: rgba(255,255,255,.08); }
+.rankpage .seasonbox { margin: 8px 0 0; padding: 6px 12px; font-size: 13px; background: linear-gradient(90deg, transparent, rgba(6,8,12,.55) 12%, rgba(6,8,12,.55) 88%, transparent); border: 0; clip-path: none; }
 .rankpage .seasonbox b { font-size: 13px; }
 .rankpage .seasonbox .tiny { font-size: 12px; }
 .rankpage header.top { margin-bottom: 4px; }
