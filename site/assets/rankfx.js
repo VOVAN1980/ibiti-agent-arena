@@ -65,6 +65,9 @@ export function soundShatter(big = false) {
   const o = out(c, big ? 0.95 : 0.75);
   snap(c, o, t, { freq: 1800, q: 0.5, len: 0.09, gain: 1 });
   snap(c, o, t + 0.01, { freq: 5200, q: 1.5, len: 0.05, gain: 0.7 });
+  // the crack spreading: a few dry ticks before it gives way
+  for (let i = 1; i <= 5; i++) snap(c, o, t + i * 0.06, { freq: 3000 + i * 500, q: 6, len: 0.02, gain: 0.35 });
+  snap(c, o, t + CRACK / 1000, { freq: 1400, q: 0.6, len: 0.12, gain: 0.95 });
   // a low thud under the crack
   const th = c.createOscillator();
   th.type = 'sine';
@@ -78,7 +81,7 @@ export function soundShatter(big = false) {
   th.stop(t + 0.2);
   // debris: many small bright chips, thinning out
   for (let i = 0; i < 26; i++) {
-    const at = t + 0.04 + Math.random() ** 1.6 * 0.55;
+    const at = t + CRACK / 1000 + Math.random() ** 1.6 * 0.8;
     snap(c, o, at, { freq: 2500 + Math.random() * 6500, q: 4 + Math.random() * 8, len: 0.015 + Math.random() * 0.03, gain: 0.25 + Math.random() * 0.35 });
   }
 }
@@ -233,8 +236,8 @@ function dustIn(rect, place, delay, dur) {
 
 /** Triangles over a w×h rectangle: a jittered grid, each cell cut corner to corner. */
 function shards(w, h) {
-  const cols = Math.max(4, Math.round(w / 90));
-  const rows = h > 90 ? 4 : 3;
+  const cols = Math.max(3, Math.round(w / 150));
+  const rows = h > 90 ? 3 : 2;
   const pt = [];
   for (let j = 0; j <= rows; j++) {
     pt.push([]);
@@ -277,13 +280,50 @@ function shardLayer(source, rect) {
     const cy = (tri[0][1] + tri[1][1] + tri[2][1]) / 3;
     s.style.transformOrigin = `${cx}px ${cy}px`;
     layer.appendChild(s);
-    return { s, cx, cy };
+    return { s, cx, cy, tri };
   });
   document.body.appendChild(layer);
   return { layer, pieces };
 }
 
-/** The row at `rect` (as `copy` looked) cracks and blows apart. Resolves when the pieces are gone. */
+/** How long the cracks show before the row falls apart (ms). */
+export const CRACK = 420;
+/** How long until the place it left is clear enough for the rows below to move (ms). */
+export const CLEAR = 950;
+/** When the pieces start gathering at the new place (ms after the blow). */
+export const GATHER = 1250;
+
+/** Bright cracks along the edges of the pieces, nearest the blow first, drawn in quickly. */
+function cracks(w, h, hx, hy, pieces) {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('class', 'cracks');
+  svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+  svg.setAttribute('preserveAspectRatio', 'none');
+  const lines = [];
+  for (const { tri } of pieces) {
+    for (let i = 0; i < 3; i++) {
+      const a = tri[i];
+      const b = tri[(i + 1) % 3];
+      const onEdge = (a[0] === b[0] && (a[0] === 0 || a[0] === w)) || (a[1] === b[1] && (a[1] === 0 || a[1] === h));
+      if (onEdge) continue;
+      lines.push({ a, b, mid: Math.hypot((a[0] + b[0]) / 2 - hx, (a[1] + b[1]) / 2 - hy) });
+    }
+  }
+  for (const { a, b, mid } of lines) {
+    const p = document.createElementNS(ns, 'path');
+    p.setAttribute('d', `M${a[0].toFixed(1)} ${a[1].toFixed(1)}L${b[0].toFixed(1)} ${b[1].toFixed(1)}`);
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    p.style.strokeDasharray = `${len}`;
+    p.style.strokeDashoffset = `${len}`;
+    svg.appendChild(p);
+    p.animate([{ strokeDashoffset: len }, { strokeDashoffset: 0 }], { duration: 160, delay: Math.min(CRACK - 160, (mid / w) * 520), fill: 'forwards', easing: 'ease-out' });
+  }
+  svg.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 220, delay: CRACK + 80, fill: 'forwards' });
+  return svg;
+}
+
+/** The row at `rect` (as `copy` looked) cracks and falls apart. Resolves when the pieces are gone. */
 export function shatter(copy, rect, place) {
   if (REDUCED) return Promise.resolve();
   surface();
@@ -291,24 +331,25 @@ export function shatter(copy, rect, place) {
   // the blow comes from a point on the row: the shards fly away from it
   const hx = rect.width * (0.3 + Math.random() * 0.4);
   const hy = rect.height * 0.5;
-  layer.animate([{ transform: 'translate(0,0)' }, { transform: 'translate(-3px,1px)' }, { transform: 'translate(3px,-1px)' }, { transform: 'translate(0,0)' }], { duration: 120 });
-  const crack = document.createElement('div');
-  crack.className = 'shardflash';
-  layer.appendChild(crack);
-  crack.animate([{ opacity: 0.9 }, { opacity: 0 }], { duration: 180, fill: 'forwards' });
-  dustOut(rect, place, rect.left + hx, rect.top + hy);
+  // 1. the blow: the row shudders and cracks run across it from the point it was hit
+  layer.animate([{ transform: 'translate(0,0)' }, { transform: 'translate(-4px,1px)' }, { transform: 'translate(4px,-1px)' }, { transform: 'translate(-2px,0)' }, { transform: 'translate(0,0)' }], { duration: 260 });
+  layer.appendChild(cracks(rect.width, rect.height, hx, hy, pieces));
+  // 2. it falls apart: big pieces of the row drift away, turn and drop; the dust spreads
+  setTimeout(() => dustOut(rect, place, rect.left + hx, rect.top + hy), CRACK);
   const done = pieces.map(({ s, cx, cy }) => {
-    const ang = Math.atan2(cy - hy, cx - hx) + (Math.random() - 0.5) * 0.7;
-    const dist = 120 + Math.random() * 380 * (1 - Math.min(1, Math.hypot(cx - hx, cy - hy) / rect.width));
+    const ang = Math.atan2(cy - hy, cx - hx) + (Math.random() - 0.5) * 0.6;
+    const near = 1 - Math.min(1, Math.hypot(cx - hx, cy - hy) / rect.width);
+    const dist = 90 + Math.random() * 220 + 200 * near;
     const dx = Math.cos(ang) * dist;
-    const dy = Math.sin(ang) * dist * 0.55 - 40 - Math.random() * 40;
-    const rot = (Math.random() - 0.5) * 540;
-    const fall = 140 + Math.random() * 160;
+    const dy = Math.sin(ang) * dist * 0.5 - 30 - Math.random() * 30;
+    const rot = (Math.random() - 0.5) * 220;
+    const fall = 220 + Math.random() * 200;
     return s.animate([
       { transform: 'translate(0,0) rotate(0deg) scale(1)', opacity: 1 },
-      { transform: `translate(${dx * 0.55}px,${dy * 0.55}px) rotate(${rot * 0.5}deg) scale(.96)`, opacity: 1, offset: 0.35 },
-      { transform: `translate(${dx}px,${dy + fall}px) rotate(${rot}deg) scale(.6)`, opacity: 0 },
-    ], { duration: 900 + Math.random() * 400, delay: 90 + Math.random() * 60, easing: 'cubic-bezier(.15,.7,.4,1)', fill: 'forwards' }).finished;
+      { transform: `translate(${dx * 0.08}px,${dy * 0.08}px) rotate(${rot * 0.04}deg) scale(1)`, opacity: 1, offset: 0.12 },
+      { transform: `translate(${dx * 0.6}px,${dy * 0.6}px) rotate(${rot * 0.45}deg) scale(.95)`, opacity: 1, offset: 0.5 },
+      { transform: `translate(${dx}px,${dy + fall}px) rotate(${rot}deg) scale(.75)`, opacity: 0 },
+    ], { duration: 1500 + Math.random() * 500, delay: CRACK + Math.random() * 120, easing: 'cubic-bezier(.25,.6,.35,1)', fill: 'forwards' }).finished;
   });
   return Promise.all(done).then(() => layer.remove(), () => layer.remove());
 }
@@ -317,23 +358,23 @@ export function shatter(copy, rect, place) {
 export function assemble(el, rect, place, delay = 0) {
   if (REDUCED) return Promise.resolve();
   surface();
-  const dur = 820;
+  const dur = 1300;
   dustIn(rect, place, delay, dur);
   const { layer, pieces } = shardLayer(el, rect);
   layer.style.visibility = 'hidden';
   setTimeout(() => (layer.style.visibility = ''), delay);
   const done = pieces.map(({ s, cx, cy }) => {
     const ang = Math.random() * Math.PI * 2;
-    const dist = 160 + Math.random() * 320;
+    const dist = 140 + Math.random() * 260;
     const dx = Math.cos(ang) * dist;
     const dy = Math.sin(ang) * dist * 0.5;
-    const rot = (Math.random() - 0.5) * 600;
+    const rot = (Math.random() - 0.5) * 300;
     return s.animate([
       { transform: `translate(${dx}px,${dy}px) rotate(${rot}deg) scale(.5)`, opacity: 0 },
       { transform: `translate(${dx * 0.25}px,${dy * 0.25}px) rotate(${rot * 0.2}deg) scale(.92)`, opacity: 1, offset: 0.6 },
       { transform: 'translate(0,0) rotate(0deg) scale(1)', opacity: 1 },
-    ], { duration: dur * (0.75 + Math.random() * 0.25), delay: delay + 120 + Math.random() * 160, easing: 'cubic-bezier(.16,1,.3,1)', fill: 'both' }).finished;
+    ], { duration: dur * (0.8 + Math.random() * 0.2), delay: delay + 200 + Math.random() * 250, easing: 'cubic-bezier(.16,1,.3,1)', fill: 'both' }).finished;
   });
-  soundGather(delay / 1000 + 0.12);
+  soundGather(delay / 1000 + 0.55);
   return Promise.all(done).then(() => layer.remove(), () => layer.remove());
 }

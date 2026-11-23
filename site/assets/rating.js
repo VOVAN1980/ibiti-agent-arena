@@ -1,12 +1,13 @@
 // The ranking. Three views: the season (its official first places, from the season's own contract),
 // all agents and Agent ID holders (every season, each agent's best fight). A row opens the agent's page,
 // its "Watch" link the fight that earned the place. The rows live on: after every judged fight the page
-// reads the chain again, a row that climbs breaks into sparks and gathers at its new place, the rows it
-// passes slide down (rankfx.js), with a sound when the arena's sound is on.
+// reads the chain again; at every place that has a new holder the old row cracks, breaks apart and flies
+// off, and the new holder gathers there from dust and pieces (rankfx.js), with a sound when the arena's
+// sound is on.
 // ?fx=demo shows the effect on the rows there are, moving one up now and then, and says it is a preview.
 import { CFG, emptyState, refresh, rating, seasonState, seasonTable, nameOf } from './arena.js';
 import { $, esc, keep, header, footer, t, applyI18n, agentUrl, matchUrl, seasonLine, RING } from './ui.js';
-import { shatter, assemble, soundShatter, soundLand, reduced } from './rankfx.js';
+import { shatter, assemble, soundShatter, soundLand, reduced, GATHER } from './rankfx.js';
 
 document.title = `${t('navRating')} — IBITI Agent Arena`;
 $('#head').innerHTML = header('rating');
@@ -106,9 +107,8 @@ function render() {
   if (!rows.length) $('#rempty').textContent = tab === 'season' ? t('rsEmpty') : t('noJudged');
   if (fresh) box().replaceChildren();
 
-  // where each row was, and its place then
-  const before = new Map();
-  for (const el of box().children) before.set(el.dataset.key, { rect: el.getBoundingClientRect(), rank: Number(el.dataset.rank), copy: el.cloneNode(true) });
+  // what stood at each place before: its row, as it looked there
+  const slots = [...box().children].map((el) => ({ key: el.dataset.key, rect: el.getBoundingClientRect(), rank: Number(el.dataset.rank), copy: el.cloneNode(true) }));
 
   // the rows in their new order: kept elements move, new ones are made, gone ones leave
   const wanted = new Set(rows.map(keyOf));
@@ -144,33 +144,19 @@ function render() {
     return;
   }
 
-  // the moves: a climber breaks up and gathers at its place, the others slide
-  let bestClimb = 0;
-  for (const { el, r } of els) {
-    const was = before.get(keyOf(r));
+  // the changes, place by place: where a place has a new holder, the old row breaks apart there and
+  // flies off, and the new holder gathers in its place; a place that kept its holder stays still
+  let top = 0;
+  els.forEach(({ el, r }, i) => {
+    const old = slots[i];
+    if (old && old.key === keyOf(r)) return;
+    if (!top || r.rank < top) top = r.rank;
+    el.style.opacity = '0';
     const rect = el.getBoundingClientRect();
-    if (!was) {
-      el.style.opacity = '0';
-      assemble(el, rect, r.rank, 150).then(() => land(el, r.rank));
-      if (!bestClimb || r.rank < bestClimb) bestClimb = r.rank;
-      continue;
-    }
-    const dy = was.rect.top - rect.top;
-    if (r.rank < was.rank) {
-      // it breaks where it stood, as it looked there; it gathers at its place, as it looks now
-      if (!bestClimb || r.rank < bestClimb) bestClimb = r.rank;
-      el.style.opacity = '0';
-      shatter(was.copy, was.rect, was.rank);
-      assemble(el, rect, r.rank, 650).then(() => land(el, r.rank));
-    } else if (dy) {
-      el.style.transition = 'none';
-      el.style.transform = `translateY(${dy}px)`;
-      void el.offsetWidth;
-      el.style.transition = 'transform .7s cubic-bezier(.2,.8,.2,1)';
-      el.style.transform = '';
-    }
-  }
-  if (bestClimb) soundShatter(bestClimb === 1);
+    if (old) shatter(old.copy, old.rect, old.rank);
+    assemble(el, rect, r.rank, old ? GATHER : 150).then(() => land(el, r.rank));
+  });
+  if (top) soundShatter(top === 1);
 }
 
 function land(el, rank) {
@@ -211,7 +197,7 @@ if (DEMO) {
     const [r] = demoRows.splice(i, 1);
     demoRows.splice(to, 0, r);
     render();
-  }, 4500);
+  }, 7000);
 }
 
 async function loop() {
