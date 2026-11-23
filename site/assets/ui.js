@@ -53,7 +53,12 @@ export const RING = CFG?.ring === 'green' ? 'green' : 'red';
 function ringSwitch() {
   const r = CFG?.rings;
   if (!r) return '';
-  const pill = (c, key) => `<a class="ringpill ${c}${RING === c ? ' on' : ''}" href="${esc(r[c])}"${RING === c ? ' aria-current="page"' : ''}><i></i>${esc(t(key))}</a>`;
+  // the same page on the other ring (its ring, its ranking, its rules), in the same language; a fight's
+  // own address names a fight of this ring only, so it is left behind
+  const page = ['index.html', 'match.html', 'rating.html', 'rules.html'].find((x) => location.pathname.endsWith('/' + x)) ?? '';
+  const lang = new URL(location.href).searchParams.get('lang');
+  const to = (c) => `${String(r[c]).replace(/\/+$/, '')}/${page}${lang ? `?lang=${encodeURIComponent(lang)}` : ''}`;
+  const pill = (c, key) => `<a class="ringpill ${c}${RING === c ? ' on' : ''}" href="${esc(to(c))}"${RING === c ? ' aria-current="page"' : ''}><i></i>${esc(t(key))}</a>`;
   return `<nav class="rings" aria-label="${esc(t('ringsLabel'))}">${pill('red', 'ringRed')}${pill('green', 'ringGreen')}</nav>`;
 }
 
