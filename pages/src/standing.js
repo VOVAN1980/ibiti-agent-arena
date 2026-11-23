@@ -54,7 +54,8 @@ export function standingOf(seed) {
     update: updateLine[u1],
     update2: updateLine[u2],
   };
-  const changed = (u, round) => u in updAt && round > updAt[u];
+  // an update counts from the card that gives it ("from now on")
+  const changed = (u, round) => u in updAt && round >= updAt[u];
   return {
     blocked, wallet, reserve, what, supplier, domain, supplierAddr, signer, signerKey, roundOf, lines, updates: [u1, u2], newSupplierAddr, reserve2, newCold,
     linesOf: (round) => [...kinds, 'update', 'update2'].filter((k) => roundOf[k] === round).map((k) => lines[k]),

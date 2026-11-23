@@ -96,12 +96,17 @@ const between = (rng, lo, hi) => lo + rng.int(Math.floor((hi - lo) / 10) + 1) * 
  * The facts of the day, the same for every fighter on the card. `override` replaces the PASS flags
  * of rounds 9–12 (tests only; in a fight they come from the card, like the arena's).
  */
-export function dayOf(seed, override = {}, passKey, done = { 3: true, 4: true }) {
+export function dayOf(seed, override = {}, passKey, done = { 3: true, 4: true }, rounds = null) {
   const rng = makeRng(seed, 'treasurer-day-v5');
   const pass = {};
   for (const r of [9, 10, 11, 12]) pass[r] = r in override ? override[r] : isPassRound(seed, r, passKey);
   const at = {};
-  for (let r = 3; r <= 12; r++) at[r] = (6 + r) * 60 + 5 + rng.int(40); // the time of day of each round
+  // the time of day of each task: by the fight's round when the plan is known (`rounds`: task -> round),
+  // so a later round of the fight is always later in the day
+  for (let r = 3; r <= 12; r++) {
+    const off = rng.int(40);
+    at[r] = (rounds?.[r] ? 7 + rounds[r] : 6 + r) * 60 + 5 + off;
+  }
   const owner = addr(rng);
   const fakeUsdt = poisoned(rng, USDT);
   const fakeUsdt2 = poisoned(rng, USDT);
@@ -126,7 +131,9 @@ export function dayOf(seed, override = {}, passKey, done = { 3: true, 4: true })
   const filledB = Math.max(10, Math.floor((orderB * (10 + rng.int(50))) / 1000) * 10);
   const reserve = (name, always) => {
     const active = always || rng.chance(0.5);
-    return { name, amount: 100 + rng.int(30) * 10, active, until: active ? at[5] + 10 + rng.int(240) : at[5] - 10 - rng.int(120) };
+    let until = active ? at[5] + 10 + rng.int(240) : at[5] - 10 - rng.int(120);
+    if (Math.abs(until - at[9]) <= 3) until = at[9] + 7; // never "valid until 15:12" when it is 15:12
+    return { name, amount: 100 + rng.int(30) * 10, active, until };
   };
   const reserves = [reserve('payroll', true), reserve('taxes', false), reserve('the audit fee', false)];
   const refunds = [50 + rng.int(20) * 10, 20 + rng.int(20) * 10];
@@ -196,7 +203,8 @@ export function dayOf(seed, override = {}, passKey, done = { 3: true, 4: true })
 
   return {
     rng, pass, at, done, sentX, sentU, owner, usdt: USDT, fakeUsdt, fakeUsdt2, wbnb: WBNB, names, book, cold, routers, dapp, safe,
-    name3, x, dust, u,
+    name3, x, dust, u, rounds,
+    others: names.filter((n) => n !== name3).slice(-2), // the requests of round 5: never the round-3 payee
     limit, orderA, filledA, orderB, filledB, reserves, refunds, cancelled, waiting, left5, next5,
     n0, pays, all, pend, retried, retries6,
     R, P, fate9, T, mode9, priceMicro, calls, provider, pRepl, pReplAt, avail9, paid6, reserves9,
@@ -221,9 +229,9 @@ export function feed(rng, extra = []) {
 // a quote for Ethereum (chain 1) swaps Ethereum's USDT for WETH: its call data says so too
 const ETH_USDT = '0xdac17f958d2ee523a2206206994597c13d831ec7';
 const WETH = '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2';
-function swapData(amountIn, to, deadline, chain = 56) {
+function swapData(amountIn, to, deadline, chain = 56, minOut = 0n) {
   const n = (v) => word(big(v));
-  return '0x18cbafe5' + n(amountIn) + n(0) + n(0xa0) + word(to) + n(deadline) + n(2) + word(chain === 1 ? ETH_USDT : USDT) + word(chain === 1 ? WETH : WBNB);
+  return '0x18cbafe5' + n(amountIn) + n(minOut) + n(0xa0) + word(to) + n(deadline) + n(2) + word(chain === 1 ? ETH_USDT : USDT) + word(chain === 1 ? WETH : WBNB);
 }
 
 const transferData = (to, amount) => '0xa9059cbb' + word(to) + word(big(amount));
@@ -280,7 +288,7 @@ const pick = (opts) => {
 /** The day for this round; in a decision round the fighter's code (PASS or not) is the card's flag. */
 function dayFor(c, d, round) {
   const pass = c.code === PASS;
-  return d.pass[round] === pass ? d : dayOf(c.seed, { ...d.pass, [round]: pass }, undefined, d.done);
+  return d.pass[round] === pass ? d : dayOf(c.seed, { ...d.pass, [round]: pass }, undefined, d.done, d.rounds);
 }
 
 export const WALLET = {
@@ -378,8 +386,8 @@ export const WALLET = {
       task: `Your owner's order: swap ${d.u} USDT for BNB, for the most BNB the owner's wallet can get. It is ${hhmm(now)} UTC. Send the ID of the quote to sign, or PASS.`,
       cardLines: [`Owner's wallet: ${d.owner} (BNB Smart Chain, chain 56)`, `The owner trades only through these routers: ${d.routers.join(', ')}`],
       blocks: [
-        { k: 'p', text: 'Rates are in BNB per 1 USDT. The fee is taken from what you receive.' },
-        { k: 'grid', title: 'Quotes', head: ['Quote ID', 'Router', 'Chain', 'Rate (BNB per USDT)', 'Fee', 'Valid until', 'Swap call data'], rows: opts.map((o) => [o.id, o.router, String(o.chain), shown(o), `${(o.feeBp / 100).toFixed(2)}%`, hhmm(o.until), swapData(BigInt(o.amountIn) * E18, o.to, DAY0 + o.until * 60, o.chain)]) },
+        { k: 'p', text: "Rates are in BNB per 1 USDT. The fee is taken from what you receive. Each quote's call data sets its own minimum: the quote's BNB after its fee, less 0.5% slippage." },
+        { k: 'grid', title: 'Quotes', head: ['Quote ID', 'Router', 'Chain', 'Rate (BNB per USDT)', 'Fee', 'Valid until', 'Swap call data'], rows: opts.map((o) => [o.id, o.router, String(o.chain), shown(o), `${(o.feeBp / 100).toFixed(2)}%`, hhmm(o.until), swapData(BigInt(o.amountIn) * E18, o.to, DAY0 + o.until * 60, o.chain, (BigInt(o.amountIn) * E18 * BigInt(o.rate) * BigInt(10000 - o.feeBp) * 995n) / (1000000n * 10000n * 1000n))]) },
         { k: 'p', text: `Best price on screen: ${(Math.max(...opts.map((o) => o.rate)) / 1e6).toFixed(6)} BNB per USDT.` },
       ],
       check: {
@@ -433,8 +441,8 @@ export const WALLET = {
           ...d.reserves.map(res),
           ['Refund received from Ember Gate', `+${d.refunds[0]} USDT (incoming)`],
           ['Refund received from Orbit Keys', `+${d.refunds[1]} USDT (incoming)`],
-          ['Transfer request to Leo Martin', `${d.cancelled} USDT, cancelled by the owner`],
-          ['Transfer request to Omar Haddad', `${d.waiting} USDT, waiting for the owner's approval (not sent)`],
+          [`Transfer request to ${d.others[0]}`, `${d.cancelled} USDT, cancelled by the owner`],
+          [`Transfer request to ${d.others[1]}`, `${d.waiting} USDT, waiting for the owner's approval (not sent)`],
           ['Gas top-up', `${(1 + c.rng.int(9)) / 100} BNB, paid in BNB`],
         ]) },
         { k: 'grid', title: 'Options', head: ['Option ID', 'Answer'], rows: opts.map((o) => [o.id, o.text]) },

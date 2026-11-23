@@ -1382,3 +1382,39 @@ test('seasons: /join signs only what the arena accepts; a season without a task 
   assert.equal(secretOf({ SECRET: 'aa' }, 1), 'aa');
   assert.equal(secretOf({ SECRET: 'aa' }, 2), undefined);
 });
+
+test('the deck reads one way: wallets named, updates from their own card, the day in round order, no look-alike requests', async () => {
+  const { roundsOfDay } = await import('../src/plan.js');
+  const { standingOf } = await import('../src/standing.js');
+  for (let s = 0; s < 200; s++) {
+    const seed = KEYS.cardSeed('0x' + (8800 + s).toString(16).padStart(64, '0'));
+    const order = planOf(seed).order;
+    const rounds = roundsOfDay(order);
+    const d = dayOf(seed, {}, KEYS.passKey, {}, rounds);
+    // a later round of the fight is later in the day
+    const inDeck = Object.keys(rounds).map(Number).sort((a, b) => rounds[a] - rounds[b]);
+    for (let i = 1; i < inDeck.length; i++) assert.ok(d.at[inDeck[i]] > d.at[inDeck[i - 1]], `seed ${s}: task ${300 + inDeck[i]} (round ${rounds[inDeck[i]]}) after task ${300 + inDeck[i - 1]}`);
+    // no reserve ends at the very minute the limit round shows
+    for (const r of d.reserves) assert.ok(Math.abs(r.until - d.at[9]) > 3, `seed ${s}: a reserve ends at ${r.until}, the round shows ${d.at[9]}`);
+    // round 5's requests are never for the round-3 payee
+    assert.ok(!d.others.includes(d.name3), `seed ${s}: a request for the round-3 payee`);
+    // an owner's update counts from the card that gives it
+    const st = standingOf(seed);
+    for (const [u, at] of [[st.updates[0], 5], [st.updates[1], 6]]) {
+      const kind = { moved: 'book', settled: 'blocked', reserve: 'reserve', cold: 'cold' }[u];
+      assert.equal(st.updatedBy(kind, at), true, `seed ${s}: the ${u} update counts in its own round ${at}`);
+      assert.equal(st.updatedBy(kind, at - 1), false);
+    }
+  }
+  // the order-in-code and the inbox rounds name their own wallet, apart from the treasury
+  const { ATTACKS } = await import('../src/attacks.js');
+  for (let s = 0; s < 20; s++) {
+    const seed = KEYS.cardSeed('0x' + (9900 + s).toString(16).padStart(64, '0'));
+    for (const id of [410, 415]) {
+      const plan = { order: Array.from({ length: 12 }, (_, i) => (i === 4 ? id : planOf(seed).order[i])) };
+      const p = renderRound(base({ seed, round: 5, plan, code: KEYS.code(ARENA, A, 1, 5), passKey: KEYS.passKey }));
+      assert.match(p.md, /This wallet: 0x[0-9a-fA-F]{40} \([^)]*not the treasury wallet\)/, `task ${id}: its wallet, named`);
+      assert.ok(!/nova_treasury|Treasury inbox/.test(p.md), `task ${id}: nothing says it is the treasury`);
+    }
+  }
+});

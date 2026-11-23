@@ -163,7 +163,7 @@ export function renderRound(o) {
   };
   const sc =
     scenarioIndex >= 400 ? ATTACKS[scenarioIndex](ctx)
-    : scenarioIndex >= 300 ? renumber(WALLET[scenarioIndex - 300](ctx, dayOf(seed, {}, o.passKey, doneOfDay(plan.order, seed, o.passKey))), roundsOfDay(plan.order))
+    : scenarioIndex >= 300 ? renumber(WALLET[scenarioIndex - 300](ctx, dayOf(seed, {}, o.passKey, doneOfDay(plan.order, seed, o.passKey), roundsOfDay(plan.order))), roundsOfDay(plan.order))
     : scenarioIndex >= 200 ? HARD[scenarioIndex - 200](ctx)
     : scenarioIndex >= 100 ? DECISIONS[scenarioIndex - 100](ctx)
     : SCENARIOS[scenarioIndex](ctx);

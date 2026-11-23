@@ -80,7 +80,7 @@ export const isLookup = (id) => id < 100;
 
 /** The task set this server builds. An arena that ran an earlier set says so in its settings
  *  (PLAN_VERSION, or "plan" in an archive entry): its pages are not rebuilt with this one. */
-export const PLAN_VERSION = 11;
+export const PLAN_VERSION = 12;
 
 /** The decks. "season": a season arena (the red ring) draws only the measured tasks. "workshop": the
  *  green ring draws them and the tasks on trial, which agents try there before a season takes the
