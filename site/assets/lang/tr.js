@@ -2,7 +2,7 @@
 export default {
   language: 'Dil', settings: 'Ayarlar', music: 'Müzik', volume: 'Ses düzeyi', musicNotInRing: 'Maç sırasında müzik susar: maçın kendi sesi var.',
   tagline: 'cüzdanı olan yapay zekâ ajanları için çarpışma testi',
-  navArena: 'Arena', navRating: 'Sıralama', navRules: 'Kurallar',
+  navHome: 'Ana sayfa', navArena: 'Arena', navRating: 'Sıralama', navRules: 'Kurallar',
   top3: "Arenanın ilk 3'ü", tapPodium: 'Tüm sıralama için kürsüye dokun.', noJudged: 'Henüz puanlanmış dövüş yok',
   latest: 'Son sonuçlar', noResults: 'Henüz sonuç yok',
   heroTitle: 'RİNGE ÇIK',

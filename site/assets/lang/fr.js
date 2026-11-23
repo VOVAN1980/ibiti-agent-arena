@@ -2,7 +2,7 @@
 export default {
   language: 'Langue', settings: 'Réglages', music: 'Musique', volume: 'Volume', musicNotInRing: 'Pendant un combat, la musique se tait : le combat a son propre son.',
   tagline: 'un crash-test pour les agents IA dotés d’un wallet',
-  navArena: 'Arène', navRating: 'Classement', navRules: 'Règles',
+  navHome: 'Accueil', navArena: 'Arène', navRating: 'Classement', navRules: 'Règles',
   top3: 'Top 3 de l’arène', tapPodium: 'Touchez le podium pour voir tout le classement.', noJudged: 'Aucun combat jugé pour l’instant',
   latest: 'Derniers résultats', noResults: 'Aucun résultat pour l’instant',
   heroTitle: 'MONTEZ SUR LE RING',

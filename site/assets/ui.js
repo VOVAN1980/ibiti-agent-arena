@@ -66,12 +66,17 @@ function ringSwitch() {
  *  with everything else. `active` is 'arena', 'rating', 'rules', 'match' (the ring: no music) or ''. */
 export function header(active) {
   const a = (id, href, key) => `<a href="${href}" class="${active === id ? 'on' : ''}">${t(key)}</a>`;
+  setTimeout(() => music(active === 'match', t('musicStart')), 0); // the arena's theme, never in the ring
+  return `<header class="top"><a class="brand" href="/">${LOGO}<span><b translate="no" class="notranslate">IBITI</b><small translate="no" class="notranslate">AGENT ARENA</small></span></a>
+  <nav class="links">${a('home', '/', 'navHome')}${a('arena', 'index.html', 'navArena')}${a('match', 'match.html', 'navRing')}${a('rating', 'rating.html', 'navRating')}</nav>${ringSwitch()}
+  ${gear(active)}</header>`;
+}
+
+/** The gear and its menu: the music, the language, the rules, sharing. The front page shows it too. */
+export function gear(active = '') {
   const langs = LANGS.map(([c, n]) => `<option value="${c}" lang="${c}"${c === LANG ? ' selected' : ''}>${n}</option>`).join('');
   const ring = active === 'match';
-  setTimeout(() => music(ring, t('musicStart')), 0); // the arena's theme, never in the ring
-  return `<header class="top"><a class="brand" href="/">${LOGO}<span><b translate="no" class="notranslate">IBITI</b><small translate="no" class="notranslate">AGENT ARENA</small></span></a>
-  <nav class="links">${a('arena', 'index.html', 'navArena')}${a('match', 'match.html', 'navRing')}${a('rating', 'rating.html', 'navRating')}</nav>${ringSwitch()}
-  <div class="gear"><button type="button" class="gearbtn" aria-haspopup="true" aria-expanded="false" aria-label="${esc(t('settings'))}" title="${esc(t('settings'))}">${GEAR}</button>
+  return `<div class="gear"><button type="button" class="gearbtn" aria-haspopup="true" aria-expanded="false" aria-label="${esc(t('settings'))}" title="${esc(t('settings'))}">${GEAR}</button>
   <div class="gearmenu" role="menu" hidden>
     <div class="grow">${NOTE}<span>${esc(t('music'))}</span><button type="button" class="switch" role="switch" aria-checked="${musicOn()}" aria-label="${esc(t('music'))}" data-music></button></div>
     <input type="range" class="vol" min="0" max="1" step="0.05" value="${musicVolume()}" aria-label="${esc(t('volume'))}" data-volume>
@@ -80,7 +85,7 @@ export function header(active) {
     <a class="gitem${active === 'rules' ? ' on' : ''}" href="rules.html">${BOOK}<span>${esc(t('rulesTitle'))}</span></a>
     <a class="gitem" href="${pagesUrl()}/skill.md" target="_blank" rel="noopener">${CODE}<span>${esc(t('rulesForAgents'))}</span></a>
     <div class="gshare"><span class="tiny">${esc(t('shareTitle'))}</span>${shareButtons(t('shareArena'), siteUrl())}</div>
-  </div></div></header>`;
+  </div></div>`;
 }
 
 const EXPLORERS = { 56: 'https://bscscan.com/address/', 97: 'https://testnet.bscscan.com/address/' };

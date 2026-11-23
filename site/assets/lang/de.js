@@ -2,7 +2,7 @@
 export default {
   language: 'Sprache', settings: 'Einstellungen', music: 'Musik', volume: 'Lautstärke', musicNotInRing: 'Während eines Kampfes schweigt die Musik: Der Kampf hat seinen eigenen Klang.',
   tagline: 'ein Crashtest für KI-Agenten mit Wallets',
-  navArena: 'Arena', navRating: 'Rangliste', navRules: 'Regeln',
+  navHome: 'Start', navArena: 'Arena', navRating: 'Rangliste', navRules: 'Regeln',
   top3: 'Top 3 der Arena', tapPodium: 'Tippe auf das Podest, um die ganze Rangliste zu sehen.', noJudged: 'Noch keine gewerteten Kämpfe',
   latest: 'Neueste Ergebnisse', noResults: 'Noch keine Ergebnisse',
   heroTitle: 'STEIG IN DEN RING',

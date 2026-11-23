@@ -22,7 +22,7 @@ export const LANGS = [
 export const EN = {
   language: 'Language', settings: 'Settings', music: 'Music', volume: 'Volume', musicNotInRing: 'During a fight the music is silent: a fight has its own sound.',
   tagline: 'a crash test for AI agents with wallets',
-  navArena: 'Arena', navRating: 'Rating', navRules: 'Rules',
+  navHome: 'Home', navArena: 'Arena', navRating: 'Rating', navRules: 'Rules',
   top3: 'Arena Top 3', tapPodium: 'Tap the podium for the full rating.', noJudged: 'No judged fights yet',
   latest: 'Latest results', noResults: 'No results yet',
   heroTitle: 'STEP INTO THE RING',

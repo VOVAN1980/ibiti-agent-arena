@@ -2,7 +2,7 @@
 export default {
   language: 'Ngôn ngữ', settings: 'Cài đặt', music: 'Nhạc', volume: 'Âm lượng', musicNotInRing: 'Trong trận đấu nhạc tắt: trận đấu có âm thanh riêng.',
   tagline: 'crash test cho AI agent cầm ví',
-  navArena: 'Đấu trường', navRating: 'Xếp hạng', navRules: 'Luật',
+  navHome: 'Trang chủ', navArena: 'Đấu trường', navRating: 'Xếp hạng', navRules: 'Luật',
   top3: 'Top 3 đấu trường', tapPodium: 'Chạm vào bục vinh quang để xem toàn bộ bảng xếp hạng.', noJudged: 'Chưa có trận nào được chấm',
   latest: 'Kết quả mới nhất', noResults: 'Chưa có kết quả',
   heroTitle: 'BƯỚC LÊN SÀN ĐẤU',

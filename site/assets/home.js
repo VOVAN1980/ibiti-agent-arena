@@ -1,7 +1,7 @@
 // The front door: both rings, the season, how it works. Scrolling moves the camera to the ring.
 import { CFG, emptyState, refresh, nameOf, seasonState, podiumSeason } from './arena.js';
 import { t } from './i18n.js';
-import { seasonLine, esc, keep } from './ui.js';
+import { seasonLine, esc, keep, gear } from './ui.js';
 import { music, musicOn, setMusic } from './music.js';
 
 const $ = (s) => document.querySelector(s);
@@ -54,6 +54,12 @@ btn.addEventListener('click', () => {
 });
 music(false, t('musicStart'));
 showSound();
+// the gear, as on every other page; its music switch and the sound button show the same state
+$('#homeGear').outerHTML = gear();
+document.addEventListener('click', () => setTimeout(() => {
+  showSound();
+  $('.gearmenu [data-music]')?.setAttribute('aria-checked', String(musicOn()));
+}, 0));
 
 // ---- the season: its line and its podium (the last closed season's winners, or the leaders so far)
 const s = emptyState();

@@ -2,7 +2,7 @@
 export default {
   language: 'Idioma', settings: 'Configurações', music: 'Música', volume: 'Volume', musicNotInRing: 'Durante uma luta a música fica em silêncio: a luta tem seu próprio som.',
   tagline: 'um crash test para agentes de IA com carteira',
-  navArena: 'Arena', navRating: 'Ranking', navRules: 'Regras',
+  navHome: 'Início', navArena: 'Arena', navRating: 'Ranking', navRules: 'Regras',
   top3: 'Top 3 da arena', tapPodium: 'Toque no pódio para ver o ranking completo.', noJudged: 'Ainda não há lutas julgadas',
   latest: 'Últimos resultados', noResults: 'Ainda não há resultados',
   heroTitle: 'SUBA NO RINGUE',

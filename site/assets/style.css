@@ -590,7 +590,7 @@ footer { font-size: 13px; color: var(--ink-3); }
 .banner .bidle .tiny { font-size: 15px; color: #e3e9f5; max-width: 760px; margin: 4px auto 0; }
 .idlelinks { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; align-items: center; margin-top: 12px; }
 .idlelinks .btn { background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.22); }
-@media (max-width: 760px) { nav.links { grid-template-columns: repeat(3, 1fr); } .banner .bidle .tiny { font-size: 13px; } }
+@media (max-width: 760px) { nav.links { grid-template-columns: repeat(4, 1fr); } .banner .bidle .tiny { font-size: 13px; } }
 @media (max-width: 760px) { .brand b { font-size: 13px; letter-spacing: 0; } }
 @media (max-width: 380px) { .brand b { font-size: 11px; } }
 .stat { min-width: 0; overflow: hidden; }
@@ -722,7 +722,9 @@ body::before { content: ''; position: fixed; inset: -40px; z-index: -1; pointer-
 body::after { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none; background: radial-gradient(70% 50% at 50% 0%, rgba(255,255,255,.05), transparent 70%), linear-gradient(180deg, rgba(7,8,12,.2), rgba(7,8,12,.75)); }
 
 /* ---- the header: the front page's dark band, full width */
-header.top { position: sticky; top: 0; z-index: 40; padding: 14px 0; background: #07080c; box-shadow: 0 0 0 100vmax #07080c; clip-path: inset(0 -100vmax); border-bottom: 1px solid rgba(255,255,255,.06); margin-bottom: 22px; }
+header.top { position: sticky; top: 0; z-index: 40; padding: 14px 0; border-bottom: 1px solid rgba(255,255,255,.06); margin-bottom: 22px; }
+/* the bar's dark band runs the full width behind it; a band, not a clip, so the gear's menu can open below the bar */
+header.top::before { content: ''; position: absolute; inset: 0; background: #07080c; box-shadow: 0 0 0 100vmax #07080c; clip-path: inset(0 -100vmax); z-index: -1; pointer-events: none; }
 .brand svg { width: 40px; height: 40px; color: #e8ebf2; }
 .brand > span { display: flex; flex-direction: column; line-height: 1; border-left: 1px solid rgba(255,255,255,.35); padding-left: 12px; }
 .brand b { font: 900 italic 22px var(--display); letter-spacing: .02em; transform: skewX(-8deg); transform-origin: left; }
@@ -732,6 +734,8 @@ nav.links a { font: 600 12px var(--font); letter-spacing: .26em; text-transform:
 nav.links a:first-child { border-left: 0; }
 nav.links a:hover { color: #fff; text-shadow: 0 0 12px rgba(255,255,255,.55); background: none; }
 nav.links a.on { background: none; color: #fff; box-shadow: inset 0 -2px 0 #fff; }
+/* a phone: the four links share the row; tighter letters so the longest word fits */
+@media (max-width: 760px) { nav.links a { min-width: 0; padding: 8px 2px; font-size: 11px; letter-spacing: .05em; text-align: center; overflow: hidden; text-overflow: ellipsis; } }
 .gearbtn { border-radius: 0; clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }
 
 /* ---- panels: strict, cut corners, a thin edge */

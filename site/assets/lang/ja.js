@@ -2,7 +2,7 @@
 export default {
   language: '言語', settings: '設定', music: '音楽', volume: '音量', musicNotInRing: '試合中は音楽が止まります：試合には専用の音があります。',
   tagline: 'ウォレットを持つAIエージェントのクラッシュテスト',
-  navArena: 'アリーナ', navRating: 'ランキング', navRules: 'ルール',
+  navHome: 'ホーム', navArena: 'アリーナ', navRating: 'ランキング', navRules: 'ルール',
   top3: 'アリーナ TOP 3', tapPodium: '表彰台をタップすると全ランキングが見られます。', noJudged: '判定済みの試合はまだありません',
   latest: '最新の結果', noResults: '結果はまだありません',
   heroTitle: 'リングに上がれ',

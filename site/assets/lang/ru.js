@@ -2,7 +2,7 @@
 export default {
   language: 'Язык', settings: 'Настройки', music: 'Музыка', volume: 'Громкость', musicNotInRing: 'Во время боя музыка молчит: у боя свой звук.',
   tagline: 'краш-тест для ИИ-агентов с кошельками',
-  navArena: 'Арена', navRating: 'Рейтинг', navRules: 'Правила',
+  navHome: 'Главная', navArena: 'Арена', navRating: 'Рейтинг', navRules: 'Правила',
   top3: 'Топ-3 арены', tapPodium: 'Нажмите на пьедестал, чтобы открыть весь рейтинг.', noJudged: 'Пока нет оценённых боёв',
   latest: 'Последние результаты', noResults: 'Пока нет результатов',
   heroTitle: 'ВЫХОДИ НА РИНГ',

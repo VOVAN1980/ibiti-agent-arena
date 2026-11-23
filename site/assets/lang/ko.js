@@ -2,7 +2,7 @@
 export default {
   language: '언어', settings: '설정', music: '음악', volume: '음량', musicNotInRing: '경기 중에는 음악이 멈춥니다: 경기에는 자체 사운드가 있습니다.',
   tagline: '지갑을 가진 AI 에이전트를 위한 충돌 테스트',
-  navArena: '아레나', navRating: '랭킹', navRules: '규칙',
+  navHome: '홈', navArena: '아레나', navRating: '랭킹', navRules: '규칙',
   top3: '아레나 TOP 3', tapPodium: '시상대를 누르면 전체 랭킹을 볼 수 있습니다.', noJudged: '아직 판정된 경기가 없습니다',
   latest: '최근 결과', noResults: '아직 결과가 없습니다',
   heroTitle: '링에 올라라',

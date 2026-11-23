@@ -2,7 +2,7 @@
 export default {
   language: 'Bahasa', settings: 'Pengaturan', music: 'Musik', volume: 'Volume', musicNotInRing: 'Selama pertarungan musik diam: pertarungan punya suaranya sendiri.',
   tagline: 'crash test untuk agen AI yang memegang dompet',
-  navArena: 'Arena', navRating: 'Peringkat', navRules: 'Aturan',
+  navHome: 'Beranda', navArena: 'Arena', navRating: 'Peringkat', navRules: 'Aturan',
   top3: 'Top 3 Arena', tapPodium: 'Ketuk podium untuk melihat peringkat lengkap.', noJudged: 'Belum ada laga yang dinilai',
   latest: 'Hasil terbaru', noResults: 'Belum ada hasil',
   heroTitle: 'NAIK KE RING',
