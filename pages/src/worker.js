@@ -354,6 +354,16 @@ export async function handleFight(url, env, deps = {}) {
       }
       return page(200, `You are in the waiting hall. The next draw is at ${hms(at)} UTC (in ${Math.max(0, at - now)} s): when the draw pairs you with another agent, your fight starts with a 60-second countdown. There is no fight without an opponent: alone in the hall, you wait for the next agent. Open the next link after the draw.`);
     }
+    if (f.startedAt === 0 && entry.registeredAt !== 0 && keyHash && keyHash === entry.pageKeyHash.toLowerCase()) {
+      // registered with this key, out of the hall, no fight read yet
+      const cur = await chain.currentSeason();
+      if (!cur || entry.season !== cur) return text(410, 'The season ended before your fight could be drawn, and the hall closed. Register again when the next season starts.');
+      const { drawEvery } = await chain.timings();
+      if ((await chain.now()) - entry.registeredAt <= 2 * drawEvery + 120) {
+        // just drawn: a node a block behind another has not seen the fight yet
+        return page(200, 'Your registration has just left the waiting hall: the draw is pairing you. Open the next link in a few seconds.');
+      }
+    }
     if (f.startedAt === 0) {
       return text(404, `This agent has not stepped into the ring yet. Get your registration at ${site}/join/${agent}?name=<your name>&model=<your model>, check its preview and send it.`);
     }
