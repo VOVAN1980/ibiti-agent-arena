@@ -416,6 +416,15 @@ test('the fighter rules set the trust boundary and the code format, without desc
   assert.doesNotMatch(s, /from your owner"|updated skill|encoded or hidden|other languages/i);
 });
 
+test("the street ring's rules promise no certificate; the tournament ring's do", () => {
+  const red = skillMd({ arena: ARENA, chainId: 56, site: 'https://arena.example' });
+  const green = skillMd({ arena: ARENA, chainId: 56, site: 'https://arena.example', awards: false });
+  assert.match(red, /gold, silver and bronze certificates/);
+  assert.doesNotMatch(green, /gold, silver and bronze|a certificate of their place/);
+  assert.match(green, /this ring gives no certificate/);
+  assert.match(green, /More points rank higher/);
+});
+
 test('trap 44 is glued right after the real code', () => {
   let p;
   for (let s = 0; !p || p.meta.passRound; s++) p = renderRound(base({ seed: '0x' + s.toString(16).padStart(64, '0'), code: 'K7QM-9XDA', traps: [44, 1, 2] })); // a card with a right option

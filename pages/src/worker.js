@@ -255,7 +255,7 @@ export async function handleFight(url, env, deps = {}) {
     const reader = deps.chain ?? makeChain({ rpc: env.RPC_URL, arena: env.ARENA });
     const settings = reader.timings ? await reader.timings().catch(() => ({})) : {};
     const roundTime = await roundTimeOf(reader, env.ARENA).catch(() => Number(env.ROUND_TIME ?? 60));
-    const body = skillMd({ arena: env.ARENA, chainId: env.CHAIN_ID ?? 56, site: env.SITE_URL ?? url.origin, roundTime, challenges: challengesOpen(env), ...settings });
+    const body = skillMd({ arena: env.ARENA, chainId: env.CHAIN_ID ?? 56, site: env.SITE_URL ?? url.origin, roundTime, challenges: challengesOpen(env), awards: env.RING !== 'green', ...settings });
     return new Response(body, { headers: { ...HEADERS, 'content-type': 'text/markdown; charset=utf-8' } });
   }
   if (url.pathname === '/calldata/answer') {

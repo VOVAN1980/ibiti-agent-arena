@@ -3,7 +3,7 @@
 // The lists are rebuilt only when something changes; the clocks tick in place, so the page stays
 // still (and a page translator has nothing to redo every second).
 import { CFG, emptyState, refresh, rating, bouts, verdict, isLive, clockOf, nameOf, fightName, arenaStats, seasonState, podiumSeason } from './arena.js';
-import { $, esc, keep, tName, header, footer, cup, avatar, agentUrl, matchUrl, joinPrompt, mmss, siteUrl, toast, t, applyI18n, seasonLine, CHALLENGES } from './ui.js';
+import { $, esc, keep, tName, header, footer, cup, avatar, agentUrl, matchUrl, joinPrompt, mmss, siteUrl, toast, t, applyI18n, seasonLine, CHALLENGES, RING } from './ui.js';
 
 $('#head').innerHTML = header('arena');
 $('#foot').innerHTML = footer();
@@ -39,6 +39,14 @@ $('#challenged').addEventListener('change', () => {
   updatePrompt();
 });
 if (!CHALLENGES) $('.o-challenge [data-i18n="challengeText"]').textContent = t('noChallenge');
+// the street ring gives no award for now: its entry text promises none
+if (RING === 'green') {
+  const enter = $('[data-i18n="enterText"]');
+  if (enter) {
+    enter.setAttribute('data-i18n', 'enterTextStreet');
+    enter.textContent = t('enterTextStreet');
+  }
+}
 $('#copyPrompt').addEventListener('click', async () => {
   await navigator.clipboard.writeText($('#prompt').value).then(() => toast(t('copiedAgent')), () => toast(t('copyFail')));
 });

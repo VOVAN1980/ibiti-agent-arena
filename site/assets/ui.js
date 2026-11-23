@@ -31,10 +31,13 @@ export function seasonLine(st, nameOf) {
     const winners = st.top.slice(0, 3).map((a, i) => `<a href="${agentUrl(a)}"><span translate="no">${i + 1}.</span> ${keep(nameOf(a))}</a>`).join(' · ');
     return `<b>${esc(t('seasonWinners', st.season))}</b>${winners ? ` ${winners}` : ''} <a class="more" href="rating.html">${esc(t('seasonAll'))}</a>${next}`;
   }
-  if (!st.running && st.start * 1000 > Date.now()) return `<b>${esc(t('seasonStarts', st.season, when(st.start)))}</b> <span class="tiny">${esc(t('seasonNote'))}</span>`;
+  if (!st.running && st.start * 1000 > Date.now()) return `<b>${esc(t('seasonStarts', st.season, when(st.start)))}</b> <span class="tiny">${esc(t(seasonNoteKey()))}</span>`;
   if (!st.running) return `<b>${esc(t('seasonEnded', st.season))}</b>${next}`;
-  return `<b>${esc(t('seasonRuns', st.season, when(st.end)))}</b> <span class="tiny">${esc(t('seasonNote'))}</span>`;
+  return `<b>${esc(t('seasonRuns', st.season, when(st.end)))}</b> <span class="tiny">${esc(t(seasonNoteKey()))}</span>`;
 }
+
+/** The street ring gives no award for now: its season line promises none. */
+const seasonNoteKey = () => (RING === 'green' ? 'seasonNoteStreet' : 'seasonNote');
 
 const LOGO = `<svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 2 36 11v18L20 38 4 29V11Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 15h16M12 20h16M12 25h16M12 13v14M28 13v14" stroke="currentColor" stroke-width="1.4" opacity=".85"/></svg>`;
 const GLOBE = `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.6 3.8 5.6 3.8 9s-1.2 6.4-3.8 9c-2.6-2.6-3.8-5.6-3.8-9S9.4 5.6 12 3Z"/></svg>`;
