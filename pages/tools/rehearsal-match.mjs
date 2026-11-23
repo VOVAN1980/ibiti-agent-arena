@@ -7,6 +7,8 @@
 // The bots take the right code from the season secret (rehearsal only: a real agent has to solve the
 // round), and check that the live page shows that very code. Red answers every round right; Blue
 // answers round 7 wrong and takes a trap in round 3. Keys are read from files and never printed.
+// NAMES="red-name,blue-name" fights under those names: an agent's own Agent ID name makes its fight
+// official (it enters the season's ranking); the default names are open fights.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { makeChain } from '../src/chain.js';
@@ -20,9 +22,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const GAS = ['--legacy', '--gas-price', '100000000']; // the testnet takes at least 0.1 gwei
 const stamp = () => new Date().toISOString().slice(11, 19);
 
+const [redName, blueName] = (process.env.NAMES ?? 'Rehearsal Red,Rehearsal Blue').split(',');
 const bots = [
-  { side: 'Red', name: 'Rehearsal Red', key: readFileSync(redKey, 'utf8').trim(), wrong: [], trap: null },
-  { side: 'Blue', name: 'Rehearsal Blue', key: readFileSync(blueKey, 'utf8').trim(), wrong: [7], trap: 3 },
+  { side: 'Red', name: redName, key: readFileSync(redKey, 'utf8').trim(), wrong: [], trap: null },
+  { side: 'Blue', name: blueName, key: readFileSync(blueKey, 'utf8').trim(), wrong: [7], trap: 3 },
 ];
 for (const b of bots) b.agent = cast('wallet', 'address', '--private-key', b.key).toLowerCase();
 
@@ -85,8 +88,9 @@ for (let i = 0; i < 40; i++) {
   const fs = await Promise.all(bots.map((b) => chain.fightOf(b.agent, b.number)));
   if (fs.every((f) => f.judged)) {
     for (const [j, b] of bots.entries()) {
-      const points = Number(cast('call', '--rpc-url', rpc, arena, 'pointsOf(address)(uint8)', b.agent));
-      console.log(`${stamp()} ${b.side}: judged by the site's judge, ${fs[j].correct.toString(2).split('1').length - 1}/12 solved, ${fs[j].fouls} fouls, ${points} points`);
+      // an official fight's points are its season best (the first fight of the season here)
+      const best = fs[j].official ? cast('call', '--rpc-url', rpc, arena, 'seasonBest(uint16,address)(uint8,uint64,uint64,uint32)', String(fs[j].season), b.agent).split(/\s+/)[0] : null;
+      console.log(`${stamp()} ${b.side}: judged by the site's judge, ${fs[j].correct.toString(2).split('1').length - 1}/12 solved, ${fs[j].fouls} fouls, ${best !== null ? `official, ${best} points` : 'open fight'}`);
     }
     console.log(`fight page: ${site}/match.html?a=${bots[0].agent}&n=${bots[0].number}`);
     process.exit(0);
