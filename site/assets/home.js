@@ -63,9 +63,8 @@ async function season() {
     const st = await seasonState();
     $('#seasonLine').innerHTML = seasonLine(st, (a) => nameOf(s, a)) || esc(tr('homeNoSeason', 'The first season opens soon.'));
     const p = await podiumSeason();
-    const medal = ['🥇', '🥈', '🥉'];
     $('#podium').innerHTML = p?.top.length
-      ? p.top.map((r, i) => `<div class="place"><span class="medal">${medal[i]}</span><div><b>${keep(r.name || nameOf(s, r.agent))}</b><span>${r.timeUsed}s</span></div><div class="pts">${r.points}</div></div>`).join('')
+      ? p.top.map((r, i) => `<div class="place"><span class="medal">${String(i + 1).padStart(2, '0')}</span><div><b>${keep(r.name || nameOf(s, r.agent))}</b><span>${r.timeUsed}s</span></div><div class="pts">${r.points}</div></div>`).join('')
       : '';
   } catch (e) {
     console.error(e);

@@ -25,11 +25,10 @@ export const matchUrl = (agent, number) => `match.html?arena=${CFG.arena}&a=${ag
 /** The season in a line: until when it runs, or its winners once it is closed. `nameOf` gives an agent's name. */
 export function seasonLine(st, nameOf) {
   if (!st) return '';
-  const medal = ['🥇', '🥈', '🥉'];
   const when = (x) => new Date(x * 1000).toISOString().slice(0, 16).replace('T', ' ');
   const next = st.next ? ` <b>${esc(t('seasonStarts', st.next.n, when(st.next.start)))}</b>` : '';
   if (st.closedAt) {
-    const winners = st.top.slice(0, 3).map((a, i) => `<a href="${agentUrl(a)}"><span translate="no">${medal[i]}</span> ${keep(nameOf(a))}</a>`).join(' · ');
+    const winners = st.top.slice(0, 3).map((a, i) => `<a href="${agentUrl(a)}"><span translate="no">${i + 1}.</span> ${keep(nameOf(a))}</a>`).join(' · ');
     return `<b>${esc(t('seasonWinners', st.season))}</b>${winners ? ` ${winners}` : ''} <a class="more" href="rating.html">${esc(t('seasonAll'))}</a>${next}`;
   }
   if (!st.running && st.start * 1000 > Date.now()) return `<b>${esc(t('seasonStarts', st.season, when(st.start)))}</b> <span class="tiny">${esc(t('seasonNote'))}</span>`;
@@ -37,7 +36,7 @@ export function seasonLine(st, nameOf) {
   return `<b>${esc(t('seasonRuns', st.season, when(st.end)))}</b> <span class="tiny">${esc(t('seasonNote'))}</span>`;
 }
 
-const LOGO = `<svg viewBox="0 0 40 40" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ef4444"/><stop offset="1" stop-color="#3b82f6"/></linearGradient></defs><path d="M20 2 36 11v18L20 38 4 29V11Z" fill="none" stroke="url(#lg)" stroke-width="2.5"/><path d="M13 14h14M13 20h14M13 26h14" stroke="#e6ebf5" stroke-width="1.6" opacity=".75"/></svg>`;
+const LOGO = `<svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 2 36 11v18L20 38 4 29V11Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 15h16M12 20h16M12 25h16M12 13v14M28 13v14" stroke="currentColor" stroke-width="1.4" opacity=".85"/></svg>`;
 const GLOBE = `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.6 3.8 5.6 3.8 9s-1.2 6.4-3.8 9c-2.6-2.6-3.8-5.6-3.8-9S9.4 5.6 12 3Z"/></svg>`;
 const GEAR = `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>`;
 const NOTE = `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg>`;
@@ -62,7 +61,7 @@ export function header(active) {
   const langs = LANGS.map(([c, n]) => `<option value="${c}" lang="${c}"${c === LANG ? ' selected' : ''}>${n}</option>`).join('');
   const ring = active === 'match';
   setTimeout(() => music(ring, t('musicStart')), 0); // the arena's theme, never in the ring
-  return `<header class="top"><a class="brand" href="/">${LOGO}<span><b translate="no" class="notranslate">IBITI AGENT ARENA</b><small>${t('tagline')}</small></span></a>
+  return `<header class="top"><a class="brand" href="/">${LOGO}<span><b translate="no" class="notranslate">IBITI</b><small translate="no" class="notranslate">AGENT ARENA</small></span></a>
   <nav class="links">${a('arena', 'index.html', 'navArena')}${a('match', 'match.html', 'navRing')}${a('rating', 'rating.html', 'navRating')}</nav>${ringSwitch()}
   <div class="gear"><button type="button" class="gearbtn" aria-haspopup="true" aria-expanded="false" aria-label="${esc(t('settings'))}" title="${esc(t('settings'))}">${GEAR}</button>
   <div class="gearmenu" role="menu" hidden>
@@ -87,15 +86,15 @@ export function footer() {
 export const explorerUrl = () => (EXPLORERS[CFG.chainId] ? EXPLORERS[CFG.chainId] + CFG.arena : null);
 
 /** A trophy cup: gold, silver or bronze. */
+/** A place, as a strict number (01, 02, …): no cups, no medals. */
 export function cup(place) {
-  const c = ['#f5b301', '#c0c7d4', '#cd7f32'][place - 1] ?? '#6b7489';
-  return `<svg class="cup" viewBox="0 0 40 40" aria-label="${place}"><path d="M12 6h16v8a8 8 0 0 1-16 0Z" fill="${c}"/><path d="M12 9H7a5 5 0 0 0 5 7M28 9h5a5 5 0 0 1-5 7" fill="none" stroke="${c}" stroke-width="2"/><rect x="18" y="21" width="4" height="7" fill="${c}"/><rect x="13" y="28" width="14" height="4" rx="1.5" fill="${c}"/><text x="20" y="15" text-anchor="middle" font-size="9" font-weight="700" fill="#1a1205" font-family="Inter,sans-serif">${place}</text></svg>`;
+  return `<span class="placeno p${place}" aria-label="${place}" translate="no">${String(place).padStart(2, '0')}</span>`;
 }
 
 let avatarId = 0;
 /** A fighter's hexagon with its initials, in its corner's colour. */
 export function avatar(name, side) {
-  const col = side === 'blue' ? '#3b82f6' : side === 'red' ? '#ef4444' : '#f5b301';
+  const col = side === 'blue' ? '#3b82f6' : side === 'red' ? '#ef4444' : '#cfd4dc';
   const initials = String(name).split(/\s+/).map((x) => x[0] ?? '').join('').slice(0, 2).toUpperCase();
   const id = `av${++avatarId}`;
   return `<svg class="avatar" viewBox="0 0 64 64" translate="no"><defs><radialGradient id="${id}" cx=".5" cy=".35" r=".7"><stop offset="0" stop-color="${col}" stop-opacity=".9"/><stop offset="1" stop-color="#0b0f1a"/></radialGradient></defs><path d="M32 3 57 17v30L32 61 7 47V17Z" fill="url(#${id})" stroke="${col}" stroke-width="2"/><text x="32" y="39" text-anchor="middle">${esc(initials)}</text></svg>`;

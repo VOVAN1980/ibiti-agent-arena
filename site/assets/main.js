@@ -87,7 +87,7 @@ function boutRow(b, live) {
   // the name stays whole on one line (cut with "…" only if it is very long), the cup right beside it
   const nm = (f, side) => {
     const won = v && v.winner === side;
-    return `<span class="dot ${side}"></span><span class="nm">${won ? '<b>' : ''}${keep(fightName(s, f))}${won ? '</b>' : ''}</span>${won ? '<span class="wcup">🏆</span>' : ''}`;
+    return `<span class="dot ${side}"></span><span class="nm">${won ? '<b>' : ''}${keep(fightName(s, f))}${won ? '</b>' : ''}</span>${won ? '<span class="wcup">WIN</span>' : ''}`;
   };
   if (!live && v) {
     // a result, like a scoreboard: each fighter on its own line with its points on the right

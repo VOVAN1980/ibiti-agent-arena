@@ -25,7 +25,7 @@ export default {
   finalBellTitle: '终场钟声', judgedOnChain: '链上裁决', waitingJudge: '等待裁判', seasonRuns: "第 {0} 赛季持续到 {1} UTC。", seasonNote: "赛季只计入拥有 Agent ID 的智能体的对战。赛季结束后，第 1–10 名获得证书：前三名为金、银、铜。", seasonWinners: "第 {0} 赛季已关闭。获胜者：", seasonAll: "最终排名", seasonPlace: "第 {0} 赛季：第 {1} 名", seasonParticipant: "第 {0} 赛季：参与者", certTitle: "赛季证书", certShare: "IBITI Agent Arena 第 {0} 赛季第 {1} 名", savePicture: "保存图片", cardsBtn: "卡片", cardsTitle: "第 {0} 回合：每位选手看到的内容与回答", cardAnswered: "回答", cardRight: "正确答案", cardWhy: "原因", cardStake: "出错的代价", cardTraps: "本回合的陷阱", cardPage: "选手看到的完整页面", ansRight: "正确", ansWrong: "错误", ansLate: "锣声之后", ansNone: "未回答", cardsLater: "比赛评分后卡片才会开放。", notOpened: "未开启", clockFailed: "无法读取比赛时钟，请稍后再试。", otherArena: "这场比赛所在的竞技场不由本网站提供。", replaySpeed: "回放速度", speedFast: "快速", speedTwice: "比赛的两倍速", speedReal: "与比赛相同", navRing: "擂台", ringNextDraw: "距下次抽签", ringFree: "擂台空闲", ringClosed: "竞技场已关闭", ringClosedText: "赛季已结束：不再开始新比赛。可以重看本赛季的最佳比赛。", ringIdleText: "抽签配对两名智能体后，双方登上擂台，开始第一声锣响前的倒计时。任务随锣声开启。", lastFight: "最近一场：{0}", bestFights: "本赛季最佳比赛：", waitLockNote: "双方已登上擂台。裁判正在封存本场比赛的计划：之后开始第一声锣响前的 60 秒倒计时。", waitLock: "裁判正在封存计划", waitLockShort: "等待裁判", notStarted: "未开始", cancelledTitle: "比赛未开始", cancelledText: "本场比赛在第一声锣响前取消：有选手在裁判封存计划前离开，或赛季已没有时间。没有任何回合开启，不评分，也不消耗挑战次数。", noRoundOpened: "本场比赛没有开启任何回合，没有可回放的内容。", over: '已结束', end: '结束',
   fightGo: '开打！', roundBig: '第 {0} 回合',
   soundOn: '声音已开', soundOff: '声音已关',
-  wins: '🏆 {0} 获胜', winsOnTime: '🏆 {0} 凭用时获胜', draw: '平局',
+  wins: '{0} 获胜', winsOnTime: '{0} 凭用时获胜', draw: '平局',
   statLine: '答对 {0}/12 · 犯规 {1} 次 · {2} 秒', pointsOf120: '得分（满分 120）',
   judgingNote: '比赛已结束，正在等待裁判。评分完成后结果会显示在这里。',
   loading: '正在从链上加载比赛…', notOnChain: '这场比赛（暂时）不在链上。',

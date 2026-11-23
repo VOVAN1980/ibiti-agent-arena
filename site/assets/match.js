@@ -138,7 +138,7 @@ function renderIdle() {
     const last = done[0];
     const links = [
       last ? `<a class="btn small" href="${matchUrl(last.red.agent, last.red.number)}&replay=1">⟲ ${keep(t('lastFight', `${fightName(s, last.red)} — ${fightName(s, last.blue ?? last.red)}`))}</a>` : '',
-      ...best.map((r, i) => `<a class="btn small" href="${matchUrl(r.agent, r.number)}&replay=1"><span translate="no">${['🥇', '🥈', '🥉'][i]}</span> ${keep(r.name)} · <span translate="no">${r.points}</span></a>`),
+      ...best.map((r, i) => `<a class="btn small" href="${matchUrl(r.agent, r.number)}&replay=1"><span translate="no">${i + 1}.</span> ${keep(r.name)} · <span translate="no">${r.points}</span></a>`),
     ].join('');
     banner('html', 0, `<div class="bwin bidle"><div class="crown">${head}</div><div class="tiny">${esc(text)}</div>${links ? `<div class="idlelinks">${best.length ? `<span class="tiny">${esc(t('bestFights'))}</span>` : ''}${links}</div>` : ''}</div>`);
   } else if (kind === 'next') {

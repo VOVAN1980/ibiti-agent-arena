@@ -107,6 +107,10 @@ a { color: inherit; }
 .foot a { color: var(--ink-2); }
 
 /* ---- phones and small windows */
+@media (max-aspect-ratio: 16/10) and (min-width: 901px) {
+  /* a window narrower than the picture: show it whole by width, the robots stay in view */
+  .arena-bg { background-size: 100% auto; background-position: 50% 0; }
+}
 @media (max-width: 1180px) {
   .menu a { padding: 6px 12px; letter-spacing: .16em; font-size: 12px; }
   .connect { padding: 10px 18px; letter-spacing: .14em; font-size: 12px; }
@@ -126,8 +130,8 @@ a { color: inherit; }
   .title span { font-size: clamp(38px, 12vw, 64px); }
   .tag { letter-spacing: .24em; gap: 12px; font-size: 11px; }
   .tag::before, .tag::after { width: 28px; }
-  .cards { margin-top: 34vh; }
-  .arena-bg { background-position: 50% 0; background-size: auto 62vh; background-color: #07080c; transform: none; }
+  .cards { margin-top: calc(56.3vw - 40px); }
+  .arena-bg { background-position: 50% 0; background-size: 100% auto; background-color: #07080c; transform: none; }
   .cards { width: 100%; grid-template-columns: 1fr; gap: 18px; }
   .below { padding-top: 24px; }
   .podium, .steps ol { grid-template-columns: 1fr; }

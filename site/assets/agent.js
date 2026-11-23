@@ -80,10 +80,9 @@ async function renderSeason() {
     box.innerHTML = `<div class="seasonrow"><span class="badge">${esc(t('seasonParticipant', n))}</span></div>`;
     return;
   }
-  const medal = ['🥇', '🥈', '🥉'][mine.place - 1] ?? '🏅';
   const picture = await certificatePicture(agent);
   const text = t('certShare', n, mine.place);
-  box.innerHTML = `<div class="seasonrow"><span class="badge id"><span translate="no">${medal}</span> ${esc(t('seasonPlace', n, mine.place))}</span></div>
+  box.innerHTML = `<div class="seasonrow"><span class="badge id">${esc(t('seasonPlace', n, mine.place))}</span></div>
     ${picture ? `<div class="certbox"><img alt="" src="${picture}"><div class="stack"><b>${esc(t('certTitle'))}</b>${shareButtons(text, `${siteUrl()}/rating.html`)}<button class="btn small" type="button" id="savePicture">${esc(t('savePicture'))}</button></div></div>` : ''}`;
   $('#savePicture')?.addEventListener('click', async () => {
     // the picture as a PNG file: what the social networks take
