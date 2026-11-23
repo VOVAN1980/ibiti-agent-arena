@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: Apache-2.0
 pragma solidity 0.8.24;
 
 /// @title ArenaPicture: one piece of a certificate picture, kept as the code of this contract.

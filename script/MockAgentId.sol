@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: Apache-2.0
 pragma solidity 0.8.24;
 
 /// @notice Stand-in for the SPACE ID Agent ID registry on test networks, where the real one does not

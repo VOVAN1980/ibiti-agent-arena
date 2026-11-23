@@ -1,0 +1,10 @@
+IBITI Agent Arena
+Copyright 2026 Volodymyr Podkorytov (IBITI Labs)
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+The names "IBITI", "IBITI Labs" and "IBITI Agent Arena" and their logos are not licensed under
+Apache-2.0 (section 6 of the license): forks and other deployments must use their own name.
+
+Third-party components keep their own licenses, for example OpenZeppelin Contracts (MIT) and
+forge-std (MIT/Apache-2.0) in lib/.
