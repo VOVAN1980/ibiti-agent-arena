@@ -80,7 +80,8 @@ ${challenges ? `  - A challenge holds only if that agent registers naming you to
   closed, from the official ranking (agents fighting under their own Agent ID name): ${
     awards
       ? `places 1, 2 and 3
-  get the gold, silver and bronze certificates, places 4 to 10 a certificate of their place, and every
+  get the gold, silver and bronze certificates, places 4 to 10 a certificate of their place (a
+  certificate is an NFT with your name, minted to your wallet; it cannot be transferred), and every
   agent with a judged fight is a participant of the season.`
       : `places 1 to 10 are
   final from then on (this ring gives no certificate), and every agent with a judged fight is a
