@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { renderRound, scenarioOrder, fill } from '../src/render.js';
-import { planOf, TASKS } from '../src/plan.js';
+import { planOf, TASKS, PLAN_VERSION } from '../src/plan.js';
 import { themeOf, THEMES } from '../src/themes.js';
 import { PLAIN, PLAIN_LANGS, plainOf } from '../src/plain.js';
 import { TRAPS, FOREIGN } from '../src/catalog.js';
@@ -19,7 +19,7 @@ import { arenaKeys, answerHash } from '../src/keys.js';
 import { handleFight, placeOf } from '../src/worker.js';
 import { accessDigest, accessTypedData, splitSig, ACCESS_STATEMENT } from '../src/access.js';
 import { registerData } from '../src/abi.js';
-import { signCommitment } from '../src/sign.js';
+import { signCommitment, addressOf } from '../src/sign.js';
 
 const ARENA = '0x7a3f2c9e5b1d4a6f8e0c2b4d6f8a1c3e5b7d9f21';
 const DECOYS = Object.fromEntries([13, 15, 18, 21, 22, 23, 24, 26, 27].map((t) => [t, `0x${String(t).padStart(2, '0')}${'ab'.repeat(19)}`]));
@@ -542,7 +542,8 @@ function fakeChain({ round = 3, clockRound = round, live = true, startedAt = 1, 
     isLive: async () => live,
     currentSeason: async () => 1,
     seasonCount: async () => 1,
-    season: async (n) => (n === 1 ? { start: 0, end: BELL + 10 ** 8, judge: ZERO_ADDR, secretCommit, certificate: ZERO_ADDR } : { start: 0, end: 0, judge: ZERO_ADDR, secretCommit: '0x' + '0'.repeat(64), certificate: ZERO_ADDR }),
+    timings: async () => ({ drawEvery: 600, cooldown: 3600 }),
+    season: async (n) => (n === 1 ? { start: 0, end: BELL + 10 ** 8, judge: addressOf(JUDGE_KEY), secretCommit, certificate: ZERO_ADDR } : { start: 0, end: 0, judge: ZERO_ADDR, secretCommit: '0x' + '0'.repeat(64), certificate: ZERO_ADDR }),
     entry: async () => ({ active: inHall, waited: 0, verified: true, challenge: ZERO_ADDR, pageKeyHash, season: 1 }),
     nextDrawAt: async () => BELL + 600,
     now: async () => now,
@@ -1355,4 +1356,29 @@ test('seasons: registration only while a season runs; a fight\'s pages come from
   // a season that ran another task set: its pages are not rebuilt by this server
   const older = await handleFight(new URL(`https://x/card/${A}/2/1`), { ...ENV, SECRET_2: '22'.repeat(32), SEASONS: JSON.stringify({ 2: { plan: 10 } }) }, { chain });
   assert.equal(older.status, 410);
+});
+
+test('seasons: /join signs only what the arena accepts; a season without a task set in SEASONS gets no pages', async () => {
+  const { planSetOf, servesSeason, secretOf } = await import('../src/seasons.js');
+  const join = (env, chain) => handleFight(new URL(`https://x/join/${A}?name=x&model=y`), env, { chain });
+  // the server's judge key is not the running season's judge: the arena would refuse the signature
+  const other = { ...fakeChain() };
+  other.season = async () => ({ start: 0, end: BELL + 10 ** 8, judge: '0x' + '99'.repeat(20), secretCommit: KEYS.commit, certificate: ZERO_ADDR });
+  assert.equal((await join(ENV, other)).status, 500);
+  // the season ends before a fight drawn at the next cutoff could finish: no registration
+  const ending = { ...fakeChain() };
+  ending.season = async () => ({ start: 0, end: BELL + 300, judge: addressOf(JUDGE_KEY), secretCommit: KEYS.commit, certificate: ZERO_ADDR });
+  const late = await join(ENV, ending);
+  assert.equal(late.status, 410);
+  assert.match(await late.text(), /about to end/);
+  // SEASONS names each season's task set; a season it does not name gets no pages at all
+  assert.equal(planSetOf({ SEASONS: JSON.stringify({ 1: { plan: 11 } }) }, 2), NaN);
+  assert.equal(servesSeason({ SEASONS: JSON.stringify({ 1: { plan: PLAN_VERSION } }) }, 1), true);
+  assert.equal(servesSeason({ SEASONS: JSON.stringify({ 1: { plan: PLAN_VERSION } }) }, 2), false);
+  assert.equal(servesSeason({}, 7), true, 'without SEASONS (a local run): this code serves every season');
+  const card = await handleFight(new URL(`https://x/card/${A}/2/1`), { ...ENV, SEASONS: JSON.stringify({ 2: { plan: PLAN_VERSION } }) }, { chain: fakeChain() });
+  assert.equal(card.status, 410, 'season 1 not in SEASONS: its pages are not rebuilt');
+  // SECRET is season 1's only
+  assert.equal(secretOf({ SECRET: 'aa' }, 1), 'aa');
+  assert.equal(secretOf({ SECRET: 'aa' }, 2), undefined);
 });

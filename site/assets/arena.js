@@ -66,9 +66,12 @@ export async function chainNow() {
 }
 
 /** A number setting of the arena: 'drawEvery', 'roundTime', 'cooldown' or 'seasonEnd' (seconds; the
- *  end of the season running now, or of the last one scheduled). */
+ *  end of the season running now; when none runs, a time long past, so the ring shows as closed). */
 export async function arenaSetting(name) {
-  if (name === 'seasonEnd' && !CFG.archived) return (await seasonNow())?.end ?? 0;
+  if (name === 'seasonEnd' && !CFG.archived) {
+    const s = await seasonNow();
+    return s?.running ? s.end : s ? 1 : 0;
+  }
   return num(words(await rpc('eth_call', [{ to: CFG.arena, data: SEL[name] }, 'latest']))[0]);
 }
 
@@ -81,17 +84,26 @@ const bookCall = async (data) => {
   return words(await rpc('eth_call', [{ to: bookAt, data }, 'latest']));
 };
 let nowRead = null;
-/** The season running now, or else the last one scheduled (ended, or not started yet): its number,
- *  start, end and certificate contract, and whether it runs now. Null before the first season. */
+const seasonRead_ = async (n) => {
+  const w = await bookCall(BOOK.seasons + BigInt(n).toString(16).padStart(64, '0'));
+  return { n, start: num(w[0]), end: num(w[1]), certificate: addrOf(w[4]) };
+};
+/** The season shown: the one running now; else the last one that has started (over, closed or not);
+ *  else the first one scheduled, not started yet. `running`, and `next`: a season scheduled after it
+ *  that has not started yet (or null). Null when no season is scheduled at all. */
 export async function seasonNow() {
   if (nowRead && Date.now() - nowRead.read < 15000) return nowRead.s;
   const cur = num((await bookCall(BOOK.current))[0] ?? '0');
-  const n = cur || num((await bookCall(BOOK.seasonCount))[0] ?? '0');
+  const count = num((await bookCall(BOOK.seasonCount))[0] ?? '0');
+  const last = count ? await seasonRead_(count) : null;
+  const upcoming = last && last.start * 1000 > Date.now() ? last : null; // at most one season waits to start
   let s = null;
-  if (n) {
-    const w = await bookCall(BOOK.seasons + BigInt(n).toString(16).padStart(64, '0'));
-    s = { n, start: num(w[0]), end: num(w[1]), certificate: addrOf(w[4]), running: cur !== 0 };
+  if (cur) s = { ...(cur === count ? last : await seasonRead_(cur)), running: true };
+  else if (count) {
+    const started = upcoming ? count - 1 : count;
+    s = started ? { ...(started === count ? last : await seasonRead_(started)), running: false } : { ...upcoming, running: false };
   }
+  if (s) s.next = upcoming && upcoming.n !== s.n ? upcoming : null;
   nowRead = { read: Date.now(), s };
   return s;
 }
@@ -452,7 +464,7 @@ export async function seasonState() {
   const s = await shownSeason();
   if (!s) return null;
   const [topW, closedW, partW] = await Promise.all([seasonCall(s.certificate, SEASON.top), seasonCall(s.certificate, SEASON.closedAt), seasonCall(s.certificate, SEASON.participants)]);
-  seasonRead = { read: Date.now(), season: s.n, start: s.start, end: s.end, running: s.running, closedAt: num(closedW[0] ?? '0'), participants: num(partW[0] ?? '0'), top: topW.slice(2, 2 + num(topW[1] ?? '0')).map(addrOf) };
+  seasonRead = { read: Date.now(), season: s.n, start: s.start, end: s.end, running: s.running, next: s.next ?? null, closedAt: num(closedW[0] ?? '0'), participants: num(partW[0] ?? '0'), top: topW.slice(2, 2 + num(topW[1] ?? '0')).map(addrOf) };
   return seasonRead;
 }
 /** The home page's podium: the first three of the last season that is closed, with their season

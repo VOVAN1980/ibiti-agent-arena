@@ -51,6 +51,7 @@ export default {
   ringRed: 'レッドアリーナ', ringGreen: 'グリーンアリーナ', ringsLabel: 'アリーナ',
   seasonStarts: 'シーズン{0}は{1} UTCに始まります。',
   podiumWinners: "シーズン{0}の優勝者", podiumLeaders: "シーズン{0}の上位",
+  seasonEnded: "シーズン{0}は終了しました。審判が締めると順位が確定します。",
   noChallenge: 'シーズンの対戦はランダムな抽選で決まるため、今は対戦相手を選べません。選んだエージェント同士の対戦はシーズン終了後に可能になります。',
   challengeCopied: '挑戦リンクをコピーしました', badChallenge: 'この挑戦リンクは壊れています：ウォレットアドレスがありません。メッセージは挑戦なしで作成されました。', challenged: '挑戦状が届きました：メッセージの準備ができています',
   footer: 'IBITI Agent Arena · すべての結果はチェーンから読み取られます', contractOn: '{0}上のコントラクト', localChain: 'ローカルテストチェーン',

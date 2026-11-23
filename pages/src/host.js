@@ -146,6 +146,28 @@ export function siteConfig(env) {
   })};\n`;
 }
 
+/** The arena's season calendar and the certificate contract of each of its seasons, read from the chain
+ *  (kept a minute). An arena without a calendar (an earlier one) gives none. */
+let calendar = { at: 0, book: null, certs: [] };
+async function calendarOf(env) {
+  if (Date.now() - calendar.at < 60000) return calendar;
+  const call = async (to, data) => {
+    const r = await (await fetch(env.SITE_RPC_URL ?? env.RPC_URL, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to, data }, 'latest'] }) })).json();
+    if (r.error || typeof r.result !== 'string' || r.result.length < 66) throw new Error('no answer');
+    return r.result.slice(2);
+  };
+  try {
+    const book = '0x' + (await call(env.ARENA, '0xfda7b9db')).slice(24, 64); // seasonBook()
+    const count = Math.min(parseInt(await call(book, '0x715f8fe8'), 16), 500); // seasonCount()
+    const certs = [];
+    for (let n = 1; n <= count; n++) certs.push('0x' + (await call(book, '0x6ebaeda9' + n.toString(16).padStart(64, '0'))).slice(64 * 4 + 24, 64 * 5)); // seasons(n).certificate
+    calendar = { at: Date.now(), book: book.toLowerCase(), certs: certs.map((x) => x.toLowerCase()) };
+  } catch {
+    calendar = { at: Date.now(), book: null, certs: [] };
+  }
+  return calendar;
+}
+
 /** The site's read-only window on the chain: one JSON-RPC call at a time, reading methods only. */
 async function rpc(request, env) {
   if (request.method !== 'POST') return json({ error: 'POST a JSON-RPC call' }, 405);
@@ -171,12 +193,21 @@ async function rpc(request, env) {
   const old = archive(env);
   const arenas = new Set([arena, ...old.map((x) => x.arena.toLowerCase())]);
   const seasons = new Set([env.CERTIFICATE, ...seasonCertificates(env), ...old.map((x) => x.certificate)].filter(Boolean).map((x) => String(x).toLowerCase()));
-  const book = env.SEASON_BOOK ? String(env.SEASON_BOOK).toLowerCase() : null;
+  let book = env.SEASON_BOOK ? String(env.SEASON_BOOK).toLowerCase() : null;
+  // the calendar and every season's certificate, read from the chain when the config does not name them
+  const known = (a) => arenas.has(a) || seasons.has(a) || a === book;
+  const learn = async (a) => {
+    if (known(a)) return true;
+    const c = await calendarOf(env);
+    book ??= c.book;
+    for (const x of c.certs) seasons.add(x);
+    return known(a);
+  };
   const p0 = Array.isArray(q.params) ? q.params[0] : undefined;
   let params = q.params ?? []; // what goes to the node: rebuilt from the checked fields only
   if (q.method === 'eth_call') {
     const to = String(p0?.to ?? '').toLowerCase();
-    if (!arenas.has(to) && !seasons.has(to) && to !== book) return refuse('this arena only');
+    if (!(await learn(to))) return refuse('this arena only');
     // a known view, its arguments, at the latest block: no sender, gas, value or state override
     const data = String(p0.data ?? p0.input ?? '');
     if (Object.keys(p0).some((k) => !['to', 'data', 'input'].includes(k)) || q.params.length > 2 || (q.params.length === 2 && q.params[1] !== 'latest')) return refuse('a plain call of a view');
@@ -185,7 +216,7 @@ async function rpc(request, env) {
   }
   if (q.method === 'eth_getLogs') {
     const address = String(p0?.address ?? '').toLowerCase();
-    if (!arenas.has(address) && !seasons.has(address)) return refuse('this arena only');
+    if (!(await learn(address)) || address === book) return refuse('this arena only');
     const from = parseInt(p0?.fromBlock, 16);
     const to = parseInt(p0?.toBlock, 16);
     if (!(Number.isFinite(from) && Number.isFinite(to)) || to < from || to - from >= 50000) return refuse('a range of at most 50000 blocks');

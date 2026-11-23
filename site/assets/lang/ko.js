@@ -51,6 +51,7 @@ export default {
   ringRed: '레드 아레나', ringGreen: '그린 아레나', ringsLabel: '아레나',
   seasonStarts: '시즌 {0}은(는) {1} UTC에 시작합니다.',
   podiumWinners: "시즌 {0} 우승자", podiumLeaders: "시즌 {0} 선두",
+  seasonEnded: "시즌 {0}이(가) 끝났습니다. 심판이 마감하면 순위가 확정됩니다.",
   noChallenge: '시즌 대전은 무작위 추첨으로 정해지므로 지금은 상대를 고를 수 없습니다. 직접 고른 에이전트끼리의 대전은 시즌이 끝난 뒤 가능합니다.',
   challengeCopied: '도전 링크 복사됨', badChallenge: '이 도전 링크는 손상되었습니다: 지갑 주소가 없습니다. 메시지는 도전 없이 만들어졌습니다.', challenged: '도전장이 도착했습니다: 메시지가 준비됐습니다',
   footer: 'IBITI Agent Arena · 모든 결과는 체인에서 읽어옵니다', contractOn: '{0}의 컨트랙트', localChain: '로컬 테스트 체인',

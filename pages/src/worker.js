@@ -46,6 +46,8 @@ import { renderRound } from './render.js';
 import { skillMd } from './skill.js';
 import { arenaKeys } from './keys.js';
 import { planOf, PLAN_VERSION, TASKS } from './plan.js';
+import { planSetOf, keysFor } from './seasons.js';
+import { addressOf } from './sign.js';
 import { keccak256 } from './keccak.js';
 import { registerData, answerData, byteLength } from './abi.js';
 import { themeOf } from './themes.js';
@@ -306,8 +308,19 @@ export async function handleFight(url, env, deps = {}) {
     const n = await chain.currentSeason();
     if (!n) return text(410, 'No season is running now: registration opens when the next season starts. Its dates are on the site.');
     if (planSetOf(env, n) !== PLAN_VERSION) return text(410, 'This season runs another task set than this server: it is closed to new fights here.');
-    keys = await seasonKeys(env, chain, n);
+    const season = await chain.season(n);
+    keys = keysFor(env, n, season);
     if (!keys) return text(500, "The arena is not configured: this server does not hold the running season's secret.");
+    if (!env.JUDGE_KEY || addressOf(env.JUDGE_KEY).toLowerCase() !== season.judge.toLowerCase()) {
+      return text(500, "The arena is not configured: this server's judge key is not the running season's judge.");
+    }
+    // a fight drawn at the next cutoff must end before the season does (the arena refuses it otherwise)
+    const { drawEvery } = await chain.timings();
+    const now = await chain.now();
+    const nextSlot = (Math.floor(now / drawEvery) + 1) * drawEvery;
+    if (nextSlot + 60 + 12 * (await roundTimeOf(chain, env.ARENA)) + 11 * BREAK > season.end) {
+      return text(410, 'This season is about to end: no fight that starts now could finish in it. Registration opens again with the next season.');
+    }
     return join(url, env, chain, keys, n, agent, chainId, site);
   }
 
@@ -412,35 +425,8 @@ export async function handleFight(url, env, deps = {}) {
   return new Response(card.html, { headers: { ...HEADERS, 'content-type': 'text/html; charset=utf-8' } });
 }
 
-/** The settings of each season this server knows, from SEASONS: { "<n>": { "plan": <task set> } }. */
-function seasonsConf(env) {
-  let s = env.SEASONS ?? {};
-  if (typeof s === 'string') {
-    try {
-      s = JSON.parse(s);
-    } catch {
-      s = {};
-    }
-  }
-  return s && typeof s === 'object' ? s : {};
-}
-
-/** The task set season `n` ran with (its pages are rebuilt only by a server of that set). */
-const planSetOf = (env, n) => Number(seasonsConf(env)[n]?.plan ?? env.PLAN_VERSION ?? PLAN_VERSION);
-
-/** Season `n`'s keys, from its secret (SECRET_<n>, or SECRET), checked against the secret's hash in the
- *  season calendar; null if this server does not hold that season's secret. */
-async function seasonKeys(env, chain, n) {
-  const secret = env[`SECRET_${n}`] ?? (n === 1 ? env.SECRET : undefined); // SECRET is season 1's only: a secret serves one season
-  if (!n || !secret) return null;
-  let keys;
-  try {
-    keys = arenaKeys(secret);
-  } catch {
-    return null;
-  }
-  return (await chain.season(n)).secretCommit.toLowerCase() === keys.commit.toLowerCase() ? keys : null;
-}
+/** Season `n`'s keys from its secret, checked against the calendar; null if this server lacks them. */
+const seasonKeys = async (env, chain, n) => (n ? keysFor(env, n, await chain.season(n)) : null);
 
 /** The deck this arena's fights draw from: "season" (the red ring, the default) or "workshop". */
 const deckOf = (env) => env.DECK ?? 'season';

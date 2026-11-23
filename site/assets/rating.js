@@ -29,12 +29,8 @@ function renderSeason() {
 
 function render(force) {
   const official = tab === 'official';
-  let now = rating(s, { official });
-  if (official && season?.top.length) {
-    // the season's contract keeps the official order of the first ten: the page follows it
-    const place = new Map(season.top.map((a, i) => [a, i]));
-    now = [...now].sort((x, y) => (place.get(x.agent) ?? 99) - (place.get(y.agent) ?? 99) || x.rank - y.rank).map((r, i) => ({ ...r, rank: i + 1 }));
-  }
+  // the rating of all seasons, by each agent's own best; a season's places are in its line above
+  const now = rating(s, { official });
   const weekAgo = rating(s, { official, beforeBlock: (s.latestBlock ?? 0) - (CFG.blocksPerWeek ?? 806400) });
   const before = new Map(weekAgo.map((r) => [r.agent, r.rank]));
   const next = JSON.stringify([tab, now.map((r) => [r.agent, r.points, r.timeUsed, r.fights, r.name, before.get(r.agent)])]);

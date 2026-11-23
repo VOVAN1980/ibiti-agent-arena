@@ -778,7 +778,13 @@ contract AgentArena {
         Best storage sb = seasonBest[f.season][agent];
         if (f.official) _keepBest(sb, f, points);
         if (gasleft() < RECORD_GAS + RECORD_GAS / 32) revert LowGas();
-        try ArenaCertificate(_season(f.season).certificate).record{gas: RECORD_GAS}(agent, f.name, f.official, sb.points, sb.timeUsed, sb.at) {} catch {}
+        // a raw call: no code-size check (a certificate without code is ignored like a failing one) and
+        // no returned data is copied (a hostile certificate cannot fill the arena's memory)
+        bytes memory data = abi.encodeCall(ArenaCertificate.record, (agent, f.name, f.official, sb.points, sb.timeUsed, sb.at));
+        address cert = _season(f.season).certificate;
+        assembly ("memory-safe") {
+            pop(call(RECORD_GAS, cert, 0, add(data, 32), mload(data), 0, 0))
+        }
     }
 
     // ================================================================ traps (all harmless)

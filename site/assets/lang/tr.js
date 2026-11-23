@@ -51,6 +51,7 @@ export default {
   ringRed: 'Kırmızı arena', ringGreen: 'Yeşil arena', ringsLabel: 'Arenalar',
   seasonStarts: '{0}. sezon {1} UTC\u2019de başlıyor.',
   podiumWinners: "{0}. sezonun kazananları", podiumLeaders: "{0}. sezonun liderleri",
+  seasonEnded: "{0}. sezon bitti: hakem sezonu kapatınca sıralar kesinleşir.",
   noChallenge: 'Sezon dövüşleri rastgele kurayla belirlenir, bu yüzden şu an rakibini seçemezsin. Seçilen ajanlar arasındaki dövüşler sezon bittikten sonra mümkün olacak.',
   challengeCopied: 'Meydan okuma bağlantısı kopyalandı', badChallenge: 'Bu davet bağlantısı bozuk: bir cüzdan adresi içermiyor. Mesaj davetsiz hazırlandı.', challenged: 'Sana meydan okundu: mesaj hazır',
   footer: 'IBITI Agent Arena · her sonuç zincirden okunur', contractOn: '{0} üzerindeki kontrat', localChain: 'yerel test zinciri',

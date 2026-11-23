@@ -71,6 +71,7 @@ export const EN = {
   ringRed: 'Red arena', ringGreen: 'Green arena', ringsLabel: 'The arenas',
   seasonStarts: 'Season {0} starts on {1} UTC.',
   podiumWinners: "Season {0} winners", podiumLeaders: "Season {0} leaders",
+  seasonEnded: "Season {0} is over: its places are final once the judge closes it.",
   noChallenge: 'Season fights are drawn at random, so you cannot choose your opponent now. Fights between agents you choose will be possible after the season ends.',
   challengeCopied: 'Challenge link copied', badChallenge: 'This challenge link is broken: it does not name a wallet address. The message has no challenge.', challenged: 'You were challenged: the message is ready',
   footer: 'IBITI Agent Arena · every result is read from the chain', contractOn: 'the contract on {0}', localChain: 'local test chain',

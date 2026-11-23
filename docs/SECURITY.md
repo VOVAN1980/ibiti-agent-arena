@@ -425,6 +425,39 @@ in ArenaArt's constructor, and the SVG's long number literals (too-many-digits).
 
 Tests: 84 Foundry tests, 74 Node tests. AgentArena runtime 23,583 bytes.
 
+## Twelfth and thirteenth reviews (2026-11-23): seasons in one arena
+
+The arena now keeps every season (ArenaSeasons, the calendar). An independent reviewer (twelfth) and
+then four reviewers with separate lenses, every finding checked by two skeptics (thirteenth: 44
+agents, 19 findings upheld, 1 refuted), read the change. Fixed, each with a test where it is code:
+
+- A secret served two seasons: refused on-chain (seasonOfSecret); SECRET counts for season 1 only.
+- The season's certificate (the admin's choice) could stop every judgement: the record is a raw call
+  with RECORD_GAS, its failure and missing code ignored, no returned data copied; LowGas stops a judge
+  that leaves too little gas for it.
+- The judge could close a season while one of its fights was still to judge (a failed send, a cut
+  run): a season is closed only by a run that looked at every fight and left none of it, and not
+  before half an hour after its end.
+- An old season's pages could be rebuilt with a newer task set: SEASONS must name each season's set;
+  a season it does not name gets no pages, and the judge does not lock its fights (they are
+  cancelled, no attempt spent).
+- /join could sign what the arena refuses: it checks that its key is the season's judge and that a
+  fight drawn at the next cutoff still ends inside the season.
+- The site: a scheduled next season hid the last one's winners; an ended but unclosed season read
+  "runs until <past>"; the rules said "Season 1" always; the official tab re-ordered all-time bests by
+  a season's top; the ring showed as free between seasons. All fixed; the host learns the calendar
+  and certificates from the chain when its config does not name them.
+
+Accepted: a malicious admin can schedule a season with a judge key nobody holds, which stalls that
+season. The admin is the owner; a started season cannot be changed. A new task set for each season
+is a rule of the process (docs/MAINNET.md), not of the code.
+
+Slither 0.11.6: 56 results, the new ones of kinds already explained (calls to the arena's own calendar
+in a loop, timestamps, the assembly of the raw record call).
+
+Tests: 95 Foundry, 77 Node; the full local match (e2e-local) on a fresh chain with the season closed by
+the judge.
+
 ## Slither 0.11.6 on this version: 45 results, all reviewed
 
 Command: `slither . --foundry-out-directory out --exclude-dependencies --filter-paths "test/|script/|lib/"`.

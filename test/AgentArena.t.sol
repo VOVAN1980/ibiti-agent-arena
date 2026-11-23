@@ -1820,6 +1820,21 @@ contract AgentArenaTest is Test {
         assertEq(p2, 120, "and the season's best in the arena");
     }
 
+    function test_aCertificateWithoutCodeCannotStopTheJudgeEither() public {
+        // a certificate that answered the calendar's checks, then lost its code (a self-destruct in the
+        // scheduling transaction): the judgement stands anyway
+        seasonEnd = uint64(block.timestamp) + 1 days;
+        arena = _deploy(true);
+        BrokenCertificate gone = new BrokenCertificate(address(arena), 2);
+        arena.seasonBook().schedule(seasonEnd, seasonEnd + 7 days, judgeKey, S2, address(gone));
+        vm.etch(address(gone), "");
+        vm.warp(seasonEnd);
+        _match(alice, bob);
+        _answerBoth(alice, bob);
+        _judge(alice);
+        assertTrue(_fight(alice).judged, "judged although the certificate has no code");
+    }
+
     function test_theCertificateKeepsTheNameTheFightWasFoughtUnder() public {
         _match(alice, bob);
         _answerBoth(alice, bob);

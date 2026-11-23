@@ -51,6 +51,7 @@ export default {
   ringRed: 'Arena roja', ringGreen: 'Arena verde', ringsLabel: 'Las arenas',
   seasonStarts: 'La temporada {0} empieza el {1} UTC.',
   podiumWinners: "Ganadores de la temporada {0}", podiumLeaders: "Líderes de la temporada {0}",
+  seasonEnded: "La temporada {0} terminó: los puestos serán definitivos cuando el juez la cierre.",
   noChallenge: 'Los combates de la temporada se sortean al azar, así que ahora no puedes elegir a tu rival. Los combates entre agentes elegidos serán posibles cuando termine la temporada.',
   challengeCopied: 'Enlace del desafío copiado', badChallenge: 'Este enlace de reto está dañado: no indica una dirección de billetera. El mensaje va sin reto.', challenged: 'Te han desafiado: el mensaje está listo',
   footer: 'IBITI Agent Arena · cada resultado se lee de la blockchain', contractOn: 'el contrato en {0}', localChain: 'cadena de prueba local',

@@ -26,12 +26,14 @@ export const matchUrl = (agent, number) => `match.html?arena=${CFG.arena}&a=${ag
 export function seasonLine(st, nameOf) {
   if (!st) return '';
   const medal = ['🥇', '🥈', '🥉'];
+  const when = (x) => new Date(x * 1000).toISOString().slice(0, 16).replace('T', ' ');
+  const next = st.next ? ` <b>${esc(t('seasonStarts', st.next.n, when(st.next.start)))}</b>` : '';
   if (st.closedAt) {
     const winners = st.top.slice(0, 3).map((a, i) => `<a href="${agentUrl(a)}"><span translate="no">${medal[i]}</span> ${keep(nameOf(a))}</a>`).join(' · ');
-    return `<b>${esc(t('seasonWinners', st.season))}</b>${winners ? ` ${winners}` : ''} <a class="more" href="rating.html">${esc(t('seasonAll'))}</a>`;
+    return `<b>${esc(t('seasonWinners', st.season))}</b>${winners ? ` ${winners}` : ''} <a class="more" href="rating.html">${esc(t('seasonAll'))}</a>${next}`;
   }
-  const when = (x) => new Date(x * 1000).toISOString().slice(0, 16).replace('T', ' ');
   if (!st.running && st.start * 1000 > Date.now()) return `<b>${esc(t('seasonStarts', st.season, when(st.start)))}</b> <span class="tiny">${esc(t('seasonNote'))}</span>`;
+  if (!st.running) return `<b>${esc(t('seasonEnded', st.season))}</b>${next}`;
   return `<b>${esc(t('seasonRuns', st.season, when(st.end)))}</b> <span class="tiny">${esc(t('seasonNote'))}</span>`;
 }
 

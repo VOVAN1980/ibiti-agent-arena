@@ -41,6 +41,7 @@ import { keccak256 } from './keccak.js';
 import { arenaKeys, answerHash } from './keys.js';
 import { makeChain, BREAK } from './chain.js';
 import { planOf } from './plan.js';
+import { servesSeason, keysFor } from './seasons.js';
 
 export const STARTED = keccak256(utf8Hex('Started(address,uint32,bytes32,bool,bytes32,bytes32,address,uint32)'));
 export const JUDGED = keccak256(utf8Hex('Judged(address,uint32,bool,uint8,uint16,uint64,uint8,uint8,uint8,uint32,bytes32[12])'));
@@ -139,22 +140,16 @@ export async function judgeRun(env, { fetchFn = fetch, log = console.log, wait =
   const me = addressOf(env.JUDGE_KEY);
   // the seasons this key judges (normally all of them: one judge), each with its own secret
   // (SECRET_<n>, or SECRET), checked against the secret's hash in the season calendar
-  const mine = new Map(); // season number -> { s: its settings, keys }
+  const mine = new Map(); // season number -> { s: its settings, keys, serves: this server builds its pages }
   for (let n = 1, count = await chain.seasonCount(); n <= count; n++) {
     const s = await chain.season(n);
     if (s.judge.toLowerCase() !== me.toLowerCase()) continue;
-    const secret = env[`SECRET_${n}`] ?? (n === 1 ? env.SECRET : undefined); // a secret serves one season
-    let k = null;
-    try {
-      k = secret ? arenaKeys(secret) : null;
-    } catch {
-      k = null;
-    }
-    if (!k || k.commit.toLowerCase() !== s.secretCommit.toLowerCase()) {
+    const k = keysFor(env, n, s);
+    if (!k) {
       log(`season ${n}: this server does not hold its secret: its fights are left alone`);
       continue;
     }
-    mine.set(n, { s, keys: k });
+    mine.set(n, { s, keys: k, serves: servesSeason(env, n) });
   }
   if (!mine.size) throw new Error('JUDGE_KEY judges no season whose secret this server holds');
 
@@ -253,8 +248,8 @@ export async function judgeRun(env, { fetchFn = fetch, log = console.log, wait =
       if (seen.has(seed)) continue; // the other corner of a match: read once, one lock covers both
       seen.add(seed);
       const f = await chain.fightOf(agent, number);
-      const keys = mine.get(f.season)?.keys;
-      if (!keys) continue; // another judge's season, or one whose secret this server lacks
+      const keys = mine.get(f.season)?.serves ? mine.get(f.season).keys : null;
+      if (!keys) continue; // another judge's season, one whose secret this server lacks, or whose pages it does not build (never locked: cancelled, no attempt spent)
       const endsAt = f.clockAt + 11 * (rt + BREAK) + rt;
       // locked already, over (a cancelled match included) or past its time: nothing to lock
       if (BigInt(f.trapsCommit) !== 0n || f.round !== 1 || f.clockRound !== 1 || f.finishedAt !== 0 || t > endsAt) continue;
@@ -290,11 +285,20 @@ export async function judgeRun(env, { fetchFn = fetch, log = console.log, wait =
 
   const over = (f) => f.finishedAt !== 0 || now > f.clockAt + (12 - f.clockRound) * (roundTime + BREAK) + roundTime;
   let judged = 0;
+  const left = new Set(); // seasons with a fight still to judge (not sent, or sent and not yet mined): not closed in this run
+  let cut = false; // the run stopped before every fight was looked at
   for (const [id, { agent, number }] of fights) {
-    if (judged >= budget) break;
+    if (judged >= budget) {
+      cut = true;
+      break;
+    }
     if (done.has(id)) continue;
     const f = await chain.fightOf(agent, number);
-    if (f.judged || !over(f)) continue;
+    if (f.judged) continue;
+    if (!over(f)) {
+      left.add(f.season);
+      continue;
+    }
     const keys = mine.get(f.season)?.keys;
     if (!keys) continue; // another judge's season, or one whose secret this server lacks
     if (f.opponent !== ZERO && !over(await chain.fightOf(f.opponent, f.opponentNumber))) continue;
@@ -310,13 +314,16 @@ export async function judgeRun(env, { fetchFn = fetch, log = console.log, wait =
       continue;
     }
     const data = judgeCalldata(agent, number, hashes, keys.salt(arena, agent, number), traps, trapSalt);
+    left.add(f.season); // judged in this run at best: the close waits for a run that finds nothing left
     if ((await send(data, agent + '#' + number + ' judged')) !== null) judged++;
   }
   // the season's close: after its end, once a run finds nothing left to judge, the judge closes the
   // season (the ranking is final, the first ten places get their certificates)
   let closed = false;
   for (const [n, { s }] of mine) {
-    if (judged !== 0 || now <= s.end) continue;
+    // closed only by a run that looked at every fight and found none of this season left, and not before
+    // half an hour after its end (every fight of it ends within 15 minutes of the end)
+    if (cut || left.has(n) || now <= s.end + 1800) continue;
     if (BigInt(await rpc('eth_call', [{ to: s.certificate, data: CLOSED_AT }, 'latest'])) === 0n) closed = (await send(CLOSE, `close season ${n}`, s.certificate)) !== null || closed;
   }
   return { judged, drew, waiting: false, closed, confirmed: await receipts(), sent: sent.length };

@@ -141,7 +141,7 @@ function renderBoard() {
   // no fight without an opponent: the countdown runs only once two agents are in the hall
   const waiting = s.hallCount ?? s.hall.length;
   const two = waiting >= 2;
-  const draw = season?.closedAt ? t('ringClosed') : !two ? t('boardFirst') : s.pendingCutoff || (left !== null && left <= 0) ? t('boardDrawing') : left === null ? t('boardFirst') : t('boardDraw', mmss(left));
+  const draw = season && !season.running ? t('ringClosed') : !two ? t('boardFirst') : s.pendingCutoff || (left !== null && left <= 0) ? t('boardDrawing') : left === null ? t('boardFirst') : t('boardDraw', mmss(left));
   const html = `<span class="db-draw">${esc(draw)}</span><i></i><span>${esc(t('boardHall', waiting))}</span><i></i><span>${esc(t('boardLive', live))}</span>`;
   const el = $('#drawboard');
   if (el.innerHTML !== html) el.innerHTML = html;

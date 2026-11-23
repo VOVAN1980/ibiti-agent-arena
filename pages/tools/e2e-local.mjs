@@ -164,7 +164,7 @@ const [redAt, blueAt] = fighters.map((f) => view('top()(address[])').toLowerCase
 if (redAt < 0 || blueAt < 0 || blueAt > redAt) throw new Error('the season does not rank Blue ahead of Red');
 if (view('participants()(uint32)') !== '2' || Number(view('closedAt()(uint64)').split(' ')[0]) !== 0) throw new Error('two took part and the season is open');
 // after its end the judge closes it: the places are final, and certified
-jumpTo(Number(dep.seasonEnd) + 1);
+jumpTo(Number(dep.seasonEnd) + 1801); // the judge closes a season half an hour after its end
 const closing = await judge();
 if (!closing.closed) throw new Error('the judge did not close the season');
 mine();

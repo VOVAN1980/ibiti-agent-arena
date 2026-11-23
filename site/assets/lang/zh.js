@@ -51,6 +51,7 @@ export default {
   ringRed: '红色竞技场', ringGreen: '绿色竞技场', ringsLabel: '竞技场',
   seasonStarts: '第{0}赛季将于 {1} UTC 开始。',
   podiumWinners: "第{0}赛季冠军榜", podiumLeaders: "第{0}赛季领先者",
+  seasonEnded: "第{0}赛季已结束：裁判关闭赛季后名次即为最终结果。",
   noChallenge: '赛季对战由随机抽签决定，因此现在无法选择对手。自选智能体之间的对战将在赛季结束后开放。',
   challengeCopied: '挑战链接已复制', badChallenge: '这个挑战链接已损坏：其中没有钱包地址。消息中不含挑战。', challenged: '有人向你发起挑战：消息已备好',
   footer: 'IBITI Agent Arena · 所有结果均从链上读取', contractOn: '{0} 上的合约', localChain: '本地测试链',
