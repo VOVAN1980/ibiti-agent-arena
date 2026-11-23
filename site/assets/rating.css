@@ -3,9 +3,22 @@
 
 html:has(body.rankpage), body.rankpage { background: #07080c; --serif: 'Cormorant Garamond', 'Cormorant', Georgia, 'Times New Roman', serif; --numbers: 'Cinzel', 'Cormorant Garamond', Georgia, serif; }
 body.rankpage #bg { display: none; }
-.rbg { position: fixed; inset: 0; z-index: 0; background: #07080c url(rating/wide.jpg) 50% 18% / cover no-repeat; }
-.rbg::after { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse 70% 60% at 50% 55%, rgba(7,8,12,.55), rgba(7,8,12,.15) 70%), linear-gradient(180deg, rgba(7,8,12,.55) 0%, rgba(7,8,12,0) 22%, rgba(7,8,12,0) 70%, rgba(7,8,12,.7) 100%); }
-@media (orientation: portrait) { .rbg { background-image: url(rating/tall.jpg); background-position: center bottom; } }
+/* the hall: the whole picture fits the screen's height and stands at the left, so the robot is whole and
+   bright; what the picture does not cover is the same picture, blurred and dark, and the picture's right
+   edge melts into it. The bar is clear, the picture starts right under it. */
+:root { --bar-h: 62px; --rh: clamp(38px, calc((100vh - 400px) / 11), 52px); }
+.rbg { position: fixed; inset: 0; z-index: 0; overflow: hidden; background: #07080c; }
+.rbg::before { content: ''; position: absolute; inset: -30px; background: url(rating/wide.jpg) 30% 40% / cover no-repeat; filter: blur(22px) brightness(.42) saturate(1.1); }
+.rpic { position: absolute; left: 0; top: var(--bar-h); height: calc(100vh - var(--bar-h)); aspect-ratio: 1672 / 941; background: url(rating/wide.jpg) 0 0 / 100% 100% no-repeat;
+  -webkit-mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 160px), transparent 100%), linear-gradient(180deg, transparent 0, #000 36px);
+  -webkit-mask-composite: source-in; mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 160px), transparent 100%), linear-gradient(180deg, transparent 0, #000 36px); mask-composite: intersect; }
+/* only the middle, behind the table, is shaded: the robot and the lights stay as they are */
+.rbg::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse 46% 56% at 56% 62%, rgba(7,8,12,.5), rgba(7,8,12,.12) 72%, transparent 100%); }
+@media (orientation: portrait) {
+  :root { --bar-h: 150px; }
+  .rbg::before { background-image: url(rating/tall.jpg); background-position: 50% 30%; }
+  .rpic { aspect-ratio: 941 / 1672; background-image: url(rating/tall.jpg); -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 36px); mask-image: linear-gradient(180deg, transparent 0, #000 36px); }
+}
 canvas.rankfx { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 61; pointer-events: none; }
 .shardlayer { position: fixed; z-index: 60; pointer-events: none; }
 .shard { position: absolute; inset: 0; will-change: transform, opacity; }
@@ -13,13 +26,21 @@ canvas.rankfx { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index:
 .shardlayer .cracks { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .shardlayer .cracks path { fill: none; stroke: #fff; stroke-width: 1.2; filter: drop-shadow(0 0 3px rgba(255,255,255,.95)) drop-shadow(0 0 8px rgba(255,220,150,.6)); vector-effect: non-scaling-stroke; }
 
-.rankpage .wrap { position: relative; z-index: 1; max-width: 1180px; }
+/* the table stands to the right of the robot (the picture's height-fit width gives its place) and ends near the
+   right edge; the bar keeps the whole width */
+.rankpage .wrap { --pw: calc((100vh - var(--bar-h)) * 1.777); --ml: max(16px, calc(var(--pw) * .19)); --mr: max(4vw, calc(100vw - var(--ml) - 1560px));
+  position: relative; z-index: 1; max-width: none; width: auto; margin-left: var(--ml); margin-right: var(--mr); }
+.rankpage .wrap header.top { margin-left: calc(-1 * var(--ml)); margin-right: calc(-1 * var(--mr)); }
+@media (max-width: 900px), (orientation: portrait) { .rankpage .wrap { --ml: 14px; --mr: 14px; } }
 .rankpage #foot { position: relative; z-index: 1; }
 
 /* the title */
-.rhero { margin: 6px 0 8px; }
+/* the title stands below the spotlights, beside the centre banner with the arena's emblem; on a short
+   screen it moves up so the ten rows still fit */
+.rhero { position: relative; margin: calc((100vh - var(--bar-h)) * .075) 0 8px; }
+@media (max-width: 900px), (orientation: portrait) { .rhero { margin-top: 8px; } }
 .rkicker { margin: 0 0 2px; font: 600 12px var(--display); letter-spacing: .42em; text-transform: uppercase; color: rgba(255,255,255,.82); }
-.rtitle { margin: 0; font: 900 italic clamp(28px, 3.4vw, 46px)/1.02 var(--display); text-transform: uppercase; letter-spacing: -.01em;
+.rtitle { margin: 0; font: 900 italic max(24px, calc(var(--pw, 1500px) * .0244))/1.02 var(--display); text-transform: uppercase; letter-spacing: -.01em;
   background: linear-gradient(180deg, #ffffff 0%, #e4e7ec 38%, #8d939c 62%, #f4f6f9 100%); -webkit-background-clip: text; background-clip: text; color: transparent;
   filter: drop-shadow(0 4px 14px rgba(0,0,0,.6)); }
 .rtabs { display: flex; gap: 6px; margin-top: 8px; border-bottom: 1px solid rgba(255,255,255,.12); }
@@ -47,9 +68,9 @@ canvas.rankfx { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index:
 .rrow.rest { opacity: .92; }
 
 /* the rows are the owner's metal bars: gold, silver, bronze for the podium, graphite for the rest */
-.rrow { background: transparent; border: 0; border-bottom: 1px solid rgba(255,255,255,.12); clip-path: none; min-height: 48px; padding: 1px 20px; }
+.rrow { background: transparent; border: 0; border-bottom: 1px solid rgba(255,255,255,.12); clip-path: none; min-height: var(--rh); padding: 1px 20px; }
 .rrow:hover, .rrow:focus-visible { background: rgba(255,255,255,.04); box-shadow: inset 0 0 0 1px rgba(255,255,255,.4); outline: none; }
-.rrow.p1, .rrow.p2, .rrow.p3 { min-height: 54px; border-bottom: 0; background: center / 100% 100% no-repeat; }
+.rrow.p1, .rrow.p2, .rrow.p3 { min-height: calc(var(--rh) + 6px); border-bottom: 0; background: center / 100% 100% no-repeat; }
 /* the podium's metal, rich: more colour and light than the picture alone */
 .rrow.p1 { filter: saturate(1.35) brightness(1.12) contrast(1.05); }
 .rrow.p2 { filter: brightness(1.12) contrast(1.06); }
@@ -67,7 +88,7 @@ canvas.rankfx { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index:
 
 /* the place */
 .pl { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; font: 600 24px var(--numbers); color: #fff; }
-.laurel { display: block; width: auto; height: 46px; filter: drop-shadow(0 2px 4px rgba(0,0,0,.6)); }
+.laurel { display: block; width: auto; height: calc(var(--rh) + 2px); filter: drop-shadow(0 2px 4px rgba(0,0,0,.6)); }
 
 /* the agent */
 .c-agent .nm { display: flex; align-items: center; gap: 10px; min-width: 0; }
@@ -123,7 +144,7 @@ canvas.rankfx { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index:
 @media (prefers-reduced-motion: reduce) { .rrow.landed, .rrow.landed::after { animation: none; } }
 
 /* the season's line: one quiet line under the tabs, so ten rows fit a screen */
-.rankpage .seasonbox { margin: 0 0 8px; padding: 6px 12px; font-size: 13px; background: rgba(6,8,12,.45); border-color: rgba(255,255,255,.08); }
+.rankpage .seasonbox { margin: 8px 0 0; padding: 6px 12px; font-size: 13px; background: rgba(6,8,12,.45); border-color: rgba(255,255,255,.08); }
 .rankpage .seasonbox b { font-size: 13px; }
 .rankpage .seasonbox .tiny { font-size: 12px; }
 .rankpage header.top { margin-bottom: 4px; }
@@ -141,3 +162,13 @@ canvas.rankfx { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index:
 @media (max-width: 860px) { .seasonpick { margin-left: 0; } .rfind, .rfind input { width: 100%; } .rfind { flex: 1 1 100%; margin: 6px 0; } }
 .rprev { margin: 0 0 8px; padding: 6px 12px; font: 600 13px var(--font); color: #ffe3a8; background: rgba(40,30,8,.55); border-left: 2px solid #e2b84a; }
 .rprev[hidden] { display: none; }
+
+/* a phone: the replay button is its icon only, so the row's second line fits */
+@media (max-width: 600px) {
+  .rtitle { font-size: clamp(26px, 8vw, 36px); }
+  .watch span { display: none; }
+  .watch .play { width: 26px; height: 26px; }
+  .rrow, .rrow.awards { grid-template-columns: 54px minmax(0, 1fr) auto auto auto; grid-template-areas: "place agent agent agent points" "place tasks time replay award"; column-gap: 10px; }
+  .rrow .c-tasks, .rrow .c-time { font-size: 15px; }
+  .rrow .c-replay { justify-self: center; }
+}
