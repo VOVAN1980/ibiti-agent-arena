@@ -151,6 +151,8 @@ function render() {
     const old = slots[i];
     if (old && old.key === keyOf(r)) return;
     if (!top || r.rank < top) top = r.rank;
+    // hidden until its pieces have come together (an entrance animation would keep it showing)
+    el.style.animation = 'none';
     el.style.opacity = '0';
     const rect = el.getBoundingClientRect();
     if (old) shatter(old.copy, old.rect, old.rank);
@@ -197,7 +199,7 @@ if (DEMO) {
     const [r] = demoRows.splice(i, 1);
     demoRows.splice(to, 0, r);
     render();
-  }, 7000);
+  }, 9000);
 }
 
 async function loop() {
