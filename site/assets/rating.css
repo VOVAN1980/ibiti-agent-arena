@@ -30,7 +30,7 @@ canvas.rankfx { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index:
 
 /* the table stands to the right of the robot (the picture's height-fit width gives its place) and ends near the
    right edge; the bar keeps the whole width */
-.rankpage .wrap { --ml: max(16px, calc(var(--pl) + var(--pw) * .185)); --mr: max(3vw, calc(100vw - var(--ml) - var(--pw) * .78));
+.rankpage .wrap { --ml: max(16px, calc(var(--pl) + var(--pw) * .138)); --mr: max(3vw, calc(100vw - var(--ml) - var(--pw) * .70));
   position: relative; z-index: 1; max-width: none; width: auto; margin-left: var(--ml); margin-right: var(--mr); }
 .rankpage .wrap header.top { margin-left: calc(-1 * var(--ml)); margin-right: calc(-1 * var(--mr)); }
 @media (max-width: 900px), (orientation: portrait) { .rankpage .wrap { --ml: 14px; --mr: 14px; } }
@@ -55,8 +55,8 @@ canvas.rankfx { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index:
 
 /* the board */
 .rboard { position: relative; padding: 4px 0 10px; background: linear-gradient(180deg, rgba(6,8,12,.35), rgba(6,8,12,.55)); }
-.rhead, .rrow { display: grid; grid-template-columns: 96px minmax(0, 1fr) 110px 150px 100px 150px; align-items: center; column-gap: 12px; }
-.rhead.awards, .rrow.awards { grid-template-columns: 96px minmax(0, 1fr) 100px 140px 90px 140px 120px; }
+.rhead, .rrow { display: grid; grid-template-columns: 8% minmax(0, 1fr) 12% 15% 10% 17%; align-items: center; column-gap: 8px; }
+.rhead.awards, .rrow.awards { grid-template-columns: 8% minmax(0, 1fr) 11% 14% 9% 15% 12%; }
 .rhead { padding: 6px 20px; font: 700 12px var(--font); letter-spacing: .2em; text-transform: uppercase; color: rgba(255,255,255,.85); border-bottom: 1px solid rgba(255,255,255,.14); }
 .rhead > div, .rrow > div { min-width: 0; }
 .rhead > div { font: inherit; color: inherit; }
