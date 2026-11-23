@@ -493,6 +493,33 @@ export async function podiumSeason() {
   return { season: pick.n, closed: pick.closed, top };
 }
 
+let tableRead = null;
+/** The season shown as a table: its official first places (final once closed), each with its season
+ *  result from the season's contract and the fight that earned it, found among this site's judged
+ *  fights (its number for the replay, rounds solved, fouls, model). Null before the first season.
+ *  { season, running, closed, end, rows: [{ rank, agent, name, model, points, timeUsed, solved, fouls, number }] } */
+export async function seasonTable(s) {
+  if (!tableRead || Date.now() - tableRead.read > 15000) {
+    const sh = await shownSeason();
+    if (!sh) return null;
+    const [topW, closedW] = await Promise.all([seasonCall(sh.certificate, SEASON.top), seasonCall(sh.certificate, SEASON.closedAt)]);
+    const agents = topW.slice(2, 2 + num(topW[1] ?? '0')).map(addrOf);
+    const results = await Promise.all(agents.map(async (agent) => {
+      const r = await seasonCall(sh.certificate, SEASON.resultOf + pad(agent));
+      return { agent, points: num(r[0] ?? '0'), timeUsed: num(r[1] ?? '0'), name: text32(r[3] ?? '') };
+    }));
+    tableRead = { read: Date.now(), season: sh.n, running: !!sh.running, end: sh.end, closed: num(closedW[0] ?? '0') > 0, results };
+  }
+  const rows = tableRead.results.map((r, i) => {
+    // the fight of this result: an official judged fight of the agent with these points and time
+    const f = [...s.fights.values()]
+      .filter((x) => x.agent === r.agent && x.judged && !x.judged.empty && x.judged.official && x.judged.points === r.points && x.judged.timeUsed === r.timeUsed)
+      .sort((a, b) => a.number - b.number)[0];
+    return { rank: i + 1, agent: r.agent, name: r.name || (f ? fightName(s, f) : ''), model: f?.model ?? s.fighters.get(r.agent)?.model ?? '', points: r.points, timeUsed: r.timeUsed, solved: f?.judged.solved ?? null, fouls: f?.judged.fouls ?? null, number: f?.number ?? null };
+  });
+  return { season: tableRead.season, running: tableRead.running, closed: tableRead.closed, end: tableRead.end, rows };
+}
+
 /** An agent in the season shown: its place (0 until the close, and for places past the tenth) and whether it took part. */
 export async function seasonOf(agent) {
   const s = await shownSeason();

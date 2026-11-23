@@ -1,0 +1,120 @@
+/* The ranking page: the owner's hall behind it, metal rows for the podium, a plate for each award.
+   The rows move on their own (rating.js, rankfx.js). */
+
+html:has(body.rankpage), body.rankpage { background: #07080c; --serif: 'Cormorant Garamond', 'Cormorant', Georgia, 'Times New Roman', serif; }
+body.rankpage #bg { display: none; }
+.rbg { position: fixed; inset: 0; z-index: 0; background: #07080c url(rating/wide.jpg) center bottom / cover no-repeat; }
+.rbg::after { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse 70% 60% at 50% 55%, rgba(7,8,12,.55), rgba(7,8,12,.15) 70%), linear-gradient(180deg, rgba(7,8,12,.55) 0%, rgba(7,8,12,0) 22%, rgba(7,8,12,0) 70%, rgba(7,8,12,.7) 100%); }
+@media (orientation: portrait) { .rbg { background-image: url(rating/tall.jpg); background-position: center bottom; } }
+canvas.rankfx { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 61; pointer-events: none; }
+.shardlayer { position: fixed; z-index: 60; pointer-events: none; }
+.shard { position: absolute; inset: 0; will-change: transform, opacity; }
+.shard > .rrow { box-sizing: border-box; }
+.shardflash { position: absolute; inset: 0; background: linear-gradient(100deg, transparent 20%, rgba(255,255,255,.85) 48%, transparent 76%); mix-blend-mode: screen; }
+
+.rankpage .wrap { position: relative; z-index: 1; max-width: 1180px; }
+.rankpage #foot { position: relative; z-index: 1; }
+
+/* the title */
+.rhero { margin: 18px 0 14px; }
+.rkicker { margin: 0 0 6px; font: 600 13px var(--display); letter-spacing: .42em; text-transform: uppercase; color: rgba(255,255,255,.82); }
+.rtitle { margin: 0; font: 900 italic clamp(34px, 5.4vw, 66px)/1.02 var(--display); text-transform: uppercase; letter-spacing: -.01em;
+  background: linear-gradient(180deg, #ffffff 0%, #e4e7ec 38%, #8d939c 62%, #f4f6f9 100%); -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 4px 14px rgba(0,0,0,.6)); }
+.rtabs { display: flex; gap: 6px; margin-top: 16px; border-bottom: 1px solid rgba(255,255,255,.12); }
+.rtabs button { background: none; border: 0; color: rgba(255,255,255,.62); font: 600 14px var(--font); letter-spacing: .04em; padding: 10px 16px; cursor: pointer; box-shadow: inset 0 -2px 0 transparent; }
+.rtabs button:hover { color: #fff; }
+.rtabs button[aria-selected="true"] { color: #fff; box-shadow: inset 0 -2px 0 #e5484d; }
+
+.fxdemo[hidden] { display: none; }
+.fxdemo { display: inline-block; margin: 0 0 10px; padding: 6px 12px; font: 600 12px var(--font); letter-spacing: .12em; text-transform: uppercase; color: #ffd9a0; border: 1px solid rgba(255,200,120,.45); background: rgba(40,26,8,.6); }
+
+/* the board */
+.rboard { position: relative; padding: 10px 14px 14px; background: rgba(6,8,12,.5); border: 1px solid rgba(255,255,255,.08); backdrop-filter: blur(6px); }
+.rhead, .rrow { display: grid; grid-template-columns: 96px minmax(0, 1fr) 110px 150px 100px 150px; align-items: center; column-gap: 12px; }
+.rhead.awards, .rrow.awards { grid-template-columns: 96px minmax(0, 1fr) 100px 140px 90px 140px 120px; }
+.rhead { padding: 10px 14px; font: 600 12px var(--font); letter-spacing: .18em; text-transform: uppercase; color: rgba(255,255,255,.72); }
+.rhead > div, .rrow > div { min-width: 0; }
+.rhead > div { font: inherit; color: inherit; }
+.c-place, .c-tasks, .c-points, .c-time, .c-replay, .c-award { text-align: center; justify-self: center; }
+.rhead .c-agent { text-align: left; }
+
+.rrows { display: grid; gap: 6px; }
+.rrow { position: relative; min-height: 66px; padding: 6px 14px; color: #f3f6fc; cursor: pointer; background: rgba(10,12,18,.78); border: 1px solid rgba(255,255,255,.07);
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px); will-change: transform; }
+.rrow:hover, .rrow:focus-visible { background: rgba(22,26,36,.9); outline: none; }
+.rrow.rest { opacity: .92; }
+
+/* the podium: metal under the place, fading into the dark */
+.rrow.p1 { background: linear-gradient(100deg, #f6d77e 0%, #c99a35 7%, rgba(110,78,18,.94) 14%, rgba(42,31,10,.94) 24%, rgba(16,13,8,.92) 100%); border-color: rgba(246,215,126,.65); }
+.rrow.p2 { background: linear-gradient(100deg, #f4f6f9 0%, #b9c1cb 7%, rgba(96,104,114,.94) 14%, rgba(38,42,48,.94) 24%, rgba(14,15,18,.92) 100%); border-color: rgba(230,235,242,.55); }
+.rrow.p3 { background: linear-gradient(100deg, #f0b07a 0%, #b96f36 7%, rgba(106,56,22,.94) 14%, rgba(44,26,12,.94) 24%, rgba(18,12,8,.92) 100%); border-color: rgba(240,176,122,.55); }
+.rrow.p1::before, .rrow.p2::before, .rrow.p3::before { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(255,255,255,.22), rgba(255,255,255,0) 45%, rgba(0,0,0,.18)); }
+.rrow.p1:hover, .rrow.p2:hover, .rrow.p3:hover { filter: brightness(1.08); }
+.rrow > * { position: relative; }
+
+/* the place */
+.pl { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; font: 700 28px var(--serif); color: #fff; }
+.pl.pod { position: relative; width: 56px; height: 56px; }
+.pl.pod .laurel { position: absolute; inset: 0; width: 100%; height: 100%; }
+.pl.pod b { position: relative; font: 700 30px var(--serif); text-shadow: 0 2px 6px rgba(0,0,0,.65); }
+.p1 .pl.pod { color: #fff1c4; } .p2 .pl.pod { color: #ffffff; } .p3 .pl.pod { color: #ffe0c6; }
+.p1 .pl.pod .laurel, .p2 .pl.pod .laurel, .p3 .pl.pod .laurel { filter: drop-shadow(0 1px 2px rgba(0,0,0,.6)); }
+
+/* the agent */
+.c-agent .nm { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.c-agent b { min-width: 0; font: 700 22px/1.15 var(--serif); letter-spacing: .01em; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.7); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.c-agent span { display: block; margin-top: 2px; font-size: 13px; color: rgba(255,255,255,.72); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.idmark { display: inline-flex; flex: none; width: 22px; height: 22px; color: #f6d77e; filter: drop-shadow(0 1px 2px rgba(0,0,0,.6)); }
+.idmark svg { width: 100%; height: 100%; }
+.p2 .idmark { color: #eef1f5; } .p3 .idmark { color: #f0b07a; } .ten .idmark, .rest .idmark { color: #c9d1db; }
+
+.c-tasks, .c-time { font: 600 21px var(--serif); color: rgba(255,255,255,.95); }
+.c-points { font: 600 16px var(--font); color: rgba(255,255,255,.75); white-space: nowrap; }
+.c-points b { font: 700 26px var(--serif); color: #fff; }
+.watch { display: inline-flex; align-items: center; gap: 8px; color: #fff; text-decoration: none; font: 600 14px var(--font); white-space: nowrap; }
+.watch i { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border: 1.5px solid rgba(255,255,255,.85); border-radius: 50%; font-style: normal; font-size: 10px; padding-left: 2px; }
+.watch:hover i { background: #fff; color: #000; }
+
+/* the award: a metal plate with the arena's emblem */
+.plate { display: inline-flex; align-items: center; justify-content: center; width: 96px; height: 40px; color: rgba(40,28,6,.85);
+  clip-path: polygon(8px 0, calc(100% - 8px) 0, 100% 50%, calc(100% - 8px) 100%, 8px 100%, 0 50%); }
+.plate svg { width: 24px; height: 24px; }
+.plate.p1 { background: linear-gradient(180deg, #fff0b8, #e2b84a 45%, #9c7420 100%); }
+.plate.p2 { background: linear-gradient(180deg, #ffffff, #c9d1db 45%, #7d8794 100%); color: rgba(20,24,30,.8); }
+.plate.p3 { background: linear-gradient(180deg, #ffd7b4, #d08a4e 45%, #7c4520 100%); color: rgba(46,22,6,.85); }
+.plate.ten { background: linear-gradient(180deg, #6f7680, #3c4149 50%, #23272d 100%); color: rgba(220,226,234,.85); }
+
+/* the moves */
+@keyframes rowin { from { opacity: 0; transform: translateX(-14px); } to { opacity: 1; transform: none; } }
+.rrow.landed::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(100deg, transparent 0%, rgba(255,255,255,.0) 30%, rgba(255,255,255,.55) 50%, rgba(255,255,255,0) 70%, transparent 100%); background-size: 250% 100%; animation: sweep .9s ease-out both; }
+.rrow.landed { animation: landed .9s ease-out both; }
+@keyframes sweep { from { background-position: 120% 0; } to { background-position: -40% 0; } }
+@keyframes landed { 0% { filter: brightness(1.9); } 100% { filter: none; } }
+
+.rempty { padding: 26px 14px; text-align: center; color: rgba(255,255,255,.75); }
+.rnotes { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 24px; margin: 12px 2px 0; font-size: 13px; color: rgba(255,255,255,.65); }
+.rnotes p { margin: 0; }
+
+/* a narrow screen: the place on the left, the name and points on top, the rest on a second line */
+@media (max-width: 860px) {
+  .rhead { display: none; }
+  .rrow, .rrow.awards { grid-template-columns: 58px minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) auto; grid-template-areas: "place agent agent agent points" "place tasks time replay award"; row-gap: 4px; padding: 8px 10px; }
+  .rrow .c-place { grid-area: place; }
+  .rrow .c-agent { grid-area: agent; }
+  .rrow .c-points { grid-area: points; justify-self: end; }
+  .rrow .c-tasks { grid-area: tasks; justify-self: start; }
+  .rrow .c-time { grid-area: time; }
+  .rrow .c-replay { grid-area: replay; }
+  .rrow .c-award { grid-area: award; justify-self: end; }
+  .c-agent b { font-size: 16px; }
+  .c-tasks, .c-time { font-size: 13px; color: rgba(255,255,255,.8); }
+  .c-points b { font-size: 19px; }
+  .c-points { font-size: 13px; }
+  .watch { font-size: 12px; gap: 5px; }
+  .watch i { width: 20px; height: 20px; font-size: 8px; }
+  .plate { width: 56px; height: 26px; } .plate svg { width: 16px; height: 16px; }
+  .pl.pod { width: 46px; height: 46px; } .pl.pod b { font-size: 21px; }
+  .rboard { padding: 8px; }
+}
+@media (prefers-reduced-motion: reduce) { .rrow.landed, .rrow.landed::after { animation: none; } }

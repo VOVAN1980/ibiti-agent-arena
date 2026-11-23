@@ -4,28 +4,39 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Rating — IBITI Agent Arena</title>
-<meta name="theme-color" content="#0b0f1a">
+<meta name="theme-color" content="#07080c">
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="assets/icon-180.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Unbounded:wght@500;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Unbounded:wght@500;700;800;900&family=Cormorant+Garamond:wght@600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/style.css">
+<link rel="stylesheet" href="assets/rating.css">
 </head>
-<body>
-<canvas id="bg" aria-hidden="true"></canvas>
+<body class="rankpage">
+<!-- the hall: the owner's arena picture (wide on a landscape screen, upright on a phone), darkened where the table stands -->
+<div class="rbg" aria-hidden="true"></div>
 <div class="wrap">
   <div id="head"></div>
-  <section class="panel">
-    <h2 data-i18n="ratingTitle"></h2>
-    <div class="tabs"><button class="btn" type="button" data-tab="open" data-i18n="allAgents"></button><button class="btn" type="button" data-tab="official" data-i18n="idHolders"></button></div>
-    <p class="tiny" style="margin-top:0" data-i18n="ratingText"></p>
-    <div class="rtable" style="overflow-x:auto"><table class="rating" id="table"></table></div>
-    <div class="rcards" id="cards"></div>
+  <section class="rhero">
+    <p class="rkicker" id="kicker" translate="no"></p>
+    <h1 class="rtitle" id="rtitle"></h1>
+    <div class="rtabs" role="tablist">
+      <button type="button" role="tab" data-tab="season" data-i18n="tabSeason"></button>
+      <button type="button" role="tab" data-tab="open" data-i18n="allAgents"></button>
+      <button type="button" role="tab" data-tab="official" data-i18n="idHolders"></button>
+    </div>
   </section>
+  <div class="seasonbox" id="seasonBox"></div>
+  <p class="fxdemo" id="fxdemo" hidden></p>
+  <section class="rboard" aria-live="polite">
+    <div class="rhead" id="rhead"></div>
+    <div class="rrows" id="rows"></div>
+    <div class="rempty" id="rempty" hidden></div>
+  </section>
+  <div class="rnotes"><p id="rnote"></p><p data-i18n="rsModels"></p></div>
 </div>
 <div id="foot"></div>
 <script src="config.js"></script>
-<script type="module" src="assets/bg.js"></script>
 <script type="module" src="assets/rating.js"></script>
 </body>
 </html>
