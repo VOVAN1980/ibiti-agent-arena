@@ -28,6 +28,8 @@ let demoRows = null;
 /** mm:ss for seconds. */
 const clock = (sec) => `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`;
 
+// a round play button: the triangle sits a little right of centre so it looks centred
+const PLAY = '<svg class="play" viewBox="0 0 28 28" aria-hidden="true"><circle cx="14" cy="14" r="12.6" fill="rgba(0,0,0,.25)" stroke="currentColor" stroke-width="1.6"/><path d="M11.4 9.2v9.6l7.8-4.8Z" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></svg>';
 const CHECK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1.8 20.8 6.9v10.2L12 22.2 3.2 17.1V6.9Z" fill="rgba(0,0,0,.25)" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="m7.8 12.2 2.9 2.9 5.6-6.1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 // the podium's laurels and the award plates are the owner's metal pictures (assets/rating)
@@ -43,7 +45,7 @@ function award(r) {
 }
 
 function rowHtml(r) {
-  const watch = r.number ? `<a class="watch" href="${matchUrl(r.agent, r.number)}"><i aria-hidden="true">▶</i><span>${esc(t('watchFight'))}</span></a>` : '<span class="muted">—</span>';
+  const watch = r.number ? `<a class="watch" href="${matchUrl(r.agent, r.number)}">${PLAY}<span>${esc(t('watchFight'))}</span></a>` : '<span class="muted">—</span>';
   const id = r.official ? `<span class="idmark" title="Agent ID" aria-label="Agent ID">${CHECK}</span>` : '';
   return `<div class="c-place">${placeCell(r.rank)}</div>
     <div class="c-agent"><div class="nm"><b>${keep(r.name || nameOf(s, r.agent))}</b>${id}</div><span>${keep(r.model || '')}</span></div>

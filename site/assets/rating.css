@@ -75,8 +75,8 @@ canvas.rankfx { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index:
 .c-points { font: 600 16px var(--font); color: rgba(255,255,255,.75); white-space: nowrap; }
 .c-points b { font: 700 30px var(--serif); color: #fff; }
 .watch { display: inline-flex; align-items: center; gap: 8px; color: #fff; text-decoration: none; font: 600 14px var(--font); white-space: nowrap; }
-.watch i { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border: 1.5px solid rgba(255,255,255,.85); border-radius: 50%; font-style: normal; font-size: 10px; padding-left: 2px; }
-.watch:hover i { background: #fff; color: #000; }
+.watch .play { width: 28px; height: 28px; flex: none; }
+.watch:hover .play circle { fill: #fff; } .watch:hover .play path { fill: #000; stroke: #000; }
 
 /* the award: the owner's metal plate */
 .plate { display: block; width: 104px; height: auto; filter: drop-shadow(0 2px 4px rgba(0,0,0,.55)); }
@@ -108,7 +108,7 @@ canvas.rankfx { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index:
   .c-points b { font-size: 22px; }
   .c-points { font-size: 13px; }
   .watch { font-size: 12px; gap: 5px; }
-  .watch i { width: 20px; height: 20px; font-size: 8px; }
+  .watch .play { width: 22px; height: 22px; }
   .plate { width: 64px; }
   .laurel { height: 52px; }
   .rrow, .rrow.awards { min-height: 96px; padding: 10px 16px; }
