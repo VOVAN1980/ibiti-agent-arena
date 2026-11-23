@@ -28,36 +28,18 @@ let demoRows = null;
 /** mm:ss for seconds. */
 const clock = (sec) => `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`;
 
-/** Two laurel branches around a place on the podium. */
-function laurel() {
-  // each branch climbs from the bottom up one side, open at the top; leaves point up along it
-  const leaves = (side) => {
-    let d = '';
-    for (let i = 0; i < 6; i++) {
-      const deg = side === -1 ? 248 - i * 24 : -68 + i * 24;
-      const a = (deg * Math.PI) / 180;
-      const r = 17 + (i % 2 ? 2.2 : 0);
-      const x = 24 + r * Math.cos(a);
-      const y = 25 - r * Math.sin(a);
-      const rot = side === -1 ? -(deg - 90) : -(deg + 90);
-      d += `<ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="4.6" ry="1.9" transform="rotate(${rot.toFixed(0)} ${x.toFixed(1)} ${y.toFixed(1)})"/>`;
-    }
-    return d;
-  };
-  return `<svg class="laurel" viewBox="0 0 48 48" aria-hidden="true"><g fill="currentColor">${leaves(-1)}${leaves(1)}</g></svg>`;
-}
+const CHECK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1.8 20.8 6.9v10.2L12 22.2 3.2 17.1V6.9Z" fill="rgba(0,0,0,.25)" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="m7.8 12.2 2.9 2.9 5.6-6.1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
-const CHECK = '<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m6.2 10.4 2.6 2.6 5-5.6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-const HEX = '<svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 3 35 11.5v17L20 37 5 28.5v-17Z" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M20 10 29 15v10l-9 5-9-5V15Z" fill="none" stroke="currentColor" stroke-width="1.4" opacity=".7"/></svg>';
-
-const placeCell = (rank) => (rank <= 3 ? `<span class="pl pod">${laurel()}<b translate="no">${rank}</b></span>` : `<span class="pl" translate="no">${rank}</span>`);
+// the podium's laurels and the award plates are the owner's metal pictures (assets/rating)
+const placeCell = (rank) => (rank <= 3 ? `<img class="laurel" src="assets/rating/laurel-${rank}.webp" alt="${rank}" width="260" height="236">` : `<span class="pl" translate="no">${rank}</span>`);
+const METAL = { 1: 'gold', 2: 'silver', 3: 'bronze' };
 const tier = (rank) => (rank <= 3 ? `p${rank}` : rank <= 10 ? 'ten' : 'rest');
 const withAwards = () => AWARDS && tab === 'season';
 
 function award(r) {
   if (r.rank > 10) return '';
   const title = table?.closed ? t('awardGiven') : t('awardSoon');
-  return `<span class="plate ${r.rank <= 3 ? `p${r.rank}` : 'ten'}" title="${esc(title)}" aria-label="${esc(title)}">${HEX}</span>`;
+  return `<img class="plate" src="assets/rating/plate-${METAL[r.rank] ?? 'graphite'}.webp" alt="${esc(title)}" title="${esc(title)}" width="254" height="102">`;
 }
 
 function rowHtml(r) {
