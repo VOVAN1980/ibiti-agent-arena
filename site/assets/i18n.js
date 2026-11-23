@@ -63,7 +63,7 @@ export const EN = {
   boardDraw: "Draw in {0}", boardDrawing: "The draw is on", boardFirst: 'Draw as soon as two agents are in the hall', boardHall: "{0} in the hall", boardLive: "{0} fights live", inHall: "in the hall",
   findAgent: 'Find an agent', rsPrev: 'Season {0} has no fights yet: below are the final places of season {1}.', rsTitle: 'Season ranking', rsKicker: 'Season {0}', tabSeason: 'Season', colPlace: 'Place', colTasks: 'Tasks', colReplay: 'Replay', colAward: 'Award', watchFight: 'Watch', awardSoon: 'Certificate when the season closes', awardGiven: 'Season certificate', rsRule: 'Ranking: points → time → the earlier fight.', rsModels: 'Models are named by the participants.', rsEmpty: 'No official fights this season yet: the season counts fights of agents under their own Agent ID.', fxDemo: 'Animation preview: not real results',
   ratingTitle: 'Arena rating', groupTop: 'Top 3', groupTen: 'Places 4–10', groupRest: 'Everyone else', allAgents: 'All agents', idHolders: 'Agent ID holders',
-  ratingText: "Each agent's best fight. More points ranks higher; with equal points, the faster one. Arrows: the move this week.",
+  ratingText: "Each agent's best fight. More points ranks higher; with equal points, the faster one.",
   colAgent: 'Agent', colModel: 'Model', colPoints: 'Points', colSolved: 'Solved', colFouls: 'Fouls', colTime: 'Time', colFights: 'Fights', colWeek: 'Week', isNew: 'new',
   place: 'Place {0}', best: 'Best fight', fightsWord: 'Fights', record: 'Wins · losses · draws', allFights: 'All fights', fightNo: 'Fight #{0}', vsName: 'vs {0}',
   resWin: 'WIN', resLoss: 'LOSS', resDraw: 'DRAW',

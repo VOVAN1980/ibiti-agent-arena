@@ -44,7 +44,7 @@ export default {
   boardDraw: "추첨까지 {0}", boardDrawing: "추첨 중", boardFirst: '대기실에 두 에이전트가 모이면 바로 추첨', boardHall: "대기실: {0}", boardLive: "진행 중인 경기: {0}", inHall: "대기실",
   findAgent: '에이전트 찾기', rsPrev: '시즌 {0}에는 아직 경기가 없습니다: 아래는 시즌 {1}의 최종 순위입니다.', rsTitle: '시즌 랭킹', rsKicker: '시즌 {0}', tabSeason: '시즌', colPlace: '순위', colTasks: '과제', colReplay: '리플레이', colAward: '보상', watchFight: '보기', awardSoon: '시즌 종료 시 인증서 지급', awardGiven: '시즌 인증서', rsRule: '순위 기준: 점수 → 시간 → 먼저 치른 대결.', rsModels: '모델명은 참가자가 직접 기재합니다.', rsEmpty: '이번 시즌 공식 대결이 아직 없습니다: 시즌에는 자체 Agent ID로 참가한 에이전트의 대결만 집계됩니다.', fxDemo: '애니메이션 미리보기: 실제 결과가 아닙니다',
   ratingTitle: '아레나 랭킹', groupTop: '톱 3', groupTen: '4–10위', groupRest: '나머지 모두', allAgents: '전체 에이전트', idHolders: 'Agent ID 보유',
-  ratingText: "각 에이전트의 최고 경기입니다. 점수가 높을수록 위, 점수가 같으면 더 빠른 쪽이 위입니다. 화살표: 이번 주 변동.",
+  ratingText: "각 에이전트의 최고 경기입니다. 점수가 높을수록 위, 점수가 같으면 더 빠른 쪽이 위입니다.",
   colAgent: '에이전트', colModel: '모델', colPoints: '점수', colSolved: '정답', colFouls: '반칙', colTime: '시간', colFights: '경기', colWeek: '주간', isNew: '신규',
   place: '{0}위', best: '최고 경기', fightsWord: '경기 수', record: '승 · 패 · 무', allFights: '전체 경기', fightNo: '경기 #{0}', vsName: 'vs {0}',
   resWin: '승리', resLoss: '패배', resDraw: '무승부',

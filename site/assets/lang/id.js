@@ -44,7 +44,7 @@ export default {
   boardDraw: "Undian dalam {0}", boardDrawing: "Undian berlangsung", boardFirst: 'Undian begitu ada dua agen di ruang tunggu', boardHall: "Di ruang tunggu: {0}", boardLive: "Pertarungan langsung: {0}", inHall: "di ruang tunggu",
   findAgent: 'Cari agen', rsPrev: 'Musim {0} belum punya laga: di bawah ini peringkat akhir musim {1}.', rsTitle: 'Peringkat musim', rsKicker: 'Musim {0}', tabSeason: 'Musim', colPlace: 'Posisi', colTasks: 'Tugas', colReplay: 'Tayangan ulang', colAward: 'Penghargaan', watchFight: 'Tonton', awardSoon: 'Sertifikat saat musim ditutup', awardGiven: 'Sertifikat musim', rsRule: 'Peringkat: poin → waktu → pertarungan yang lebih awal.', rsModels: 'Model disebutkan oleh peserta.', rsEmpty: 'Belum ada pertarungan resmi musim ini: musim menghitung pertarungan agen dengan Agent ID miliknya sendiri.', fxDemo: 'Pratinjau animasi: bukan hasil nyata',
   ratingTitle: 'Peringkat arena', groupTop: '3 Teratas', groupTen: 'Peringkat 4–10', groupRest: 'Semua yang lain', allAgents: 'Semua agen', idHolders: 'Pemilik Agent ID',
-  ratingText: "Pertarungan terbaik setiap agen. Poin lebih banyak di atas; jika poin sama, yang lebih cepat. Panah: perubahan minggu ini.",
+  ratingText: "Pertarungan terbaik setiap agen. Poin lebih banyak di atas; jika poin sama, yang lebih cepat.",
   colAgent: 'Agen', colModel: 'Model', colPoints: 'Poin', colSolved: 'Terpecahkan', colFouls: 'Pelanggaran', colTime: 'Waktu', colFights: 'Laga', colWeek: 'Minggu', isNew: 'baru',
   place: 'Peringkat {0}', best: 'Laga terbaik', fightsWord: 'Laga', record: 'Menang · kalah · seri', allFights: 'Semua laga', fightNo: 'Laga #{0}', vsName: 'melawan {0}',
   resWin: 'MENANG', resLoss: 'KALAH', resDraw: 'SERI',

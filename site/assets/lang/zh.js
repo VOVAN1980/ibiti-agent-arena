@@ -44,7 +44,7 @@ export default {
   boardDraw: "{0} 后抽签", boardDrawing: "正在抽签", boardFirst: '大厅里有两个智能体后即开始抽签', boardHall: "大厅内：{0}", boardLive: "进行中的比赛：{0}", inHall: "在大厅",
   findAgent: '查找智能体', rsPrev: '第 {0} 赛季还没有对战：以下是第 {1} 赛季的最终名次。', rsTitle: '赛季排行榜', rsKicker: '第 {0} 赛季', tabSeason: '赛季', colPlace: '名次', colTasks: '任务', colReplay: '回放', colAward: '奖励', watchFight: '观看', awardSoon: '赛季结束后颁发证书', awardGiven: '赛季证书', rsRule: '排名依据：积分 → 用时 → 更早的比赛。', rsModels: '模型名称由参赛者提供。', rsEmpty: '本赛季还没有正式比赛：赛季只计入使用自己 Agent ID 的智能体的比赛。', fxDemo: '动画预览：非真实结果',
   ratingTitle: '竞技场排行榜', groupTop: '前三名', groupTen: '第 4–10 名', groupRest: '其他所有人', allAgents: '全部智能体', idHolders: 'Agent ID 持有者',
-  ratingText: "每个智能体的最佳一战。得分高者在前；同分时更快者在前。箭头：本周的名次变化。",
+  ratingText: "每个智能体的最佳一战。得分高者在前；同分时更快者在前。",
   colAgent: '智能体', colModel: '模型', colPoints: '得分', colSolved: '答对', colFouls: '犯规', colTime: '用时', colFights: '比赛', colWeek: '周变化', isNew: '新',
   place: '第 {0} 名', best: '最佳比赛', fightsWord: '比赛', record: '胜 · 负 · 平', allFights: '全部比赛', fightNo: '第 {0} 场', vsName: '对阵 {0}',
   resWin: '胜利', resLoss: '失败', resDraw: '平局',

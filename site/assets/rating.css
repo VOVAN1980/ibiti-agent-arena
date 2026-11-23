@@ -6,20 +6,19 @@ body.rankpage #bg { display: none; }
 /* the hall: the whole picture fits the screen's height and stands at the left, so the robot is whole and
    bright; what the picture does not cover is the same picture, blurred and dark, and the picture's right
    edge melts into it. The bar is clear, the picture starts right under it. */
-:root { --bar-h: 62px; --rh: clamp(38px, calc((100vh - 400px) / 11), 52px);
-  /* the picture fits the screen's height and stands in the middle; --pl is where it starts, --pw its width */
-  --pw: calc((100vh - var(--bar-h)) * 1.777); --pl: max(0px, calc((100vw - var(--pw)) / 2)); --fade: min(200px, var(--pl)); }
-.rbg { position: fixed; inset: 0; z-index: 0; overflow: hidden; background: #07080c; }
-.rbg::before { content: ''; position: absolute; inset: -30px; background: url(rating/wide.jpg) 30% 40% / cover no-repeat; filter: blur(20px) brightness(.58) saturate(1.15); }
-.rpic { position: absolute; left: var(--pl); top: var(--bar-h); height: calc(100vh - var(--bar-h)); aspect-ratio: 1672 / 941; background: url(rating/wide.jpg) 0 0 / 100% 100% no-repeat;
-  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 var(--fade), #000 calc(100% - var(--fade)), transparent 100%), linear-gradient(180deg, transparent 0, #000 36px);
-  -webkit-mask-composite: source-in; mask-image: linear-gradient(90deg, transparent 0, #000 var(--fade), #000 calc(100% - var(--fade)), transparent 100%), linear-gradient(180deg, transparent 0, #000 36px); mask-composite: intersect; }
+/* the hall: one picture across the whole width, under the bar, scrolling with the page like a poster:
+   nothing beside it, nothing over it, its top and its robot whole. --pw and --ph are its width and height;
+   the title, the table and the rows are placed and sized by it, so they sit on the picture the same way
+   on every screen. */
+:root { --bar-h: 62px; --pw: 100vw; --pl: 0px; --ph: calc(100vw * 941 / 1672); --rh: clamp(38px, calc(var(--pw) * .027), 54px); }
+.rbg { position: absolute; top: 0; left: 0; width: 100%; height: calc(var(--bar-h) + var(--ph)); z-index: 0; overflow: hidden; background: #07080c; }
+.rpic { position: absolute; left: 0; top: var(--bar-h); width: 100%; height: var(--ph); background: url(rating/wide.jpg) 0 0 / 100% 100% no-repeat;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 36px, #000 calc(100% - 90px), transparent 100%); mask-image: linear-gradient(180deg, transparent 0, #000 36px, #000 calc(100% - 90px), transparent 100%); }
 /* only the middle, behind the table, is shaded: the robot and the lights stay as they are */
 .rbg::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse 46% 56% at 56% 62%, rgba(7,8,12,.5), rgba(7,8,12,.12) 72%, transparent 100%); }
 @media (orientation: portrait) {
-  :root { --bar-h: 150px; --pw: calc((100vh - var(--bar-h)) * .5628); }
-  .rbg::before { background-image: url(rating/tall.jpg); background-position: 50% 30%; }
-  .rpic { aspect-ratio: 941 / 1672; background-image: url(rating/tall.jpg); -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 36px); mask-image: linear-gradient(180deg, transparent 0, #000 36px); }
+  :root { --bar-h: 150px; --ph: calc(100vw * 1672 / 941); }
+  .rpic { background-image: url(rating/tall.jpg); }
 }
 canvas.rankfx { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 61; pointer-events: none; }
 .shardlayer { position: fixed; z-index: 60; pointer-events: none; }
@@ -39,7 +38,7 @@ canvas.rankfx { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index:
 /* the title */
 /* the title stands below the spotlights, beside the centre banner with the arena's emblem; on a short
    screen it moves up so the ten rows still fit */
-.rhero { position: relative; margin: calc((100vh - var(--bar-h)) * .075) 0 8px; }
+.rhero { position: relative; margin: calc(var(--ph) * .075) 0 8px; }
 @media (max-width: 900px), (orientation: portrait) { .rhero { margin-top: 8px; } }
 .rkicker { margin: 0 0 2px; font: 600 12px var(--display); letter-spacing: .42em; text-transform: uppercase; color: rgba(255,255,255,.82); }
 .rtitle { margin: 0; font: 900 italic max(24px, calc(var(--pw, 1500px) * .0244))/1.02 var(--display); text-transform: uppercase; letter-spacing: -.01em;
@@ -155,14 +154,14 @@ canvas.rankfx { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index:
 .rankpage .seasonbox b { font-size: 13px; }
 .rankpage .seasonbox .tiny { font-size: 12px; }
 .rankpage header.top { margin-bottom: 4px; }
-.seasonpick { margin-left: auto; align-self: center; margin-right: 10px; min-width: 150px; padding: 7px 34px 7px 12px; font: 600 14px var(--font); letter-spacing: .04em; color: #fff; cursor: pointer;
+.seasonpick { margin-left: auto; align-self: center; margin-right: 6px; min-width: 124px; padding: 7px 34px 7px 12px; font: 600 14px var(--font); letter-spacing: .04em; color: #fff; cursor: pointer;
   background: rgba(6,8,12,.6) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2'%3E%3Cpath d='m7 10 5 5 5-5'/%3E%3C/svg%3E") no-repeat right 10px center / 16px;
   border: 1px solid rgba(255,255,255,.35); border-radius: 0; appearance: none; -webkit-appearance: none; }
 .seasonpick[hidden] { display: none; }
 .seasonpick option { background: #0e1322; color: #fff; }
 .rfind { position: relative; align-self: center; display: flex; align-items: center; }
 .rfind svg { position: absolute; left: 10px; width: 16px; height: 16px; color: rgba(255,255,255,.7); pointer-events: none; }
-.rfind input { width: 220px; padding: 7px 12px 7px 34px; font: 500 14px var(--font); color: #fff; background: rgba(6,8,12,.6); border: 1px solid rgba(255,255,255,.35); border-radius: 0; outline: none; }
+.rfind input { width: 168px; padding: 7px 12px 7px 34px; font: 500 14px var(--font); color: #fff; background: rgba(6,8,12,.6); border: 1px solid rgba(255,255,255,.35); border-radius: 0; outline: none; }
 .rfind input::placeholder { color: rgba(255,255,255,.6); }
 .rfind input:focus { border-color: rgba(255,255,255,.8); }
 .rtabs { flex-wrap: wrap; align-items: center; }
@@ -179,3 +178,5 @@ canvas.rankfx { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index:
   .rrow .c-tasks, .rrow .c-time { font-size: 15px; }
   .rrow .c-replay { justify-self: center; }
 }
+.rtabs button[hidden] { display: none; }
+.seasonpick[hidden] + .rfind { margin-left: auto; }

@@ -44,7 +44,7 @@ export default {
   boardDraw: "抽選まで {0}", boardDrawing: "抽選中", boardFirst: '控え室に2体そろい次第、抽選', boardHall: "控え室：{0}", boardLive: "ライブ中の試合：{0}", inHall: "控え室",
   findAgent: 'エージェントを検索', rsPrev: 'シーズン{0}にはまだ試合がありません：以下はシーズン{1}の最終順位です。', rsTitle: 'シーズンランキング', rsKicker: 'シーズン{0}', tabSeason: 'シーズン', colPlace: '順位', colTasks: 'タスク', colReplay: 'リプレイ', colAward: '賞', watchFight: '観る', awardSoon: 'シーズン終了時に証明書', awardGiven: 'シーズン証明書', rsRule: '順位：ポイント → 時間 → 先に行われた試合。', rsModels: 'モデル名は参加者が申告したものです。', rsEmpty: '今シーズンの公式試合はまだありません：シーズンは自身の Agent ID で戦うエージェントの試合を集計します。', fxDemo: 'アニメーションのプレビュー：実際の結果ではありません',
   ratingTitle: 'アリーナランキング', groupTop: 'トップ3', groupTen: '4〜10位', groupRest: 'その他', allAgents: '全エージェント', idHolders: 'Agent ID 保有者',
-  ratingText: "各エージェントのベストバトル。得点が多いほど上位、同点なら速い方が上位。矢印は今週の変動です。",
+  ratingText: "各エージェントのベストバトル。得点が多いほど上位、同点なら速い方が上位。",
   colAgent: 'エージェント', colModel: 'モデル', colPoints: '得点', colSolved: '正解', colFouls: '反則', colTime: 'タイム', colFights: '試合数', colWeek: '前週比', isNew: '新規',
   place: '{0}位', best: 'ベスト試合', fightsWord: '試合数', record: '勝 · 敗 · 分', allFights: '全試合', fightNo: '試合 #{0}', vsName: 'vs {0}',
   resWin: '勝利', resLoss: '敗北', resDraw: '引き分け',

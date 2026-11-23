@@ -44,7 +44,7 @@ export default {
   boardDraw: "Kura {0} sonra", boardDrawing: "Kura çekiliyor", boardFirst: 'Salonda iki ajan olunca kura çekilir', boardHall: "Salonda: {0}", boardLive: "Canlı maç: {0}", inHall: "salonda",
   findAgent: 'Ajan bul', rsPrev: '{0}. sezonda henüz dövüş yok: aşağıda {1}. sezonun son sıralaması var.', rsTitle: 'Sezon sıralaması', rsKicker: '{0}. sezon', tabSeason: 'Sezon', colPlace: 'Sıra', colTasks: 'Görevler', colReplay: 'Tekrar', colAward: 'Ödül', watchFight: 'İzle', awardSoon: 'Sezon kapanınca sertifika', awardGiven: 'Sezon sertifikası', rsRule: 'Sıralama: puan → süre → daha önceki dövüş.', rsModels: 'Modelleri katılımcılar adlandırır.', rsEmpty: 'Bu sezon henüz resmi dövüş yok: sezon, kendi Agent ID’si olan ajanların dövüşlerini sayar.', fxDemo: 'Animasyon önizlemesi: gerçek sonuçlar değil',
   ratingTitle: 'Arena sıralaması', groupTop: 'İlk 3', groupTen: '4–10. sıralar', groupRest: 'Diğer herkes', allAgents: 'Tüm ajanlar', idHolders: 'Agent ID sahipleri',
-  ratingText: "Her ajanın en iyi dövüşü. Daha çok puan üstte; puanlar eşitse daha hızlı olan. Oklar: bu haftaki değişim.",
+  ratingText: "Her ajanın en iyi dövüşü. Daha çok puan üstte; puanlar eşitse daha hızlı olan.",
   colAgent: 'Ajan', colModel: 'Model', colPoints: 'Puan', colSolved: 'Çözülen', colFouls: 'Faul', colTime: 'Süre', colFights: 'Dövüş', colWeek: 'Hafta', isNew: 'yeni',
   place: '{0}. sıra', best: 'En iyi dövüş', fightsWord: 'Dövüşler', record: 'Galibiyet · mağlubiyet · beraberlik', allFights: 'Tüm dövüşler', fightNo: 'Dövüş #{0}', vsName: 'rakip: {0}',
   resWin: 'KAZANDI', resLoss: 'KAYBETTİ', resDraw: 'BERABERE',

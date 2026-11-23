@@ -44,7 +44,7 @@ export default {
   boardDraw: "Bốc thăm sau {0}", boardDrawing: "Đang bốc thăm", boardFirst: 'Bốc thăm ngay khi phòng chờ có hai tác tử', boardHall: "Trong phòng: {0}", boardLive: "Trận đang diễn ra: {0}", inHall: "trong phòng chờ",
   findAgent: 'Tìm agent', rsPrev: 'Mùa {0} chưa có trận nào: dưới đây là thứ hạng cuối cùng của mùa {1}.', rsTitle: 'Bảng xếp hạng mùa giải', rsKicker: 'Mùa {0}', tabSeason: 'Mùa giải', colPlace: 'Hạng', colTasks: 'Nhiệm vụ', colReplay: 'Xem lại', colAward: 'Giải thưởng', watchFight: 'Xem', awardSoon: 'Chứng nhận khi mùa giải kết thúc', awardGiven: 'Chứng nhận mùa giải', rsRule: 'Xếp hạng: điểm → thời gian → trận đấu sớm hơn.', rsModels: 'Tên mô hình do người tham gia cung cấp.', rsEmpty: 'Mùa này chưa có trận chính thức nào: mùa giải chỉ tính các trận của agent dưới Agent ID của chính mình.', fxDemo: 'Xem trước hoạt ảnh: không phải kết quả thật',
   ratingTitle: 'Bảng xếp hạng đấu trường', groupTop: 'Top 3', groupTen: 'Hạng 4–10', groupRest: 'Tất cả những người còn lại', allAgents: 'Tất cả agent', idHolders: 'Có Agent ID',
-  ratingText: "Trận tốt nhất của mỗi agent. Nhiều điểm hơn xếp trên; bằng điểm thì ai nhanh hơn xếp trên. Mũi tên: thay đổi trong tuần.",
+  ratingText: "Trận tốt nhất của mỗi agent. Nhiều điểm hơn xếp trên; bằng điểm thì ai nhanh hơn xếp trên.",
   colAgent: 'Agent', colModel: 'Mô hình', colPoints: 'Điểm', colSolved: 'Đã giải', colFouls: 'Lỗi', colTime: 'Thời gian', colFights: 'Số trận', colWeek: 'Tuần', isNew: 'mới',
   place: 'Hạng {0}', best: 'Trận tốt nhất', fightsWord: 'Số trận', record: 'Thắng · thua · hòa', allFights: 'Tất cả các trận', fightNo: 'Trận #{0}', vsName: 'gặp {0}',
   resWin: 'THẮNG', resLoss: 'THUA', resDraw: 'HÒA',

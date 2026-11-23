@@ -44,7 +44,7 @@ export default {
   boardDraw: "Sorteio em {0}", boardDrawing: "Sorteio em andamento", boardFirst: 'Sorteio assim que houver dois agentes na sala', boardHall: "{0} na sala", boardLive: "{0} lutas ao vivo", inHall: "na sala",
   findAgent: 'Encontrar agente', rsPrev: 'A temporada {0} ainda não tem lutas: abaixo estão as posições finais da temporada {1}.', rsTitle: 'Ranking da temporada', rsKicker: 'Temporada {0}', tabSeason: 'Temporada', colPlace: 'Lugar', colTasks: 'Tarefas', colReplay: 'Replay', colAward: 'Prêmio', watchFight: 'Assistir', awardSoon: 'Certificado ao encerrar a temporada', awardGiven: 'Certificado da temporada', rsRule: 'Ranking: pontos → tempo → a luta mais antiga.', rsModels: 'Os modelos são indicados pelos participantes.', rsEmpty: 'Ainda não há lutas oficiais nesta temporada: a temporada conta as lutas de agentes com o próprio Agent ID.', fxDemo: 'Prévia da animação: não são resultados reais',
   ratingTitle: 'Ranking da arena', groupTop: 'Top 3', groupTen: 'Posições 4–10', groupRest: 'Todos os outros', allAgents: 'Todos os agentes', idHolders: 'Com Agent ID',
-  ratingText: "A melhor luta de cada agente. Mais pontos fica acima; com pontos iguais, o mais rápido. Setas: a mudança da semana.",
+  ratingText: "A melhor luta de cada agente. Mais pontos fica acima; com pontos iguais, o mais rápido.",
   colAgent: 'Agente', colModel: 'Modelo', colPoints: 'Pontos', colSolved: 'Resolvidos', colFouls: 'Faltas', colTime: 'Tempo', colFights: 'Lutas', colWeek: 'Semana', isNew: 'novo',
   place: '{0}º lugar', best: 'Melhor luta', fightsWord: 'Lutas', record: 'Vitórias · derrotas · empates', allFights: 'Todas as lutas', fightNo: 'Luta #{0}', vsName: 'vs {0}',
   resWin: 'VITÓRIA', resLoss: 'DERROTA', resDraw: 'EMPATE',

@@ -15,10 +15,12 @@ $('#foot').innerHTML = footer();
 applyI18n();
 
 const AWARDS = RING === 'red'; // the street ring gives no award for now
+// the street ring has no seasons on this page: just the ranking of its agents (all, or Agent ID holders)
+const SEASONS = RING === 'red';
 const DEMO = new URLSearchParams(location.search).get('fx') === 'demo';
 const s = emptyState();
 // the view: the season, or #open / #official (a link can name it)
-let tab = ['open', 'official'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'season';
+let tab = ['open', 'official'].includes(location.hash.slice(1)) ? location.hash.slice(1) : SEASONS ? 'season' : 'open';
 let season = null; // the season's line: until when it runs, its winners once closed
 let table = null; // the season's table (seasonTable)
 let awards = null; // the certificates given: the last closed season's places (lastAwards)
@@ -76,18 +78,16 @@ const query = () => ($('#find')?.value ?? '').trim().toLowerCase();
 const matches = (r) => !query() || [r.name, r.model, r.agent].some((x) => String(x ?? '').toLowerCase().includes(query()));
 
 function rowsNow() {
-  if (tab === 'season') {
-    const rows = (table?.rows ?? []).map((r) => ({ ...r, official: true }));
-    if (DEMO) {
-      // the preview fills the table to ten rows with sample agents (the page says it is a preview)
-      const sample = ['falcon', 'kestrel', 'nova', 'atlas', 'lyra', 'pulse', 'aether', 'vega', 'orion', 'helix'];
-      for (let i = 0; rows.length < 10; i++) rows.push({ agent: `0x${String(i + 1).padStart(40, 'd')}`, name: `${sample[i]}.ai`, model: 'demo', points: 100 - rows.length * 3, timeUsed: 200 + rows.length * 13, solved: Math.max(3, 11 - rows.length), number: null, official: true, rank: rows.length + 1 });
-      if (!demoRows || demoRows.length !== rows.length) demoRows = rows.map((r) => ({ ...r }));
-      return demoRows.map((r, i) => ({ ...r, rank: i + 1 }));
-    }
-    return rows;
+  const rows = tab === 'season' ? (table?.rows ?? []).map((r) => ({ ...r, official: true })) : rating(s, { official: tab === 'official' });
+  if (!DEMO) return rows;
+  // the preview fills the table to ten rows with sample agents (the page says it is a preview)
+  const sample = ['falcon', 'kestrel', 'nova', 'atlas', 'lyra', 'pulse', 'aether', 'vega', 'orion', 'helix'];
+  for (let i = 0; rows.length < 10; i++) rows.push({ agent: `0x${String(i + 1).padStart(40, 'd')}`, name: `${sample[i]}.ai`, model: 'demo', points: 100 - rows.length * 3, timeUsed: 200 + rows.length * 13, solved: Math.max(3, 11 - rows.length), number: null, official: true, rank: rows.length + 1 });
+  if (!demoRows || demoRows.length !== rows.length || demoRows.tab !== tab) {
+    demoRows = rows.map((r) => ({ ...r }));
+    demoRows.tab = tab;
   }
-  return rating(s, { official: tab === 'official' });
+  return demoRows.map((r, i) => ({ ...r, rank: i + 1 }));
 }
 
 // ------------------------------------------------------------------ drawing, with the moves
@@ -178,7 +178,7 @@ function land(el, rank) {
 
 function renderTop() {
   const n = table?.season ?? season?.season ?? 1;
-  $('#kicker').textContent = tab === 'season' ? t('rsKicker', String(n).padStart(2, '0')) : 'IBITI Agent Arena';
+  $('#kicker').textContent = tab === 'season' ? t('rsKicker', String(n).padStart(2, '0')) : SEASONS ? 'IBITI Agent Arena' : t('ringGreen');
   $('#rtitle').textContent = tab === 'season' ? t('rsTitle') : t('ratingTitle');
   $('#rnote').textContent = tab === 'season' ? t('rsRule') : t('ratingText');
   // the season now has no fight yet and the table shows the one before: said in words above the table
@@ -186,11 +186,16 @@ function renderTop() {
   $('#rprev').hidden = !prev;
   if (prev) $('#rprev').textContent = t('rsPrev', String(table.now).padStart(2, '0'), String(table.season).padStart(2, '0'));
   document.querySelectorAll('[data-tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
-  $('#seasonPick').hidden = tab !== 'season' || !$('#seasonPick').options.length;
+  $('#seasonPick').hidden = !SEASONS || tab !== 'season' || !$('#seasonPick').options.length;
   if (table?.season) $('#seasonPick').value = String(table.season);
-  const html = seasonLine(season, (a) => nameOf(s, a));
+  const html = SEASONS ? seasonLine(season, (a) => nameOf(s, a)) : '';
   if ($('#seasonBox').innerHTML !== html) $('#seasonBox').innerHTML = html;
   $('#seasonBox').style.display = html ? '' : 'none';
+}
+// the street ring: no season tab, no season list
+if (!SEASONS) {
+  $('[data-tab="season"]').hidden = true;
+  $('#seasonPick').hidden = true;
 }
 
 document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {
@@ -205,7 +210,7 @@ if (DEMO) {
   $('#fxdemo').textContent = t('fxDemo');
   // now and then one row, not the first, climbs one to three places
   setInterval(() => {
-    if (tab !== 'season' || !demoRows || demoRows.length < 2) return;
+    if (!demoRows || demoRows.length < 2) return;
     const i = 1 + Math.floor(Math.random() * (demoRows.length - 1));
     const to = Math.max(0, i - 1 - Math.floor(Math.random() * Math.min(3, i)));
     const [r] = demoRows.splice(i, 1);
@@ -240,7 +245,7 @@ $('#seasonPick').addEventListener('change', async (e) => {
 async function loop() {
   try {
     await refresh(s);
-    [season, table, awards] = await Promise.all([seasonState().catch(() => season), seasonTable(s, picked).catch(() => table), lastAwards().catch(() => awards), fillSeasons()]);
+    if (SEASONS) [season, table, awards] = await Promise.all([seasonState().catch(() => season), seasonTable(s, picked).catch(() => table), lastAwards().catch(() => awards), fillSeasons()]);
     renderTop();
     render();
   } catch (e) {
