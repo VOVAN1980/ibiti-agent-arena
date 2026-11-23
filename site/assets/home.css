@@ -86,12 +86,12 @@ a { color: inherit; }
 
 /* ---- below the stage: the season and the steps */
 .below { position: relative; z-index: 12; background: linear-gradient(180deg, transparent, var(--bg) 120px); padding: 140px 24px 60px; display: grid; gap: 28px; max-width: 1200px; margin: 0 auto; }
-.panel { background: rgba(14,16,22,.82); border: 1px solid rgba(255,255,255,.08); border-radius: 18px; padding: 28px 30px; backdrop-filter: blur(8px); }
+.panel { background: rgba(14,16,22,.82); border: 1px solid rgba(255,255,255,.08); border-radius: 0; clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px); padding: 28px 30px; backdrop-filter: blur(8px); }
 .panel h2 { margin: 0 0 16px; font-family: var(--display); font-style: italic; font-weight: 800; font-size: 26px; letter-spacing: .02em; text-transform: uppercase; }
 .line { color: var(--ink-2); font-size: 15px; line-height: 1.6; }
 .line a { color: #fff; }
 .podium { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 18px 0 8px; }
-.podium .place { display: flex; align-items: center; gap: 14px; padding: 16px; border-radius: 14px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); }
+.podium .place { display: flex; align-items: center; gap: 14px; padding: 16px; border-radius: 0; clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px); background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); }
 .podium .medal { font-size: 26px; }
 .podium b { display: block; font-size: 16px; }
 .podium span { color: var(--ink-3); font-size: 13px; }
@@ -99,7 +99,7 @@ a { color: inherit; }
 .more { display: inline-block; margin-top: 10px; color: var(--ink-2); text-decoration: none; letter-spacing: .08em; }
 .more:hover { color: #fff; }
 .steps ol { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; counter-reset: s; }
-.steps li { counter-increment: s; padding: 18px; border-radius: 14px; background: rgba(255,255,255,.035); border: 1px solid rgba(255,255,255,.07); display: flex; flex-direction: column; gap: 8px; }
+.steps li { counter-increment: s; padding: 18px; border-radius: 0; clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px); background: rgba(255,255,255,.035); border: 1px solid rgba(255,255,255,.07); display: flex; flex-direction: column; gap: 8px; }
 .steps li::before { content: counter(s, decimal-leading-zero); font-family: var(--display); font-weight: 800; font-size: 28px; color: transparent; -webkit-text-stroke: 1px rgba(255,255,255,.55); }
 .steps b { font-size: 16px; }
 .steps span { color: var(--ink-2); font-size: 14px; line-height: 1.5; }
@@ -120,7 +120,7 @@ a { color: inherit; }
   .menu { display: none; }
   :root { --bar: 64px; }
   .bar { padding: 0 14px; gap: 10px; }
-  .connect { margin-left: auto; padding: 9px 16px; font-size: 10px; letter-spacing: .16em; white-space: nowrap; clip-path: none; }
+  .connect { margin-left: auto; padding: 9px 16px; font-size: 10px; letter-spacing: .16em; white-space: nowrap; border-radius: 0; clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }
   .logo svg { width: 34px; height: 34px; }
   .logo b { font-size: 19px; }
   .logo i { font-size: 9px; letter-spacing: .28em; }
@@ -135,8 +135,21 @@ a { color: inherit; }
   .cards { width: 100%; grid-template-columns: 1fr; gap: 18px; }
   .below { padding-top: 24px; }
   .podium, .steps ol { grid-template-columns: 1fr; }
-  .sound { left: 12px; bottom: 12px; padding: 8px 10px; border-radius: 999px; background: rgba(7,8,12,.75); backdrop-filter: blur(6px); }
+  .sound { left: 12px; bottom: 12px; padding: 8px 10px; border-radius: 0; clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px); background: rgba(7,8,12,.75); backdrop-filter: blur(6px); }
   .sound span, .brandmark { display: none; }
+}
+@media (orientation: portrait) {
+  /* an upright screen: the upright picture, the two robots facing each other with the ring between them */
+  .arena-bg { background-image: url(home/arena-tall.jpg); background-size: cover; background-position: 50% 0; }
+  .arena-bg::after { background: linear-gradient(180deg, rgba(7,8,12,.6) 0%, rgba(7,8,12,.1) 24%, rgba(7,8,12,0) 55%, rgba(7,8,12,.55) 82%, rgba(7,8,12,.9) 100%); }
+}
+@media (orientation: portrait) and (max-width: 900px) {
+  /* a phone held upright: the first screen is the title above the robots' heads, the robots and the ring;
+     the showcases start at the floor and scroll up over the arena */
+  .stage { padding-top: calc(var(--bar) + 20px); }
+  .hero { margin-top: 0; min-height: calc(80svh - var(--bar) - 20px); }
+  .title span { font-size: clamp(30px, 9.6vw, 56px); }
+  .cards { margin-top: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   .stage { --p: 0 !important; }
