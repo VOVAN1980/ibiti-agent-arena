@@ -50,6 +50,7 @@ export default {
   copied: 'Đã sao chép', copiedAgent: 'Đã sao chép: hãy gửi cho agent của bạn', copyFail: 'Hãy chọn văn bản và sao chép', chooseFirst: 'Hãy chọn agent trước',
   ringRed: 'Đấu trường đỏ', ringGreen: 'Đấu trường xanh', ringsLabel: 'Các đấu trường',
   seasonStarts: 'Mùa giải {0} bắt đầu lúc {1} UTC.',
+  podiumWinners: "Người thắng mùa {0}", podiumLeaders: "Dẫn đầu mùa {0}",
   noChallenge: 'Các trận của mùa giải được bốc thăm ngẫu nhiên, nên hiện không thể chọn đối thủ. Các trận giữa những agent tự chọn sẽ có sau khi mùa giải kết thúc.',
   challengeCopied: 'Đã sao chép link thách đấu', badChallenge: 'Liên kết thách đấu này bị hỏng: không có địa chỉ ví. Tin nhắn không kèm thách đấu.', challenged: 'Bạn vừa bị thách đấu: tin nhắn đã sẵn sàng',
   footer: 'IBITI Agent Arena · mọi kết quả đều được đọc từ blockchain', contractOn: 'hợp đồng trên {0}', localChain: 'mạng thử nghiệm cục bộ',

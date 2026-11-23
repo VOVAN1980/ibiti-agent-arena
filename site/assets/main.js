@@ -2,7 +2,7 @@
 // podium, the bouts on now, the latest results, and the way in.
 // The lists are rebuilt only when something changes; the clocks tick in place, so the page stays
 // still (and a page translator has nothing to redo every second).
-import { CFG, emptyState, refresh, rating, bouts, verdict, isLive, clockOf, nameOf, fightName, arenaStats, seasonState } from './arena.js';
+import { CFG, emptyState, refresh, rating, bouts, verdict, isLive, clockOf, nameOf, fightName, arenaStats, seasonState, podiumSeason } from './arena.js';
 import { $, esc, keep, tName, header, footer, cup, avatar, agentUrl, matchUrl, joinPrompt, mmss, siteUrl, toast, t, applyI18n, seasonLine, CHALLENGES } from './ui.js';
 
 $('#head').innerHTML = header('arena');
@@ -51,13 +51,18 @@ $('#challengeLink').addEventListener('click', async () => {
 });
 
 let podiumSig = '';
+/** The podium: the three winners of the last closed season (before any is closed, the season's
+ *  leaders so far). The whole rating is on its own page. */
+let podiumData = null;
 function podium() {
-  const top = rating(s).slice(0, 3);
-  const sig = JSON.stringify(top.map((r) => [r.agent, r.points, r.timeUsed, r.name]));
-  if (!top.length || sig === podiumSig) return;
+  const p = podiumData;
+  const sig = JSON.stringify(p);
+  if (!p || sig === podiumSig) return;
   podiumSig = sig;
-  $('#podium').innerHTML = top
-    .map((r) => `<div class="place">${cup(r.rank)}<div class="who"><b>${keep(r.name)} ${r.official ? '<span class="badge id" translate="no">Agent ID</span>' : ''}</b><span>${keep(r.model)} · ${t('solvedOf', r.solved)} · ${r.timeUsed}s</span></div><div class="pts" translate="no">${r.points}</div></div>`)
+  $('.o-top h2').textContent = t(p.closed ? 'podiumWinners' : 'podiumLeaders', p.season);
+  if (!p.top.length) return;
+  $('#podium').innerHTML = p.top
+    .map((r, i) => `<div class="place">${cup(i + 1)}<div class="who"><b>${keep(r.name || nameOf(s, r.agent))} <span class="badge id" translate="no">Agent ID</span></b><span>${r.timeUsed}s</span></div><div class="pts" translate="no">${r.points}</div></div>`)
     .join('');
 }
 
@@ -220,6 +225,7 @@ async function loop() {
   try {
     await refresh(s);
     season = await seasonState().catch(() => season);
+    podiumData = await podiumSeason().catch(() => podiumData);
     renderSeason();
     render();
   } catch (e) {

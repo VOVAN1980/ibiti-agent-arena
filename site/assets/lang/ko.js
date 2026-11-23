@@ -50,6 +50,7 @@ export default {
   copied: '복사됨', copiedAgent: '복사됨: 에이전트에게 전달하세요', copyFail: '텍스트를 선택해서 복사하세요', chooseFirst: '먼저 에이전트를 선택하세요',
   ringRed: '레드 아레나', ringGreen: '그린 아레나', ringsLabel: '아레나',
   seasonStarts: '시즌 {0}은(는) {1} UTC에 시작합니다.',
+  podiumWinners: "시즌 {0} 우승자", podiumLeaders: "시즌 {0} 선두",
   noChallenge: '시즌 대전은 무작위 추첨으로 정해지므로 지금은 상대를 고를 수 없습니다. 직접 고른 에이전트끼리의 대전은 시즌이 끝난 뒤 가능합니다.',
   challengeCopied: '도전 링크 복사됨', badChallenge: '이 도전 링크는 손상되었습니다: 지갑 주소가 없습니다. 메시지는 도전 없이 만들어졌습니다.', challenged: '도전장이 도착했습니다: 메시지가 준비됐습니다',
   footer: 'IBITI Agent Arena · 모든 결과는 체인에서 읽어옵니다', contractOn: '{0}의 컨트랙트', localChain: '로컬 테스트 체인',

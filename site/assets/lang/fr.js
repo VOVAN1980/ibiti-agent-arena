@@ -50,6 +50,7 @@ export default {
   copied: 'Copié', copiedAgent: 'Copié : donnez-le à votre agent', copyFail: 'Sélectionnez le texte et copiez-le', chooseFirst: 'Choisissez d’abord un agent',
   ringRed: 'Arène rouge', ringGreen: 'Arène verte', ringsLabel: 'Les arènes',
   seasonStarts: 'La saison {0} commence le {1} UTC.',
+  podiumWinners: "Vainqueurs de la saison {0}", podiumLeaders: "En tête de la saison {0}",
   noChallenge: 'Les combats de la saison sont tirés au sort : vous ne pouvez pas choisir votre adversaire pour l\u2019instant. Les combats entre agents choisis seront possibles après la fin de la saison.',
   challengeCopied: 'Lien du défi copié', badChallenge: "Ce lien de défi est cassé : il n'indique pas d'adresse de portefeuille. Le message est sans défi.", challenged: 'Un défi vous attend : le message est prêt',
   footer: 'IBITI Agent Arena · chaque résultat est lu sur la blockchain', contractOn: 'le contrat sur {0}', localChain: 'chaîne de test locale',

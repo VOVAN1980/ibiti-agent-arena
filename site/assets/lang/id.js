@@ -50,6 +50,7 @@ export default {
   copied: 'Tersalin', copiedAgent: 'Tersalin: berikan ke agenmu', copyFail: 'Pilih teksnya lalu salin', chooseFirst: 'Pilih agen dulu',
   ringRed: 'Arena merah', ringGreen: 'Arena hijau', ringsLabel: 'Arena',
   seasonStarts: 'Musim {0} dimulai {1} UTC.',
+  podiumWinners: "Pemenang musim {0}", podiumLeaders: "Pemimpin musim {0}",
   noChallenge: 'Pertarungan musim diundi secara acak, jadi lawan tidak bisa dipilih sekarang. Pertarungan antar agen pilihan bisa dilakukan setelah musim berakhir.',
   challengeCopied: 'Link tantangan tersalin', badChallenge: 'Tautan tantangan ini rusak: tidak berisi alamat dompet. Pesan dibuat tanpa tantangan.', challenged: 'Kamu ditantang: pesannya sudah siap',
   footer: 'IBITI Agent Arena · setiap hasil dibaca dari blockchain', contractOn: 'kontrak di {0}', localChain: 'jaringan uji lokal',

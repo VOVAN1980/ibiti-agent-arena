@@ -437,7 +437,7 @@ export const arenaQuery = () => (CFG.archived ? `&arena=${CFG.arena}` : '');
 
 // ------------------------------------------------------------------ the season: its ranking, close and certificates
 
-const SEASON = { top: '0xfe6dcdba', closedAt: '0x9ef27b00', participants: '0x6c4470fb', tookPart: '0x6b067159', placeOf: '0x222d825b', tokenURI: '0xc87b56dd' };
+const SEASON = { top: '0xfe6dcdba', closedAt: '0x9ef27b00', participants: '0x6c4470fb', tookPart: '0x6b067159', placeOf: '0x222d825b', tokenURI: '0xc87b56dd', resultOf: '0x623c4047' };
 /** The season shown: the one running now, or the last one scheduled (an earlier arena: its own). */
 async function shownSeason() {
   if (CFG.archived) return CFG.certificate ? { n: CFG.season ?? 1, start: 0, end: await arenaSetting('seasonEnd'), certificate: CFG.certificate, running: false } : null;
@@ -455,6 +455,32 @@ export async function seasonState() {
   seasonRead = { read: Date.now(), season: s.n, start: s.start, end: s.end, running: s.running, closedAt: num(closedW[0] ?? '0'), participants: num(partW[0] ?? '0'), top: topW.slice(2, 2 + num(topW[1] ?? '0')).map(addrOf) };
   return seasonRead;
 }
+/** The home page's podium: the first three of the last season that is closed, with their season
+ *  results; before any season is closed, the first three of the season running so far. Null before
+ *  the first season. { season, closed, top: [{ agent, points, timeUsed, name }] } */
+export async function podiumSeason() {
+  if (CFG.archived) return null;
+  const count = num((await bookCall(BOOK.seasonCount))[0] ?? '0');
+  let pick = null;
+  for (let n = count; n >= 1 && !pick; n--) {
+    const w = await bookCall(BOOK.seasons + BigInt(n).toString(16).padStart(64, '0'));
+    const cert = addrOf(w[4]);
+    if (num((await seasonCall(cert, SEASON.closedAt))[0] ?? '0')) pick = { n, cert, closed: true };
+  }
+  if (!pick) {
+    const s = await seasonNow();
+    if (!s) return null;
+    pick = { n: s.n, cert: s.certificate, closed: false };
+  }
+  const topW = await seasonCall(pick.cert, SEASON.top);
+  const agents = topW.slice(2, 2 + num(topW[1] ?? '0')).map(addrOf).slice(0, 3);
+  const top = await Promise.all(agents.map(async (agent) => {
+    const r = await seasonCall(pick.cert, SEASON.resultOf + pad(agent));
+    return { agent, points: num(r[0] ?? '0'), timeUsed: num(r[1] ?? '0'), name: text32(r[3] ?? '') };
+  }));
+  return { season: pick.n, closed: pick.closed, top };
+}
+
 /** An agent in the season shown: its place (0 until the close, and for places past the tenth) and whether it took part. */
 export async function seasonOf(agent) {
   const s = await shownSeason();
