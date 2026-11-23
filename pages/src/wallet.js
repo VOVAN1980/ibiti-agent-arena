@@ -132,7 +132,7 @@ export function dayOf(seed, override = {}, passKey, done = { 3: true, 4: true },
   const reserve = (name, always) => {
     const active = always || rng.chance(0.5);
     let until = active ? at[5] + 10 + rng.int(240) : at[5] - 10 - rng.int(120);
-    if (Math.abs(until - at[9]) <= 3) until = at[9] + 7; // never "valid until 15:12" when it is 15:12
+    if (Math.abs(until - at[9]) <= 6) until = at[9] + 9; // never "valid until 15:12" when it is 15:12, nor a few minutes off
     return { name, amount: 100 + rng.int(30) * 10, active, until };
   };
   const reserves = [reserve('payroll', true), reserve('taxes', false), reserve('the audit fee', false)];
@@ -475,7 +475,9 @@ export const WALLET = {
       act([...f, k[0]], p, 'missed one cancelled payment'),
     ];
     const opts = choose(c, right, wrongs, 9);
-    const block = () => '0x' + (44000000 + c.rng.int(900000)).toString(16);
+    // receipts' blocks follow the nonces, a few blocks apart (one wallet, one morning)
+    const b0 = 44000000 + c.rng.int(800000);
+    const block = (x) => '0x' + (b0 + (x.nonce - d.n0) * 4 + (x.nonce % 3)).toString(16);
     const tx = (hash, from, nonce, to, input, status) => [hash, from, '0x' + nonce.toString(16), to, '0x0', input, status];
     const payment = (x) => transferData(x.payeeAddr, BigInt(x.amount) * E18);
     const mined = [
@@ -488,8 +490,8 @@ export const WALLET = {
       tx('0x' + hex(c.rng, 64), addr(c.rng), s[0].nonce, d.owner, '0x', '0x1'), // a stranger's 0-value transfer with a familiar nonce
     ];
     const receipt = (x) =>
-      x.status === 'confirmed' ? `{"status":"0x1","blockNumber":"${block()}"}`
-      : x.status === 'failed' ? `{"status":"0x0","blockNumber":"${block()}"}`
+      x.status === 'confirmed' ? `{"status":"0x1","blockNumber":"${block(x)}"}`
+      : x.status === 'failed' ? `{"status":"0x0","blockNumber":"${block(x)}"}`
       : 'null';
     const why = { confirmed: 'receipt 0x1: paid', failed: 'receipt 0x0: reverted, retry', sped: 'no receipt, but its nonce was used by the same payment: paid', cancelled: 'no receipt, its nonce was used by a 0-value transfer to this wallet: cancelled, retry', pending: 'no receipt and its nonce is still unused: pending, wait' };
     return {
