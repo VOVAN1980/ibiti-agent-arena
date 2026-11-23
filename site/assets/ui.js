@@ -234,3 +234,7 @@ document.addEventListener('change', (e) => {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') gearMenu(false);
 });
+// the bar is clear at the top of the page and turns to dark glass once the page scrolls
+const barGlass = () => document.querySelectorAll('header.top, header.bar').forEach((h) => h.classList.toggle('scrolled', scrollY > 8));
+addEventListener('scroll', barGlass, { passive: true });
+addEventListener('load', barGlass);

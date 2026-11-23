@@ -22,12 +22,13 @@ a { color: inherit; }
 /* ---- the stage: one screen tall plus the camera's travel */
 .stage { position: relative; height: 175vh; }
 .stage > * { will-change: transform, opacity; }
-.arena-bg { position: fixed; inset: var(--bar) 0 0 0; pointer-events: none; background: #07080c url(home/arena.jpg) 50% 0 / cover no-repeat; transform: scale(calc(1 + var(--p) * .55)); transform-origin: 50% 58%; filter: brightness(calc(1 - var(--q) * .45)); }
+.arena-bg { position: fixed; inset: 0; pointer-events: none; background: #07080c url(home/arena.jpg) 50% 0 / cover no-repeat; transform: scale(calc(1 + var(--p) * .55)); transform-origin: 50% 58%; filter: brightness(calc(1 - var(--q) * .45)); }
 /* the top and the bottom darker, so the title and the showcases read over the picture */
 .arena-bg::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(7,8,12,.55) 0%, rgba(7,8,12,.05) 30%, rgba(7,8,12,.1) 55%, rgba(7,8,12,.75) 100%); }
 
 /* ---- the bar */
-.bar { position: fixed; top: 0; left: 0; right: 0; z-index: 20; display: flex; align-items: center; gap: 24px; height: var(--bar); padding: 0 36px; background: #07080c; border-bottom: 1px solid rgba(255,255,255,.06); }
+.bar { position: fixed; top: 0; left: 0; right: 0; z-index: 20; display: flex; align-items: center; gap: 24px; height: var(--bar); padding: 0 36px; background: linear-gradient(180deg, rgba(7,8,12,.6), rgba(7,8,12,0)); border-bottom: 1px solid transparent; transition: background .3s, border-color .3s; }
+.bar.scrolled { background: rgba(7,8,12,.62); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom-color: rgba(255,255,255,.08); }
 .logo { display: flex; align-items: center; gap: 12px; text-decoration: none; }
 .logo svg { width: 46px; height: 46px; color: #e8ebf2; }
 .logo span { display: flex; flex-direction: column; line-height: 1; border-left: 1px solid rgba(255,255,255,.35); padding-left: 12px; }

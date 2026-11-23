@@ -529,6 +529,7 @@ export async function seasonNumbers() {
 export async function seasonTable(s, n = null) {
   if (!tableRead || tableRead.asked !== n || Date.now() - tableRead.read > 15000) {
     let sh;
+    let now = null; // the season running now, when the table shows the one before it
     if (n && !CFG.archived) {
       const w = await bookCall(BOOK.seasons + BigInt(n).toString(16).padStart(64, '0'));
       sh = { n, running: num(w[0]) * 1000 <= Date.now() && Date.now() < num(w[1]) * 1000, end: num(w[1]), certificate: addrOf(w[4]) };
@@ -538,6 +539,7 @@ export async function seasonTable(s, n = null) {
     // a season that has no official fight yet: the table shows the season before it, its final places
     if (!n && !num(topW[1] ?? '0') && sh.n > 1 && !CFG.archived) {
       const w = await bookCall(BOOK.seasons + BigInt(sh.n - 1).toString(16).padStart(64, '0'));
+      now = sh.n;
       sh = { n: sh.n - 1, running: false, end: num(w[1]), certificate: addrOf(w[4]) };
       [topW, closedW] = await Promise.all([seasonCall(sh.certificate, SEASON.top), seasonCall(sh.certificate, SEASON.closedAt)]);
     }
@@ -546,7 +548,7 @@ export async function seasonTable(s, n = null) {
       const r = await seasonCall(sh.certificate, SEASON.resultOf + pad(agent));
       return { agent, points: num(r[0] ?? '0'), timeUsed: num(r[1] ?? '0'), name: text32(r[3] ?? '') };
     }));
-    tableRead = { read: Date.now(), asked: n, season: sh.n, running: !!sh.running, end: sh.end, closed: num(closedW[0] ?? '0') > 0, results };
+    tableRead = { read: Date.now(), asked: n, season: sh.n, now: now ?? sh.n, running: !!sh.running, end: sh.end, closed: num(closedW[0] ?? '0') > 0, results };
   }
   const rows = tableRead.results.map((r, i) => {
     // the fight of this result: an official judged fight of the agent with these points and time
@@ -555,7 +557,7 @@ export async function seasonTable(s, n = null) {
       .sort((a, b) => a.number - b.number)[0];
     return { rank: i + 1, agent: r.agent, name: r.name || (f ? fightName(s, f) : ''), model: f?.model ?? s.fighters.get(r.agent)?.model ?? '', points: r.points, timeUsed: r.timeUsed, solved: f?.judged.solved ?? null, fouls: f?.judged.fouls ?? null, number: f?.number ?? null };
   });
-  return { season: tableRead.season, running: tableRead.running, closed: tableRead.closed, end: tableRead.end, rows };
+  return { season: tableRead.season, now: tableRead.now, running: tableRead.running, closed: tableRead.closed, end: tableRead.end, rows };
 }
 
 /** An agent in the season shown: its place (0 until the close, and for places past the tenth) and whether it took part. */

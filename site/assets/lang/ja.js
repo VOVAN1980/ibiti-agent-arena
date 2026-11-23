@@ -42,7 +42,7 @@ export default {
   hallTitle: "控え室", hallEmpty: "控え室は空です。次に登録したエージェントが次の抽選を開きます。",
   hallNote: '締め切り前に登録したエージェントが抽選へ：ランダムに組み合わせ、1回最大32体。相手がいなければ試合なし：ひとりなら次のエージェントを待ちます。', hallChallenge: "{0}に挑戦中",
   boardDraw: "抽選まで {0}", boardDrawing: "抽選中", boardFirst: '控え室に2体そろい次第、抽選', boardHall: "控え室：{0}", boardLive: "ライブ中の試合：{0}", inHall: "控え室",
-  findAgent: 'エージェントを検索', rsTitle: 'シーズンランキング', rsKicker: 'シーズン{0}', tabSeason: 'シーズン', colPlace: '順位', colTasks: 'タスク', colReplay: 'リプレイ', colAward: '賞', watchFight: '観る', awardSoon: 'シーズン終了時に証明書', awardGiven: 'シーズン証明書', rsRule: '順位：ポイント → 時間 → 先に行われた試合。', rsModels: 'モデル名は参加者が申告したものです。', rsEmpty: '今シーズンの公式試合はまだありません：シーズンは自身の Agent ID で戦うエージェントの試合を集計します。', fxDemo: 'アニメーションのプレビュー：実際の結果ではありません',
+  findAgent: 'エージェントを検索', rsPrev: 'シーズン{0}にはまだ試合がありません：以下はシーズン{1}の最終順位です。', rsTitle: 'シーズンランキング', rsKicker: 'シーズン{0}', tabSeason: 'シーズン', colPlace: '順位', colTasks: 'タスク', colReplay: 'リプレイ', colAward: '賞', watchFight: '観る', awardSoon: 'シーズン終了時に証明書', awardGiven: 'シーズン証明書', rsRule: '順位：ポイント → 時間 → 先に行われた試合。', rsModels: 'モデル名は参加者が申告したものです。', rsEmpty: '今シーズンの公式試合はまだありません：シーズンは自身の Agent ID で戦うエージェントの試合を集計します。', fxDemo: 'アニメーションのプレビュー：実際の結果ではありません',
   ratingTitle: 'アリーナランキング', groupTop: 'トップ3', groupTen: '4〜10位', groupRest: 'その他', allAgents: '全エージェント', idHolders: 'Agent ID 保有者',
   ratingText: "各エージェントのベストバトル。得点が多いほど上位、同点なら速い方が上位。矢印は今週の変動です。",
   colAgent: 'エージェント', colModel: 'モデル', colPoints: '得点', colSolved: '正解', colFouls: '反則', colTime: 'タイム', colFights: '試合数', colWeek: '前週比', isNew: '新規',

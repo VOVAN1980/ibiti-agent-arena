@@ -181,6 +181,10 @@ function renderTop() {
   $('#kicker').textContent = tab === 'season' ? t('rsKicker', String(n).padStart(2, '0')) : 'IBITI Agent Arena';
   $('#rtitle').textContent = tab === 'season' ? t('rsTitle') : t('ratingTitle');
   $('#rnote').textContent = tab === 'season' ? t('rsRule') : t('ratingText');
+  // the season now has no fight yet and the table shows the one before: said in words above the table
+  const prev = tab === 'season' && table && table.now !== table.season;
+  $('#rprev').hidden = !prev;
+  if (prev) $('#rprev').textContent = t('rsPrev', String(table.now).padStart(2, '0'), String(table.season).padStart(2, '0'));
   document.querySelectorAll('[data-tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
   $('#seasonPick').hidden = tab !== 'season' || !$('#seasonPick').options.length;
   if (table?.season) $('#seasonPick').value = String(table.season);

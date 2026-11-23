@@ -721,10 +721,23 @@ body { background: transparent; }
 body::before { content: ''; position: fixed; inset: -40px; z-index: -1; pointer-events: none; background: url(home/arena.jpg) 50% 35% / cover no-repeat; filter: blur(16px) brightness(.34) saturate(.9); }
 body::after { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none; background: radial-gradient(70% 50% at 50% 0%, rgba(255,255,255,.05), transparent 70%), linear-gradient(180deg, rgba(7,8,12,.2), rgba(7,8,12,.75)); }
 
-/* ---- the header: the front page's dark band, full width */
-header.top { position: sticky; top: 0; z-index: 40; padding: 14px 0; border-bottom: 1px solid rgba(255,255,255,.06); margin-bottom: 22px; }
-/* the bar's dark band runs the full width behind it; a band, not a clip, so the gear's menu can open below the bar */
-header.top::before { content: ''; position: absolute; inset: 0; background: #07080c; box-shadow: 0 0 0 100vmax #07080c; clip-path: inset(0 -100vmax); z-index: -1; pointer-events: none; }
+/* ---- the header: one thin line across the whole screen, the brand in the left corner, the rings in the
+   middle, the pages and the gear in the right corner. Clear at the top of the page so the picture behind
+   shows whole; once the page scrolls, a light dark glass so the words stay readable. */
+header.top { position: sticky; top: 0; z-index: 40; display: flex; align-items: center; gap: 16px; padding: 10px 28px; margin: 0 calc(50% - 50vw) 14px; width: auto; border-bottom: 1px solid transparent; transition: border-color .3s; }
+header.top::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(180deg, rgba(7,8,12,.55), rgba(7,8,12,0)); transition: background .3s, backdrop-filter .3s; }
+header.top.scrolled { border-bottom-color: rgba(255,255,255,.08); }
+header.top.scrolled::before { background: rgba(7,8,12,.62); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+header.top .brand { margin-right: auto; }
+header.top nav.rings { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); margin: 0; order: 0; grid-column: auto; }
+header.top nav.links { order: 1; }
+header.top .gear { order: 2; }
+header.top nav.rings .ringpill { background: rgba(7,8,12,.35); backdrop-filter: blur(4px); }
+/* not room for the rings in the middle: they go on a line of their own under the bar */
+@media (max-width: 1240px) {
+  header.top { flex-wrap: wrap; row-gap: 6px; }
+  header.top nav.rings { position: static; transform: none; order: 3; flex: 1 1 100%; justify-content: center; }
+}
 .brand svg { width: 40px; height: 40px; color: #e8ebf2; }
 .brand > span { display: flex; flex-direction: column; line-height: 1; border-left: 1px solid rgba(255,255,255,.35); padding-left: 12px; }
 .brand b { font: 900 italic 22px var(--display); letter-spacing: .02em; transform: skewX(-8deg); transform-origin: left; }
@@ -790,3 +803,13 @@ table.rating th { text-transform: uppercase; letter-spacing: .14em; font-size: 1
 /* the music button the browser asks for, and the ring's sound gate: steel, square */
 .soundgate { border-radius: 0; border-color: rgba(255,255,255,.6); box-shadow: none; animation: none; text-transform: uppercase; letter-spacing: .14em; font: 700 12px var(--font); clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px); }
 .musicgate { border-radius: 0; border-color: rgba(255,255,255,.6); box-shadow: none; animation: none; text-transform: uppercase; letter-spacing: .14em; font: 700 12px var(--font); clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px); }
+
+@media (max-width: 760px) {
+  header.top { padding: 8px 14px; gap: 8px; }
+  header.top nav.links { order: 3; flex: 1 1 100%; display: grid; grid-template-columns: repeat(4, 1fr); }
+  header.top nav.rings { order: 4; }
+}
+
+/* small words read clearly on the dark: a little lighter grey, no thinning */
+:root { --ink-2: #ccd3e1; --ink-3: #a7b0c2; }
+html, body { -webkit-font-smoothing: auto; -moz-osx-font-smoothing: auto; }

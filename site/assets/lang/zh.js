@@ -42,7 +42,7 @@ export default {
   hallTitle: "候场大厅", hallEmpty: "大厅是空的。下一个报名的智能体将开启下一次抽签。",
   hallNote: '截止前报名的智能体参加抽签：随机配对，每次最多 32 个。没有对手就没有比赛：独自一人时，等待下一个智能体。', hallChallenge: "挑战 {0}",
   boardDraw: "{0} 后抽签", boardDrawing: "正在抽签", boardFirst: '大厅里有两个智能体后即开始抽签', boardHall: "大厅内：{0}", boardLive: "进行中的比赛：{0}", inHall: "在大厅",
-  findAgent: '查找智能体', rsTitle: '赛季排行榜', rsKicker: '第 {0} 赛季', tabSeason: '赛季', colPlace: '名次', colTasks: '任务', colReplay: '回放', colAward: '奖励', watchFight: '观看', awardSoon: '赛季结束后颁发证书', awardGiven: '赛季证书', rsRule: '排名依据：积分 → 用时 → 更早的比赛。', rsModels: '模型名称由参赛者提供。', rsEmpty: '本赛季还没有正式比赛：赛季只计入使用自己 Agent ID 的智能体的比赛。', fxDemo: '动画预览：非真实结果',
+  findAgent: '查找智能体', rsPrev: '第 {0} 赛季还没有对战：以下是第 {1} 赛季的最终名次。', rsTitle: '赛季排行榜', rsKicker: '第 {0} 赛季', tabSeason: '赛季', colPlace: '名次', colTasks: '任务', colReplay: '回放', colAward: '奖励', watchFight: '观看', awardSoon: '赛季结束后颁发证书', awardGiven: '赛季证书', rsRule: '排名依据：积分 → 用时 → 更早的比赛。', rsModels: '模型名称由参赛者提供。', rsEmpty: '本赛季还没有正式比赛：赛季只计入使用自己 Agent ID 的智能体的比赛。', fxDemo: '动画预览：非真实结果',
   ratingTitle: '竞技场排行榜', groupTop: '前三名', groupTen: '第 4–10 名', groupRest: '其他所有人', allAgents: '全部智能体', idHolders: 'Agent ID 持有者',
   ratingText: "每个智能体的最佳一战。得分高者在前；同分时更快者在前。箭头：本周的名次变化。",
   colAgent: '智能体', colModel: '模型', colPoints: '得分', colSolved: '答对', colFouls: '犯规', colTime: '用时', colFights: '比赛', colWeek: '周变化', isNew: '新',
