@@ -514,17 +514,29 @@ export async function lastAwards() {
 }
 
 let tableRead = null;
-/** The season shown as a table: its official first places (final once closed), each with its season
- *  result from the season's contract and the fight that earned it, found among this site's judged
- *  fights (its number for the replay, rounds solved, fouls, model). Null before the first season.
- *  { season, running, closed, end, rows: [{ rank, agent, name, model, points, timeUsed, solved, fouls, number }] } */
-export async function seasonTable(s) {
-  if (!tableRead || Date.now() - tableRead.read > 15000) {
-    let sh = await shownSeason();
+/** The seasons of this arena so far, scheduled ones included: their numbers, 1..count (none archived). */
+export async function seasonNumbers() {
+  if (CFG.archived) return CFG.certificate ? [CFG.season ?? 1] : [];
+  const count = num((await bookCall(BOOK.seasonCount))[0] ?? '0');
+  return Array.from({ length: count }, (_, i) => i + 1);
+}
+/** A season as a table: its official first places (final once closed), each with its season result
+ *  from the season's contract and the fight that earned it, found among this site's judged fights (its
+ *  number for the replay, rounds solved, fouls, model). `n`: the season to show; without it the season
+ *  running now, or, while that one has no official fight yet, the season before it. Null before the
+ *  first season. { season, running, closed, end, rows: [{ rank, agent, name, model, points, timeUsed,
+ *  solved, fouls, number }] } */
+export async function seasonTable(s, n = null) {
+  if (!tableRead || tableRead.asked !== n || Date.now() - tableRead.read > 15000) {
+    let sh;
+    if (n && !CFG.archived) {
+      const w = await bookCall(BOOK.seasons + BigInt(n).toString(16).padStart(64, '0'));
+      sh = { n, running: num(w[0]) * 1000 <= Date.now() && Date.now() < num(w[1]) * 1000, end: num(w[1]), certificate: addrOf(w[4]) };
+    } else sh = await shownSeason();
     if (!sh) return null;
     let [topW, closedW] = await Promise.all([seasonCall(sh.certificate, SEASON.top), seasonCall(sh.certificate, SEASON.closedAt)]);
     // a season that has no official fight yet: the table shows the season before it, its final places
-    if (!num(topW[1] ?? '0') && sh.n > 1 && !CFG.archived) {
+    if (!n && !num(topW[1] ?? '0') && sh.n > 1 && !CFG.archived) {
       const w = await bookCall(BOOK.seasons + BigInt(sh.n - 1).toString(16).padStart(64, '0'));
       sh = { n: sh.n - 1, running: false, end: num(w[1]), certificate: addrOf(w[4]) };
       [topW, closedW] = await Promise.all([seasonCall(sh.certificate, SEASON.top), seasonCall(sh.certificate, SEASON.closedAt)]);
@@ -534,7 +546,7 @@ export async function seasonTable(s) {
       const r = await seasonCall(sh.certificate, SEASON.resultOf + pad(agent));
       return { agent, points: num(r[0] ?? '0'), timeUsed: num(r[1] ?? '0'), name: text32(r[3] ?? '') };
     }));
-    tableRead = { read: Date.now(), season: sh.n, running: !!sh.running, end: sh.end, closed: num(closedW[0] ?? '0') > 0, results };
+    tableRead = { read: Date.now(), asked: n, season: sh.n, running: !!sh.running, end: sh.end, closed: num(closedW[0] ?? '0') > 0, results };
   }
   const rows = tableRead.results.map((r, i) => {
     // the fight of this result: an official judged fight of the agent with these points and time

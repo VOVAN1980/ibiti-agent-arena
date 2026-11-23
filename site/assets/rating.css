@@ -127,3 +127,15 @@ canvas.rankfx { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index:
 .rankpage .seasonbox b { font-size: 13px; }
 .rankpage .seasonbox .tiny { font-size: 12px; }
 .rankpage header.top { margin-bottom: 10px; }
+.seasonpick { margin-left: auto; align-self: center; margin-right: 10px; min-width: 150px; padding: 7px 34px 7px 12px; font: 600 14px var(--numbers); letter-spacing: .04em; color: #fff; cursor: pointer;
+  background: rgba(6,8,12,.6) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2'%3E%3Cpath d='m7 10 5 5 5-5'/%3E%3C/svg%3E") no-repeat right 10px center / 16px;
+  border: 1px solid rgba(255,255,255,.35); border-radius: 0; appearance: none; -webkit-appearance: none; }
+.seasonpick[hidden] { display: none; }
+.seasonpick option { background: #0e1322; color: #fff; }
+.rfind { position: relative; align-self: center; display: flex; align-items: center; }
+.rfind svg { position: absolute; left: 10px; width: 16px; height: 16px; color: rgba(255,255,255,.7); pointer-events: none; }
+.rfind input { width: 220px; padding: 7px 12px 7px 34px; font: 500 15px var(--serif); color: #fff; background: rgba(6,8,12,.6); border: 1px solid rgba(255,255,255,.35); border-radius: 0; outline: none; }
+.rfind input::placeholder { color: rgba(255,255,255,.6); }
+.rfind input:focus { border-color: rgba(255,255,255,.8); }
+.rtabs { flex-wrap: wrap; align-items: center; }
+@media (max-width: 860px) { .seasonpick { margin-left: 0; } .rfind, .rfind input { width: 100%; } .rfind { flex: 1 1 100%; margin: 6px 0; } }

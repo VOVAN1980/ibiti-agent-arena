@@ -5,7 +5,7 @@
 // off, and the new holder gathers there from dust and pieces (rankfx.js), with a sound when the arena's
 // sound is on.
 // ?fx=demo shows the effect on the rows there are, moving one up now and then, and says it is a preview.
-import { CFG, emptyState, refresh, rating, seasonState, seasonTable, lastAwards, nameOf } from './arena.js';
+import { CFG, emptyState, refresh, rating, seasonState, seasonTable, seasonNumbers, lastAwards, nameOf } from './arena.js';
 import { $, esc, keep, header, footer, t, applyI18n, agentUrl, matchUrl, seasonLine, RING } from './ui.js';
 import { shatter, assemble, soundShatter, soundLand, reduced, GATHER } from './rankfx.js';
 
@@ -22,6 +22,7 @@ let tab = ['open', 'official'].includes(location.hash.slice(1)) ? location.hash.
 let season = null; // the season's line: until when it runs, its winners once closed
 let table = null; // the season's table (seasonTable)
 let awards = null; // the certificates given: the last closed season's places (lastAwards)
+let picked = null; // the season chosen in the list (null: the one now)
 let shown = ''; // the view on screen: a switch of tab never animates
 let demoRows = null;
 
@@ -70,6 +71,10 @@ function headHtml() {
 
 // ------------------------------------------------------------------ the rows now
 
+/** What the search box asks for: part of a name, a model or an address (lowercase). */
+const query = () => ($('#find')?.value ?? '').trim().toLowerCase();
+const matches = (r) => !query() || [r.name, r.model, r.agent].some((x) => String(x ?? '').toLowerCase().includes(query()));
+
 function rowsNow() {
   if (tab === 'season') {
     const rows = (table?.rows ?? []).map((r) => ({ ...r, official: true }));
@@ -91,7 +96,8 @@ const box = () => $('#rows');
 const keyOf = (r) => r.agent.toLowerCase();
 
 function render() {
-  const rows = rowsNow();
+  // the search keeps each row's own place; the rows it leaves out simply are not drawn
+  const rows = rowsNow().filter(matches);
   const view = tab;
   const fresh = view !== shown; // a new view: draw it, no moves
   shown = view;
@@ -176,6 +182,8 @@ function renderTop() {
   $('#rtitle').textContent = tab === 'season' ? t('rsTitle') : t('ratingTitle');
   $('#rnote').textContent = tab === 'season' ? t('rsRule') : t('ratingText');
   document.querySelectorAll('[data-tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
+  $('#seasonPick').hidden = tab !== 'season' || !$('#seasonPick').options.length;
+  if (table?.season) $('#seasonPick').value = String(table.season);
   const html = seasonLine(season, (a) => nameOf(s, a));
   if ($('#seasonBox').innerHTML !== html) $('#seasonBox').innerHTML = html;
   $('#seasonBox').style.display = html ? '' : 'none';
@@ -202,10 +210,33 @@ if (DEMO) {
   }, 9000);
 }
 
+// the list of seasons: choosing one shows its table (the list fills once the calendar is read)
+async function fillSeasons() {
+  const ns = await seasonNumbers().catch(() => []);
+  const sel = $('#seasonPick');
+  const html = ns.map((n) => `<option value="${n}">${esc(t('rsKicker', String(n).padStart(2, '0')))}</option>`).join('');
+  if (sel.dataset.html !== html) {
+    sel.innerHTML = html;
+    sel.dataset.html = html;
+  }
+}
+$('#find').addEventListener('input', () => {
+  shown = ''; // a filtered table is drawn, not animated
+  render();
+});
+$('#seasonPick').addEventListener('change', async (e) => {
+  picked = Number(e.target.value) || null;
+  demoRows = null;
+  shown = ''; // a new table: drawn, not animated
+  table = await seasonTable(s, picked).catch(() => table);
+  renderTop();
+  render();
+});
+
 async function loop() {
   try {
     await refresh(s);
-    [season, table, awards] = await Promise.all([seasonState().catch(() => season), seasonTable(s).catch(() => table), lastAwards().catch(() => awards)]);
+    [season, table, awards] = await Promise.all([seasonState().catch(() => season), seasonTable(s, picked).catch(() => table), lastAwards().catch(() => awards), fillSeasons()]);
     renderTop();
     render();
   } catch (e) {
