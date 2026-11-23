@@ -5,6 +5,7 @@ import "forge-std/Script.sol";
 import {AgentArena, ArenaDecoy} from "../src/AgentArena.sol";
 import {ArenaArt} from "../src/ArenaArt.sol";
 import {ArenaCertificate} from "../src/ArenaCertificate.sol";
+import {ArenaRanking} from "../src/ArenaRanking.sol";
 import {ArenaPictures} from "./ArenaPictures.sol";
 import {MockAgentId} from "./MockAgentId.sol";
 
@@ -22,6 +23,9 @@ import {MockAgentId} from "./MockAgentId.sol";
 ///                      On BNB Smart Chain (56) it must be the SPACE ID Agent ID contract.
 ///   COOLDOWN           seconds between two fights of an agent (default 86400: one fight a day)
 ///   ART                an ArenaArt already on this chain, to reuse its pictures (unset: deploy them)
+///   RANKING_ONLY       true for the street (green) ring: season 1 keeps a ranking and gives no award
+///                      (ArenaRanking; no pictures are deployed). A later season can give certificates
+///                      with pictures of its own (ScheduleSeason.s.sol) on the same arena.
 ///   ROUND_TIME         seconds per round (default 60)
 ///   DRAW_EVERY         seconds between two draws (default 600: every ten minutes)
 ///   OUT                where to write the addresses (default ./deployments/<chainid>.json)
@@ -52,11 +56,17 @@ contract Deploy is Script {
             require(block.chainid != 56, "mainnet needs the real Agent ID registry");
             registry = address(new MockAgentId());
         }
-        // the certificate pictures are stored once: a second arena (the green ring) reuses the ArenaArt
-        // already on this chain (ART), and nothing about it can change
+        // the street ring keeps a ranking only: no award, so no pictures. The tournament ring's pictures
+        // are stored once: an arena reuses the ArenaArt already on this chain (ART), and nothing about
+        // it can change
+        // on mainnet the choice is stated by name: a forgotten RANKING_ONLY must not buy pictures and
+        // awards for the street ring
+        if (block.chainid == 56) require(vm.envExists("RANKING_ONLY"), "set RANKING_ONLY: true (street ring) or false (tournament ring)");
+        bool rankingOnly = vm.envOr("RANKING_ONLY", false);
         address artAt = vm.envOr("ART", address(0));
+        require(!rankingOnly || artAt == address(0), "RANKING_ONLY takes no ART");
         if (artAt != address(0)) require(artAt.code.length > 0, "ART has no code on this chain");
-        ArenaArt art = artAt != address(0) ? ArenaArt(artAt) : ArenaPictures.deploy(vm);
+        ArenaArt art = rankingOnly ? ArenaArt(address(0)) : artAt != address(0) ? ArenaArt(artAt) : ArenaPictures.deploy(vm);
         AgentArena arena = new AgentArena(registry, cooldown, roundTime, drawEvery);
         address[9] memory decoys;
         for (uint256 i; i < 9; ++i) {
@@ -64,7 +74,9 @@ contract Deploy is Script {
             arena.setDecoy(decoys[i], DECOY_TRAPS[i]);
         }
         arena.seal();
-        ArenaCertificate certificate = new ArenaCertificate("IBITI Agent Arena", "ARENA", address(arena), art, arena.TEST_VERSION(), 1);
+        ArenaRanking certificate = rankingOnly
+            ? new ArenaRanking(address(arena), 1)
+            : new ArenaCertificate("IBITI Agent Arena", "ARENA", address(arena), art, arena.TEST_VERSION(), 1);
         arena.seasonBook().schedule(seasonStart, seasonEnd, judge, secretCommit, address(certificate));
         vm.stopBroadcast();
 

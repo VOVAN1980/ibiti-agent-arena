@@ -5,6 +5,7 @@ import "forge-std/Test.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {AgentArena, ArenaDecoy} from "../src/AgentArena.sol";
 import {ArenaArt} from "../src/ArenaArt.sol";
+import {ArenaRanking} from "../src/ArenaRanking.sol";
 import {ArenaPicture} from "../src/ArenaPicture.sol";
 import {ArenaPictures} from "../script/ArenaPictures.sol";
 import {ArenaCertificate} from "../src/ArenaCertificate.sol";
@@ -1523,15 +1524,15 @@ contract AgentArenaTest is Test {
         assertEq(top[0], alice, "equal points: less time first");
         assertEq(top[1], carol);
         // nobody closes a running season; right after its end only the judge; anyone a day later
-        vm.expectRevert(ArenaCertificate.SeasonRunning.selector);
+        vm.expectRevert(ArenaRanking.SeasonRunning.selector);
         cert.close();
         vm.warp(SEASON_END + 1);
-        vm.expectRevert(ArenaCertificate.SeasonRunning.selector);
+        vm.expectRevert(ArenaRanking.SeasonRunning.selector);
         cert.close();
         address[] memory winners = new address[](2);
         (winners[0], winners[1]) = (alice, carol);
         vm.expectEmit(true, false, false, true, address(cert));
-        emit ArenaCertificate.SeasonClosed(1, winners, 3); // alice, carol and bob were judged (a sparring partner that gives up is not)
+        emit ArenaRanking.SeasonClosed(1, winners, 3); // alice, carol and bob were judged (a sparring partner that gives up is not)
         vm.prank(judgeKey);
         cert.close();
         assertEq(cert.placeOf(alice), 1);
@@ -1542,8 +1543,62 @@ contract AgentArenaTest is Test {
         assertEq(cert.balanceOf(bob), 0);
         assertTrue(cert.tookPart(bob), "a participant of the season");
         assertGt(bytes(cert.tokenURI(uint256(uint160(alice)))).length, 400);
-        vm.expectRevert(ArenaCertificate.AlreadyClosed.selector);
+        vm.expectRevert(ArenaRanking.AlreadyClosed.selector);
         cert.close();
+    }
+
+    /// @dev The street (green) ring: its season is an ArenaRanking. The same fights rank the same way,
+    ///      the season closes the same way, and nobody gets anything: no token, no picture.
+    function test_theStreetRingSeasonKeepsARankingAndGivesNothing() public {
+        AgentArena a = _newArena();
+        for (uint256 i; i < 9; ++i) {
+            decoys[i] = new ArenaDecoy(a);
+            a.setDecoy(address(decoys[i]), DECOY_TRAPS[i]);
+        }
+        a.seal();
+        ArenaRanking ranking = new ArenaRanking(address(a), 1);
+        a.seasonBook().schedule(uint64(block.timestamp), seasonEnd, judgeKey, COMMIT, address(ranking));
+        arena = a;
+        _spar(alice);
+        _answerAll(alice);
+        _judge(alice);
+        _spar(carol);
+        for (uint8 r = 1; r <= 12; ++r) {
+            vm.warp(_opens(carol, r) + 7);
+            _answer(carol, r, _rightCode(carol, r));
+        }
+        _judge(carol);
+        _spar(bob);
+        _answerAll(bob);
+        _judge(bob);
+        address[] memory top = ranking.top();
+        assertEq(top.length, 2);
+        assertEq(top[0], alice, "equal points: less time first");
+        assertEq(top[1], carol);
+        (uint8 points,,,) = ranking.resultOf(alice);
+        assertEq(points, 120);
+        vm.warp(SEASON_END + 1);
+        vm.expectRevert(ArenaRanking.SeasonRunning.selector);
+        ranking.close();
+        address[] memory winners = new address[](2);
+        (winners[0], winners[1]) = (alice, carol);
+        vm.expectEmit(true, false, false, true, address(ranking));
+        emit ArenaRanking.SeasonClosed(1, winners, 3);
+        vm.prank(judgeKey);
+        ranking.close();
+        assertEq(ranking.placeOf(alice), 1);
+        assertEq(ranking.placeOf(carol), 2);
+        assertEq(ranking.placeOf(bob), 0, "the open ranking gives no place");
+        assertTrue(ranking.tookPart(bob));
+        // nothing to own: the contract has no token at all
+        (bool ok,) = address(ranking).staticcall(abi.encodeWithSignature("balanceOf(address)", alice));
+        assertFalse(ok, "no balanceOf");
+        (ok,) = address(ranking).staticcall(abi.encodeWithSignature("tokenURI(uint256)", uint256(uint160(alice))));
+        assertFalse(ok, "no tokenURI");
+        (ok,) = address(ranking).staticcall(abi.encodeWithSignature("ownerOf(uint256)", uint256(uint160(alice))));
+        assertFalse(ok, "no ownerOf");
+        vm.expectRevert(ArenaRanking.AlreadyClosed.selector);
+        ranking.close();
     }
 
     function test_anyoneClosesTheSeasonADayAfterItsEnd() public {
@@ -1609,7 +1664,7 @@ contract AgentArenaTest is Test {
         _answerAll(alice);
         _judge(alice);
         ArenaCertificate cert = _cert();
-        vm.expectRevert(ArenaCertificate.NotArena.selector);
+        vm.expectRevert(ArenaRanking.NotArena.selector);
         cert.record(bob, bytes32("bob"), true, 120, 1, 1);
         vm.warp(SEASON_END + 1);
         vm.prank(judgeKey);

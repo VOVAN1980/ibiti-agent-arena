@@ -2,7 +2,7 @@
 pragma solidity 0.8.24;
 
 import {ArenaArt} from "./ArenaArt.sol";
-import {ArenaCertificate} from "./ArenaCertificate.sol";
+import {ArenaRanking} from "./ArenaRanking.sol";
 import {ArenaSeasons} from "./ArenaSeasons.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
@@ -780,7 +780,7 @@ contract AgentArena {
         if (gasleft() < RECORD_GAS + RECORD_GAS / 32) revert LowGas();
         // a raw call: no code-size check (a certificate without code is ignored like a failing one) and
         // no returned data is copied (a hostile certificate cannot fill the arena's memory)
-        bytes memory data = abi.encodeCall(ArenaCertificate.record, (agent, f.name, f.official, sb.points, sb.timeUsed, sb.at));
+        bytes memory data = abi.encodeCall(ArenaRanking.record, (agent, f.name, f.official, sb.points, sb.timeUsed, sb.at));
         address cert = _season(f.season).certificate;
         assembly ("memory-safe") {
             pop(call(RECORD_GAS, cert, 0, add(data, 32), mload(data), 0, 0))
