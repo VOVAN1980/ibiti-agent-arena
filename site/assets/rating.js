@@ -5,7 +5,7 @@
 // off, and the new holder gathers there from dust and pieces (rankfx.js), with a sound when the arena's
 // sound is on.
 // ?fx=demo shows the effect on the rows there are, moving one up now and then, and says it is a preview.
-import { CFG, emptyState, refresh, rating, seasonState, seasonTable, seasonNumbers, lastAwards, nameOf } from './arena.js';
+import { CFG, emptyState, refresh, rating, seasonState, seasonTable, seasonNumbers, lastAwards, nameOf, pollDelay, pollAgain } from './arena.js';
 import { $, esc, keep, header, footer, t, applyI18n, agentUrl, matchUrl, seasonLine, RING } from './ui.js';
 import { shatter, assemble, soundShatter, soundLand, reduced, GATHER } from './rankfx.js';
 
@@ -244,14 +244,20 @@ $('#seasonPick').addEventListener('change', async (e) => {
 
 async function loop() {
   try {
+    // the poll and the season's reads at once: their calls travel in one request
+    const seasonReads = SEASONS ? Promise.all([seasonState().catch(() => season), lastAwards().catch(() => awards), fillSeasons()]) : null;
     await refresh(s);
-    if (SEASONS) [season, table, awards] = await Promise.all([seasonState().catch(() => season), seasonTable(s, picked).catch(() => table), lastAwards().catch(() => awards), fillSeasons()]);
+    if (SEASONS) {
+      [season, awards] = await seasonReads;
+      table = await seasonTable(s, picked).catch(() => table); // its rows name the fights just read
+    }
     renderTop();
     render();
   } catch (e) {
     console.error(e);
   }
-  setTimeout(loop, (CFG.pollMs ?? 3000) * 2);
+  historyNote(s);
+  pollAgain(loop, pollDelay(s, 2));
 }
 renderTop();
 loop();

@@ -340,8 +340,9 @@ An AI reviewer read 50ee5a8 with the full report of review 8. What was done:
 Accepted or later: binding the generator's version and the shown card to a commitment (the page
 server's plan check covers a server that differs from the judge); the page key's hash is not in the
 judge's signature (the agent's own wallet signs the transaction that carries it); the key in a link is
-seen by the agent's own page reader; a durable store for the judge (the chain is its queue; an outage
-longer than its lookback window, about 20 000 blocks, is judged by hand with `judge.mjs`).
+seen by the agent's own page reader; a durable store for the judge (the chain is its queue, the KV
+archive of the arena's logs only a faster way to read it; an outage longer than its catch-up window,
+six hours of blocks, a day with the archive, is judged by hand with `judge.mjs`).
 
 ## Rehearsal with two AI agents on BNB Smart Chain Testnet (2026-11-22)
 
@@ -528,10 +529,12 @@ as the plan has it, fouls and points.
   the judge every minute (`pages/src/judge-cron.js`): it keeps no state (the chain says what is
   still to do), simulates every transaction first, sends nothing while an earlier one is still pending
   and nothing new after 40 seconds of a run, checks the receipts of what it sent, and judges at most 16
-  a run and 240 an hour (the hour is counted from the chain: the Judged events of the last hour of
-  blocks, since only the judge emits them), only for fights that are over (both fights of a match), not
-  empty, locked with its own plan and started with this server's commitment. A fight left out longer
-  than its lookback window (about 20 000 blocks) is judged by hand with `judge.mjs`. The judge's
+  a run and 240 an hour (counted from the chain, since only the judge emits Judged events: those of its
+  22-minute live window against the window's share of the hour, or of the whole last hour in a run that
+  reads the full look-back window, as every run of a one-node testnet server does), only for fights that are over
+  (both fights of a match), not empty, locked with its own plan and started with this server's
+  commitment. A fight left out longer than its catch-up window (six hours of blocks, a day with the KV
+  archive) is judged by hand with `judge.mjs`. The judge's
   signed transactions are byte for byte what Foundry signs (`cast mktx`), checked in the tests.
 - **A fight with no answer is never judged** (it would only cost gas). The site and the link preview
   give it its known result, 0 points with every round counted in full, so a match against a silent

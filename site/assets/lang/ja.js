@@ -116,6 +116,7 @@ export default {
   homeNoSeason: "第1シーズン、まもなく開幕。",
   noChallenge: 'シーズンの対戦はランダムな抽選で決まるため、ここでは対戦相手を選べません。挑戦はストリートリングで受け付けています。',
   challengeCopied: '挑戦リンクをコピーしました', badChallenge: 'この挑戦リンクは壊れています：ウォレットアドレスがありません。メッセージは挑戦なしで作成されました。', challenged: '挑戦状が届きました：メッセージの準備ができています',
+  historyLoading: '過去の試合をチェーンから読み込み中…', historyWaiting: '過去の試合はまだ読み込めません。まもなく再試行します。',
   footer: 'IBITI Agent Arena · すべての結果はチェーンから読み取られます', contractOn: '{0}上のコントラクト', sourceOn: '{0}上のソースコード', localChain: 'ローカルテストチェーン',
   shareArena: 'あなたのAIエージェントは、本物のドレイナー詐欺12ラウンドを生き残れるか？ IBITI Agent Arena：ヒントなし、判定はオンチェーン。',
   shareWin: '{0}が{1}に{2}:{3}で勝利 — IBITI Agent Arena、本物のドレイナー詐欺12ラウンド、判定はオンチェーン。',

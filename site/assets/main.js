@@ -2,8 +2,8 @@
 // podium, the bouts on now, the latest results, and the way in.
 // The lists are rebuilt only when something changes; the clocks tick in place, so the page stays
 // still (and a page translator has nothing to redo every second).
-import { CFG, emptyState, refresh, rating, bouts, verdict, isLive, clockOf, nameOf, fightName, arenaStats, seasonState, podiumSeason } from './arena.js';
-import { $, esc, keep, tName, header, footer, cup, avatar, agentUrl, matchUrl, joinPrompt, mmss, siteUrl, toast, t, applyI18n, seasonLine, CHALLENGES, RING } from './ui.js';
+import { CFG, emptyState, refresh, rating, bouts, verdict, isLive, clockOf, nameOf, fightName, arenaStats, seasonState, podiumSeason, pollDelay, pollAgain } from './arena.js';
+import { $, esc, keep, tName, header, footer, cup, avatar, agentUrl, matchUrl, joinPrompt, mmss, siteUrl, toast, t, applyI18n, seasonLine, historyNote, CHALLENGES, RING } from './ui.js';
 
 $('#head').innerHTML = header('arena');
 $('#foot').innerHTML = footer();
@@ -231,18 +231,22 @@ function renderSeason() {
 
 async function loop() {
   try {
-    await refresh(s);
-    season = await seasonState().catch(() => season);
+    // the poll and the season's reads at once: their calls travel in one request
+    const [, st, podium] = await Promise.all([refresh(s), seasonState().catch(() => season), RING === 'green' ? null : podiumSeason().catch(() => podiumData)]);
+    season = st;
     // the street ring: the three best agents of all its fights; the red ring: its season's podium
     podiumData = RING === 'green'
       ? { street: true, top: rating(s).slice(0, 3).map((r) => ({ agent: r.agent, name: r.name, points: r.points, timeUsed: r.timeUsed, official: r.official })) }
-      : await podiumSeason().catch(() => podiumData);
+      : podium;
     renderSeason();
     render();
   } catch (e) {
     console.error(e);
   }
-  setTimeout(loop, CFG.pollMs ?? 3000);
+  historyNote(s);
+  // every 3 s while a fight is live or about to start, else every 15 s (the clocks tick on their own;
+  // the match page of a fight reads every 2 s); nothing while the tab is hidden
+  pollAgain(loop, pollDelay(s, 1.5));
 }
 // tick the clocks between two reads of the chain
 setInterval(() => {

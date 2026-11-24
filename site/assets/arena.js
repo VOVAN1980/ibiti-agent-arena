@@ -40,12 +40,47 @@ export const trapName = (id) => TRAP_NAMES[id] ?? 'an unknown call to the arena'
 
 // ------------------------------------------------------------------ JSON-RPC
 
+// The calls a page makes in the same moment (one turn of its code) travel together as one JSON-RPC
+// batch: one request to the server and one Worker invocation, however many calls a poll needs (the
+// server checks each call of a batch as it would check it alone, and shares the answers between viewers).
+const MAX_BATCH = 40;
 let rpcId = 0;
-async function rpc(method, params) {
-  const res = await fetch(CFG.rpc, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: ++rpcId, method, params }) });
-  const j = await res.json();
-  if (j.error) throw new Error(`${method}: ${j.error.message}`);
-  return j.result;
+let queue = null;
+/** An answer with a JSON-RPC error (or none): `code` is the node's or the server's. */
+export class RpcError extends Error {
+  constructor(method, error) {
+    super(`${method}: ${typeof error === 'string' ? error : error?.message ?? 'no answer'}`);
+    this.code = error?.code ?? null;
+  }
+}
+function rpc(method, params) {
+  return new Promise((resolve, reject) => {
+    if (!queue) {
+      queue = [];
+      setTimeout(flush, 0);
+    }
+    queue.push({ q: { jsonrpc: '2.0', id: ++rpcId, method, params }, resolve, reject });
+  });
+}
+function flush() {
+  const items = queue;
+  queue = null;
+  for (let i = 0; i < items.length; i += MAX_BATCH) send(items.slice(i, i + MAX_BATCH));
+}
+async function send(items) {
+  try {
+    const res = await fetch(CFG.rpc, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(items.length === 1 ? items[0].q : items.map((x) => x.q)) });
+    const j = await res.json();
+    const list = Array.isArray(j) ? j : [j];
+    for (const it of items) {
+      const r = list.find((x) => x && typeof x === 'object' && x.id === it.q.id);
+      if (!r) it.reject(new RpcError(it.q.method, Array.isArray(j) ? null : j?.error)); // the whole request refused (e.g. too many reads)
+      else if (r.error) it.reject(new RpcError(it.q.method, r.error));
+      else it.resolve(r.result);
+    }
+  } catch (e) {
+    for (const it of items) it.reject(e);
+  }
 }
 const words = (hex) => (hex.replace(/^0x/, '').match(/.{64}/g) ?? []);
 const big = (w) => BigInt('0x' + w);
@@ -83,6 +118,9 @@ const bookCall = async (data) => {
   bookAt ??= CFG.seasonBook || addrOf(words(await rpc('eth_call', [{ to: CFG.arena, data: BOOK.seasonBook }, 'latest']))[0]);
   return words(await rpc('eth_call', [{ to: bookAt, data }, 'latest']));
 };
+// the season's reads change rarely (a season lasts weeks; its leaders move with a judgement): kept a
+// minute, so a page's polls cost no more than its one batch most of the time
+const SEASON_TTL = 60000;
 let nowRead = null;
 const seasonRead_ = async (n) => {
   const w = await bookCall(BOOK.seasons + BigInt(n).toString(16).padStart(64, '0'));
@@ -92,16 +130,19 @@ const seasonRead_ = async (n) => {
  *  else the first one scheduled, not started yet. `running`, and `next`: a season scheduled after it
  *  that has not started yet (or null). Null when no season is scheduled at all. */
 export async function seasonNow() {
-  if (nowRead && Date.now() - nowRead.read < 15000) return nowRead.s;
-  const cur = num((await bookCall(BOOK.current))[0] ?? '0');
-  const count = num((await bookCall(BOOK.seasonCount))[0] ?? '0');
-  const last = count ? await seasonRead_(count) : null;
+  if (nowRead && Date.now() - nowRead.read < SEASON_TTL) return nowRead.s;
+  const [curW, countW] = await Promise.all([bookCall(BOOK.current), bookCall(BOOK.seasonCount)]);
+  const cur = num(curW[0] ?? '0');
+  const count = num(countW[0] ?? '0');
+  // the last season and the one before it, read together: one of them is the one shown
+  const [last, before] = await Promise.all([count ? seasonRead_(count) : null, count > 1 ? seasonRead_(count - 1) : null]);
+  const read = (n) => (n === count ? last : n === count - 1 ? before : seasonRead_(n));
   const upcoming = last && last.start * 1000 > Date.now() ? last : null; // at most one season waits to start
   let s = null;
-  if (cur) s = { ...(cur === count ? last : await seasonRead_(cur)), running: true };
+  if (cur) s = { ...(await read(cur)), running: true };
   else if (count) {
     const started = upcoming ? count - 1 : count;
-    s = started ? { ...(started === count ? last : await seasonRead_(started)), running: false } : { ...upcoming, running: false };
+    s = started ? { ...(await read(started)), running: false } : { ...upcoming, running: false };
   }
   if (s) s.next = upcoming && upcoming.n !== s.n ? upcoming : null;
   nowRead = { read: Date.now(), s };
@@ -131,48 +172,130 @@ function fight(s, agent, n) {
   return s.fights.get(k);
 }
 
-/** Reads every new event of the arena and folds it into the state. Call it again to update. */
-export async function refresh(s) {
-  const latest = parseInt(await rpc('eth_blockNumber', []), 16);
-  const step = CFG.logStep ?? 50000;
-  // only settled blocks are folded (the newest ones a moment later): a short reorganisation of the
-  // chain's tip never leaves an event on the site that the chain dropped
-  const settled = latest - (CFG.confirmations ?? 2);
-  // the cursor moves after every range folded in full, and an event is folded only once: a read that
-  // fails halfway never doubles answers, fouls or matches; an event counts as folded only once it is
-  s.seen ??= new Set();
-  for (let from = s.fromBlock; from <= settled; from += step) {
-    const to = Math.min(settled, from + step - 1);
-    const logs = await rpc('eth_getLogs', [{ address: CFG.arena, fromBlock: '0x' + from.toString(16), toBlock: '0x' + to.toString(16) }]);
-    for (const l of logs) {
-      const id = l.transactionHash + ':' + l.logIndex;
-      if (s.seen.has(id)) continue;
-      apply(s, l);
-      s.seen.add(id);
-    }
-    s.fromBlock = to + 1;
+// How the events are read. Each poll reads the newest blocks (up to the head the poll before saw: a
+// range past a node's head is an error there), from a boundary of FRONT_ALIGN blocks and up to a
+// multiple of FRONT_QUANT, so the viewers of a moment ask the very same range and the server answers
+// them all with one node call (an event read twice is folded once). Everything older than FRONT blocks
+// is history: kept as ranges still to read (s.gaps), a few of them riding along with each poll, oldest
+// first, aligned to the archive's spans of 50000 blocks (the server answers each with one read of its
+// archive). A range that cannot be read now stays in s.gaps (a wide one is split, so the nodes can serve
+// its parts) and the page says so; the newest blocks go on being read meanwhile: a failed range never
+// freezes the page. After a poll whose history read failed, the next poll comes at the page's normal
+// pace, not at once; after a poll that failed whole (the server refused or broke), later and later
+// (twice as late each time, up to a minute), with fewer history ranges in it.
+const FRONT = 2000;
+const FRONT_ALIGN = 128;
+const FRONT_QUANT = 4;
+const HISTORY_STEP = 50000; // the server's widest range
+const HISTORY_ALIGN = 50000; // the archive's spans
+const HISTORY_MIN = 1000;
+const HISTORY_PER_POLL = 6;
+const HISTORY_MS = 300; // the next part of the history, while it comes in
+const BACKOFF_MAX = 60000;
+
+/** Adds [from, to] to the ranges still to read, in pieces that end on the archive's chunk boundaries. */
+function addGap(s, from, to) {
+  for (let a = from; a <= to; ) {
+    const end = Math.floor((a + HISTORY_STEP) / HISTORY_ALIGN) * HISTORY_ALIGN - 1;
+    const b = Math.min(to, end >= a ? end : a + HISTORY_STEP - 1);
+    s.gaps.push({ from: a, to: b });
+    a = b + 1;
   }
+  s.gaps.sort((x, y) => x.from - y.from);
+}
+
+/** A fight whose clock is read with the poll: neither judged, cancelled nor over by its clock. */
+const wantsClock = (s) => (f) => !(f.judged || f.cancelled || (f.ended && f.clock) || (f.clock && clockOf(f.clock, s.now).phase === 'over'));
+
+/** Splits a history range in two at the HISTORY_MIN boundary nearest its middle (a range wider than
+ *  HISTORY_MIN always has one inside it); false when it is as narrow as it gets. */
+function splitGap(s, g) {
+  if (g.to - g.from + 1 <= HISTORY_MIN) return false;
+  const lo = Math.ceil((g.from + 1) / HISTORY_MIN) * HISTORY_MIN;
+  const hi = Math.floor(g.to / HISTORY_MIN) * HISTORY_MIN;
+  const b = Math.min(hi, Math.max(lo, Math.round((g.from + g.to + 1) / 2 / HISTORY_MIN) * HISTORY_MIN));
+  const i = s.gaps.indexOf(g);
+  if (i < 0 || b <= g.from || b > g.to) return false;
+  s.gaps.splice(i, 1, { from: g.from, to: b - 1 }, { from: b, to: g.to });
+  return true;
+}
+
+/** Reads every new event of the arena and folds it into the state, with the waiting hall and the clocks
+ *  of the fights still running: one request (a batch) a poll. Call it again to update. A poll that
+ *  failed whole is counted (s.failures: the next one comes later, with fewer history ranges); it throws. */
+export async function refresh(s) {
+  try {
+    const out = await poll(s);
+    s.failures = 0;
+    s.gapsPerPoll = Math.min(HISTORY_PER_POLL, (s.gapsPerPoll ?? HISTORY_PER_POLL) + 1);
+    return out;
+  } catch (e) {
+    s.failures = (s.failures ?? 0) + 1;
+    const sent = s.sentGaps ?? [];
+    // too heavy a poll fails again the same way: half its history ranges next time; one range alone
+    // that failed with its poll is split (or, as narrow as it gets, waits)
+    s.gapsPerPoll = Math.floor(sent.length / 2);
+    if (sent.length === 1 && s.gaps.includes(sent[0]) && !splitGap(s, sent[0])) s.historyStalled = true;
+    throw e;
+  }
+}
+
+async function poll(s) {
+  s.seen ??= new Set();
+  s.gaps ??= [];
+  s.sentGaps = [];
+  // the logs of this poll: the history ranges first (oldest first), then the newest blocks
+  const reads = [];
+  const first = !s.latestBlock;
+  if (!first) {
+    const settled = s.latestBlock - (CFG.confirmations ?? 2);
+    const to = Math.floor((settled + 1) / FRONT_QUANT) * FRONT_QUANT - 1;
+    if (to >= s.fromBlock) {
+      if (to - s.fromBlock + 1 > FRONT) {
+        addGap(s, s.fromBlock, to - FRONT);
+        s.fromBlock = to - FRONT + 1;
+      }
+      reads.push({ front: true, from: Math.max(CFG.deployBlock ?? 0, s.fromBlock - (s.fromBlock % FRONT_ALIGN)), to });
+    }
+    s.sentGaps = s.gaps.slice(0, s.gapsPerPoll ?? HISTORY_PER_POLL);
+    for (const g of s.sentGaps) reads.push({ gap: g, from: g.from, to: g.to });
+    reads.sort((x, y) => x.from - y.from);
+  }
+  const logsOf = (r) => rpc('eth_getLogs', [{ address: CFG.arena, fromBlock: '0x' + r.from.toString(16), toBlock: '0x' + r.to.toString(16) }]).then((logs) => ({ r, logs }), (e) => ({ r, e }));
+  const clocks = [...s.fights.values()].filter(wantsClock(s));
+  const [latestHex, block, views, logs, read] = await Promise.all([
+    rpc('eth_blockNumber', []),
+    rpc('eth_getBlockByNumber', ['latest', false]),
+    Promise.all([SEL.hall, SEL.hallCount, SEL.nextDrawAt, SEL.pendingCutoff].map((data) => rpc('eth_call', [{ to: CFG.arena, data }, 'latest']))),
+    Promise.all(reads.map(logsOf)),
+    Promise.all(clocks.map((f) => fightOf(f.agent, f.number).catch(() => null))),
+  ]);
+  const latest = parseInt(latestHex, 16);
+  fold(s, logs);
   s.latestBlock = latest;
-  s.now = await chainNow();
+  s.now = parseInt(block.timestamp, 16);
   // the waiting hall now (in order of registration) and the next cutoff
-  const [hallW, countW, nextW, pendingW] = await Promise.all([SEL.hall, SEL.hallCount, SEL.nextDrawAt, SEL.pendingCutoff].map((data) => rpc('eth_call', [{ to: CFG.arena, data }, 'latest'])));
+  const [hallW, countW, nextW, pendingW] = views;
   const hw = words(hallW);
   s.hall = hw.slice(2, 2 + num(hw[1] ?? '0')).map(addrOf); // the first ones in line
   s.hallCount = Math.max(s.hall.length, num(words(countW)[0] ?? '0')); // how many wait in all
   s.nextDrawAt = num(words(nextW)[0] ?? '0');
   s.pendingCutoff = num(words(pendingW)[0] ?? '0');
   // the clock of fights still running: it moves on early when both fighters have answered
-  for (const f of s.fights.values()) {
-    if (f.judged || f.cancelled || (f.ended && f.clock)) continue;
-    if (f.clock && clockOf(f.clock, s.now).phase === 'over') continue;
-    f.clock = await fightOf(f.agent, f.number);
-  }
+  clocks.forEach((f, i) => read[i] && (f.clock = read[i]));
+  // the page's first poll knew no head yet: its logs now
+  if (first && latest - (CFG.confirmations ?? 2) >= s.fromBlock + FRONT_QUANT) return poll(s);
+  // the fights this poll found: their clocks now, not a poll later
+  const fresh = [...s.fights.values()].filter((f) => f.block && !f.clock && wantsClock(s)(f));
+  if (fresh.length) (await Promise.all(fresh.map((f) => fightOf(f.agent, f.number).catch(() => null)))).forEach((c, i) => c && (fresh[i].clock = c));
   // A fight that is over without a single answer is never judged: the judge spends no gas on it.
   // Its result is known all the same, as the contract would count it (0 points, every round in
   // full), so a match against a silent opponent still gets its verdict, 10 : 0. A fight whose plan
-  // was never locked never started: it has no result at all (the match was cancelled).
+  // was never locked never started: it has no result at all (the match was cancelled). Not while a
+  // range after its start is still unread: its answers may be there.
   for (const f of s.fights.values()) {
     if (f.judged || f.answers.length || !f.block) continue;
+    if (s.gaps.some((g) => g.to >= f.block)) continue;
     const over = f.cancelled || f.ended || (f.clock?.clockAt && clockOf(f.clock, s.now).phase === 'over');
     if (!over) continue;
     if (!f.locked && !f.clock?.locked) {
@@ -182,6 +305,87 @@ export async function refresh(s) {
     f.judged = { official: !!f.official, points: 0, correct: 0, hits: 0n, fouls: 0, roundsAnswered: 0, solved: 0, timeUsed: ROUNDS * (CFG.roundTime ?? 60), block: f.block, empty: true };
   }
   return s;
+}
+
+/** Folds the log reads of a poll, in block order: a range read is done (the newest blocks move the
+ *  cursor on, a history range leaves the list); one that failed stays to read (a wide one split). */
+function fold(s, results) {
+  let stuck = false; // a range as narrow as it gets that could not be read
+  let failed = false; // a history range that could not be read in this poll
+  for (const { r, logs, e } of results) {
+    if (e) {
+      if (r.front) {
+        // the newest blocks not read now: a range to read later; the cursor moves on all the same
+        if (r.to >= s.fromBlock) addGap(s, s.fromBlock, r.to);
+        s.fromBlock = Math.max(s.fromBlock, r.to + 1);
+      } else {
+        // too wide for what can serve it now: two parts, split on a boundary of HISTORY_MIN blocks
+        failed = true;
+        if (!splitGap(s, r.gap)) stuck = true;
+      }
+      continue;
+    }
+    for (const l of logs) {
+      const id = l.transactionHash + ':' + l.logIndex;
+      if (s.seen.has(id)) continue;
+      apply(s, l);
+      s.seen.add(id);
+    }
+    if (r.front) s.fromBlock = Math.max(s.fromBlock, r.to + 1);
+    else {
+      const i = s.gaps.indexOf(r.gap);
+      if (i >= 0) s.gaps.splice(i, 1);
+    }
+  }
+  // the page tells the viewer while earlier fights are still on their way (historyNote in ui.js)
+  // (a wide range that failed is split and asked again with a later poll; one as narrow as it gets waits)
+  s.historyStalled = stuck && s.gaps.length > 0;
+  s.historyFailed = failed;
+}
+
+/** Earlier fights still on their way: 'loading' (read with the next polls), 'waiting' (not available
+ *  now: read again later), or null. */
+export const historyState = (s) => (!s.gaps?.length ? null : s.historyStalled ? 'waiting' : 'loading');
+
+/** A page's next poll: soon while its history is still coming in (not after a poll whose history read
+ *  failed), every pollMs (2 s) while a fight is live or about to start (a draw near, a sealed draw
+ *  waiting, a fight in its countdown or rounds), else every idlePollMs (10 s); both `slowFactor` times
+ *  longer on a page that shows fewer clocks, or `calm` ms whatever the ring does. After a poll that
+ *  failed whole: twice as late each time, up to a minute. The clocks on a page tick on their own. */
+export function pollDelay(s, slowFactor = 1, calm = null) {
+  const fast = (CFG.pollMs ?? 2000) * slowFactor;
+  const slow = calm ?? (CFG.idlePollMs ?? 10000) * slowFactor;
+  if (s.failures) return Math.min(Math.max(BACKOFF_MAX, calm ?? 0), Math.max(calm ?? fast, 2000) * 2 ** (s.failures - 1));
+  if (s.gaps?.length && !s.historyStalled && !s.historyFailed) return HISTORY_MS;
+  if (!s.latestBlock) return calm ?? fast;
+  return calm ?? (isHot(s) ? fast : slow);
+}
+
+/** Runs `fn` after `ms`, but never while the page is hidden: a tab in the background reads nothing, and
+ *  reads again as soon as it is shown. */
+export function pollAgain(fn, ms) {
+  setTimeout(() => {
+    const doc = typeof document !== 'undefined' ? document : null;
+    if (!doc || doc.visibilityState !== 'hidden') return fn();
+    const shown = () => {
+      if (doc.visibilityState === 'hidden') return;
+      doc.removeEventListener('visibilitychange', shown);
+      fn();
+    };
+    doc.addEventListener('visibilitychange', shown);
+  }, ms);
+}
+
+/** Something on the ring now or within the next minute and a half. */
+export function isHot(s) {
+  if (s.pendingCutoff) return true;
+  const waiting = s.hallCount ?? s.hall?.length ?? 0;
+  if (waiting >= 2 && s.nextDrawAt && s.nextDrawAt - s.now < 90) return true;
+  for (const f of s.fights.values()) {
+    if (!f.block || f.judged || f.cancelled || f.ended) continue;
+    if (!f.clock || isLive(s, f)) return true;
+  }
+  return false;
 }
 
 /** With the fight's trap plan revealed: a call of a trap of its round is a hit, anything else a foul. */
@@ -201,6 +405,8 @@ function apply(s, l) {
     case T.registered: {
       const agent = addrOf(t[1].slice(2));
       const who = fighter(s, agent);
+      if (block < (who.nameBlock ?? -1)) break; // an earlier registration folded late (history): the later one stays
+      who.nameBlock = block;
       who.name = text32(d[0]) || who.name;
       who.model = text32(d[1]) || who.model;
       who.verified = big(d[2]) !== 0n; // this name is its own Agent ID (".ai" only then)
@@ -228,10 +434,13 @@ function apply(s, l) {
       f.tx = l.transactionHash;
       const who = fighter(s, agent);
       const name = text32(d[2]);
-      if (name) who.name = name;
       const model = text32(d[3]);
-      if (model) who.model = model;
-      who.verified = f.official; // the name of its latest fight, checked by the contract
+      if (block >= (who.nameBlock ?? -1)) {
+        who.nameBlock = block;
+        if (name) who.name = name;
+        if (model) who.model = model;
+        who.verified = f.official; // the name of its latest fight, checked by the contract
+      }
       f.name = name; // as it was in this fight: a later name never relabels an old fight
       f.model = model;
       break;
@@ -460,7 +669,7 @@ let seasonRead = null;
 /** The season now: its number, start and end, whether it runs now, when it was closed (0: open), its
  *  first places (final once closed) and how many agents took part. Null before the first season. */
 export async function seasonState() {
-  if (seasonRead && Date.now() - seasonRead.read < 15000) return seasonRead;
+  if (seasonRead && Date.now() - seasonRead.read < SEASON_TTL) return seasonRead;
   const s = await shownSeason();
   if (!s) return null;
   const [topW, closedW, partW] = await Promise.all([seasonCall(s.certificate, SEASON.top), seasonCall(s.certificate, SEASON.closedAt), seasonCall(s.certificate, SEASON.participants)]);
@@ -470,8 +679,15 @@ export async function seasonState() {
 /** The home page's podium: the first three of the last season that is closed, with their season
  *  results; before any season is closed, the first three of the season running so far. Null before
  *  the first season. { season, closed, top: [{ agent, points, timeUsed, name }] } */
+let podiumRead = null;
 export async function podiumSeason() {
   if (CFG.archived) return null;
+  if (podiumRead && Date.now() - podiumRead.read < SEASON_TTL) return podiumRead.value;
+  const value = await podiumOf();
+  podiumRead = { read: Date.now(), value };
+  return value;
+}
+async function podiumOf() {
   const count = num((await bookCall(BOOK.seasonCount))[0] ?? '0');
   let pick = null;
   for (let n = count; n >= 1 && !pick; n--) {
@@ -527,7 +743,7 @@ export async function seasonNumbers() {
  *  first season. { season, running, closed, end, rows: [{ rank, agent, name, model, points, timeUsed,
  *  solved, fouls, number }] } */
 export async function seasonTable(s, n = null) {
-  if (!tableRead || tableRead.asked !== n || Date.now() - tableRead.read > 15000) {
+  if (!tableRead || tableRead.asked !== n || Date.now() - tableRead.read > SEASON_TTL) {
     let sh;
     let now = null; // the season running now, when the table shows the one before it
     if (n && !CFG.archived) {

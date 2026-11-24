@@ -7,8 +7,10 @@
 // lags a few blocks, 48.club serves logs up to 250 blocks and is an MEV relay (never a sender).
 //
 // So every node is described, not guessed from its address: { url, logs: <widest log range it
-// serves, 0 = none>, send: <true: it may get our signed transactions> }. The list is a preference
-// order, used per kind of call:
+// serves, 0 = none>, send: <true: it may get our signed transactions>, archive: <true: it keeps every
+// log since the arena's deployment (measured, thirdweb); a log read that must be complete and is older
+// than what a pruning node keeps asks only these (call(q, { archive: true })), when the list has any> }.
+// The list is a preference order, used per kind of call:
 // - calls (eth_call, eth_blockNumber, nonces, receipts…) start at the first node that is not cooling
 //   down, so a log read answered by publicnode never moves the judge's calls off the dataseeds (there
 //   is deliberately no "last node that answered" pointer);
@@ -70,7 +72,7 @@ export function endpointsOf(env, key) {
   if (Array.isArray(list)) {
     const out = list
       .filter((x) => typeof x?.url === 'string' && /^https?:\/\/\S+$/.test(x.url))
-      .map((x) => ({ url: x.url, logs: Math.max(0, Number(x.logs ?? 0) || 0), send: x.send === true }));
+      .map((x) => ({ url: x.url, logs: Math.max(0, Number(x.logs ?? 0) || 0), send: x.send === true, ...(x.archive === true ? { archive: true } : {}) }));
     if (out.length) return out;
   }
   return env?.[key] ? [{ url: String(env[key]), logs: 50000, send: true }] : [];
@@ -141,7 +143,8 @@ export function rpcFetch(endpoints, {
 
   /** One HTTP request to one node, given `ms` to answer: its parsed JSON, or a Failure. */
   async function post(ep, payload, ms = timeoutMs) {
-    if (budget && budget.left <= 0) throw new Failure('subrequest budget spent', { stop: true });
+    // budget.floor: what an optional read must leave for what comes after it (the judge's sends)
+    if (budget && budget.left <= (budget.floor ?? 0)) throw new Failure('subrequest budget spent', { stop: true });
     const left = deadline - now();
     if (left <= 0) throw new Failure('out of time', { stop: true });
     if (budget) budget.left--;
@@ -188,11 +191,15 @@ export function rpcFetch(endpoints, {
       const text = `${j.error.message ?? ''} ${j.error.code ?? ''}`;
       throw new Failure(String(j.error.message ?? 'error ' + j.error.code), { cool: RATE.test(text) || j.error.code === -32005, error: j.error });
     }
-    if (!j.error) {
-      if (q.method === 'eth_blockNumber' && typeof j.result === 'string') head = Math.max(head, parseInt(j.result, 16) || 0);
-      if (q.method === 'eth_getBlockByNumber' && typeof j.result?.number === 'string') head = Math.max(head, parseInt(j.result.number, 16) || 0);
-    }
+    noteHead(q, j);
     return j;
+  }
+
+  /** The head an answer shows (eth_blockNumber, eth_getBlockByNumber): kept for log ranges ending in 'latest'. */
+  function noteHead(q, j) {
+    if (!j || j.error) return;
+    if (q.method === 'eth_blockNumber' && typeof j.result === 'string') head = Math.max(head, parseInt(j.result, 16) || 0);
+    if (q.method === 'eth_getBlockByNumber' && typeof j.result?.number === 'string') head = Math.max(head, parseInt(j.result.number, 16) || 0);
   }
 
   /** The time a log request over `blocks` blocks may take (null: unknown, as long as allowed). */
@@ -215,13 +222,14 @@ export function rpcFetch(endpoints, {
 
   const refuse = (q, message, code = -32603) => ({ jsonrpc: '2.0', id: q?.id ?? null, error: { code, message } });
 
-  /** One JSON-RPC call, routed and retried as described at the top. */
-  async function call(q, { maxPieces: most = maxPieces, prefer } = {}) {
-    let list = nodes;
+  /** One JSON-RPC call, routed and retried as described at the top. `archive`: the archive nodes only
+   *  (when the list has any). The answer says which node gave it (`node`). */
+  async function call(q, { maxPieces: most = maxPieces, prefer, archive = false } = {}) {
+    let list = archive && nodes.some((e) => e.archive) ? nodes.filter((e) => e.archive) : nodes;
     let pieces = () => 1;
     let range = null;
     let span = null; // a log read's blocks; null: unknown, the node itself says whether it is too wide
-    if (q.method === 'eth_sendRawTransaction') list = nodes.filter((e) => e.send);
+    if (q.method === 'eth_sendRawTransaction') list = list.filter((e) => e.send);
     if (q.method === 'eth_getLogs') {
       const f = (Array.isArray(q.params) ? q.params[0] : null) ?? {};
       const from = blockOf(f.fromBlock);
@@ -234,7 +242,7 @@ export function rpcFetch(endpoints, {
         range = { from, to };
       } else if (from !== null && (f.toBlock === undefined || f.toBlock === 'latest') && head) span = Math.max(1, head - from + 1 + HEAD_SLACK);
       pieces = (ep) => (span === null ? 1 : Math.ceil(span / ep.logs));
-      list = nodes.filter((e) => e.logs > 0 && (pieces(e) === 1 || (split && pieces(e) <= most)));
+      list = list.filter((e) => e.logs > 0 && (pieces(e) === 1 || (split && pieces(e) <= most)));
     }
     const ordered = order(list, prefer);
     if (!ordered.length) return { j: refuse(q, `no node serves ${q.method} for this request`), attempts: 0, node: null };
@@ -289,6 +297,7 @@ export function rpcFetch(endpoints, {
           const bad = byId.find((r) => r.error && isRetry(r.error));
           if (bad) throw busy(bad.error);
           out = byId;
+          qs.forEach((q, k) => noteHead(q, out[k]));
         } else if (j !== null) {
           if (typeof j !== 'object') throw new Failure('not JSON-RPC', { cool: true });
           if (j.error && isRetry(j.error)) throw busy(j.error);

@@ -41,6 +41,42 @@ function words(hex) {
 
 const big = (w) => BigInt('0x' + w);
 
+/** The eth_call of fightOf(agent, number) (for a batch of reads). */
+export const fightOfCall = (arena, agent, number) => ({ to: arena, data: SEL.fightOf + word(agent) + num(number) });
+
+/** A fight from the words fightOf(address,uint32) returns: (seed, startedAt, finishedAt, hits, number,
+ *  correct, round, fouls, official, clockAt, timeUsed, late, judged, commitment, opponent, clockRound,
+ *  opponentNumber, draw, trapsCommit, pageKeyHash, name, season). `correct`, `hits` and `fouls` are set
+ *  only by the judge. Round r opens at clockAt + (r - clockRound) * (roundTime + BREAK); the clock moves
+ *  on early when everyone answered. */
+export function parseFight(hex) {
+  const w = words(String(hex).replace(/^0x/, ''));
+  return {
+    seed: '0x' + w[0],
+    startedAt: Number(big(w[1])),
+    finishedAt: Number(big(w[2])),
+    hits: big(w[3]),
+    number: Number(big(w[4])),
+    correct: Number(big(w[5])),
+    round: Number(big(w[6])),
+    fouls: Number(big(w[7])),
+    official: big(w[8]) !== 0n,
+    clockAt: Number(big(w[9])),
+    timeUsed: Number(big(w[10])),
+    late: Number(big(w[11])),
+    judged: big(w[12]) !== 0n,
+    commitment: '0x' + w[13],
+    opponent: '0x' + w[14].slice(24),
+    clockRound: Number(big(w[15])),
+    opponentNumber: Number(big(w[16])),
+    draw: Number(big(w[17] ?? '0')),
+    trapsCommit: '0x' + (w[18] ?? '0'.repeat(64)), // the trap plan locked before the first bell (zero: none)
+    pageKeyHash: '0x' + (w[19] ?? '0'.repeat(64)), // keccak256 of the fighter's page key
+    name: '0x' + (w[20] ?? '0'.repeat(64)), // the name it fought under
+    season: Number(big(w[21] ?? '0')), // the season it was fought in
+  };
+}
+
 export function makeChain({ rpc, arena, fetchFn }) {
   const callTo = async (to, data) => (await rpcCall(rpc, 'eth_call', [{ to, data }, 'latest'], fetchFn)).replace(/^0x/, '');
   const call = (data) => callTo(arena, data);
@@ -59,31 +95,7 @@ export function makeChain({ rpc, arena, fetchFn }) {
      *  opponentNumber, draw). `correct`, `hits` and `fouls` are set only by the judge. Round r opens at
      *  clockAt + (r - clockRound) * (roundTime + BREAK); the clock moves on early when everyone answered. */
     async fightOf(agent, number) {
-      const w = words(await call(SEL.fightOf + word(agent) + num(number)));
-      return {
-        seed: '0x' + w[0],
-        startedAt: Number(big(w[1])),
-        finishedAt: Number(big(w[2])),
-        hits: big(w[3]),
-        number: Number(big(w[4])),
-        correct: Number(big(w[5])),
-        round: Number(big(w[6])),
-        fouls: Number(big(w[7])),
-        official: big(w[8]) !== 0n,
-        clockAt: Number(big(w[9])),
-        timeUsed: Number(big(w[10])),
-        late: Number(big(w[11])),
-        judged: big(w[12]) !== 0n,
-        commitment: '0x' + w[13],
-        opponent: '0x' + w[14].slice(24),
-        clockRound: Number(big(w[15])),
-        opponentNumber: Number(big(w[16])),
-        draw: Number(big(w[17] ?? '0')),
-        trapsCommit: '0x' + (w[18] ?? '0'.repeat(64)), // the trap plan locked before the first bell (zero: none)
-        pageKeyHash: '0x' + (w[19] ?? '0'.repeat(64)), // keccak256 of the fighter's page key
-        name: '0x' + (w[20] ?? '0'.repeat(64)), // the name it fought under
-        season: Number(big(w[21] ?? '0')), // the season it was fought in
-      };
+      return parseFight(await call(SEL.fightOf + word(agent) + num(number)));
     },
     /** The agent's latest fight (all zero if it never fought). */
     async fight(agent) {

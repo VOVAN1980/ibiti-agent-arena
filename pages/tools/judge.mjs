@@ -7,7 +7,8 @@
 //
 // With --watch it keeps running (every 5 seconds). The key file holds the arena's judge key; it only
 // needs a little BNB for gas. Use it by hand for a fight the Cloudflare judge left out (an outage
-// longer than its look-back window): set LOOKBACK_BLOCKS to reach back far enough.
+// longer than its catch-up window): every run here reads the whole look-back window (FULL_SCAN), so
+// set LOOKBACK_BLOCKS to reach back far enough (LOG_UNIT: the blocks of one log request).
 import { readFileSync } from 'node:fs';
 import { judgeRun } from '../src/judge-cron.js';
 
@@ -24,7 +25,8 @@ const env = {
   DEPLOY_BLOCK: dep.block ?? 0,
   BLOCKS_PER_WEEK: process.env.BLOCKS_PER_WEEK ?? 604800,
   LOOKBACK_BLOCKS: process.env.LOOKBACK_BLOCKS ?? 20000,
-  LOG_CHUNK: process.env.LOG_CHUNK ?? 5000,
+  LOG_UNIT: process.env.LOG_UNIT ?? 5000,
+  FULL_SCAN: 'always',
   // no Cloudflare subrequest cap on a computer: an outage's backlog is judged in one go
   SUBREQ_BUDGET: process.env.SUBREQ_BUDGET ?? 100000,
   SECRET: readFileSync(secretPath, 'utf8').trim(),

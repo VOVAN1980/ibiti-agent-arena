@@ -969,8 +969,8 @@ test('the Cloudflare host: site settings, a read-only RPC, the fighters\' side',
     assert.equal((await (await call(m)).json()).error.message, 'read-only', m);
   }
   assert.equal((await get('/rpc')).status, 405, 'GET');
-  const batch = await (await get('/rpc', { method: 'POST', body: '[{"method":"eth_call"}]' })).json();
-  assert.equal(batch.error.message, 'read-only', 'one call at a time, no batches');
+  const batch = await (await get('/rpc', { method: 'POST', body: '[{"id":4,"method":"eth_sendRawTransaction","params":["0x01"]},{"id":5,"method":"personal_sign"}]' })).json();
+  assert.deepEqual(batch.map((x) => [x.id, x.error.message]), [[4, 'read-only'], [5, 'read-only']], 'a batch: each call checked as alone');
   // this arena only, in bounded ranges: the judge shares the node
   const ask = (method, params) => get('/rpc', { method: 'POST', body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) }).then((r) => r.json());
   assert.equal((await ask('eth_call', [{ to: '0x' + '99'.repeat(20), data: '0x' }, 'latest'])).error.message, 'this arena only');
@@ -978,7 +978,7 @@ test('the Cloudflare host: site settings, a read-only RPC, the fighters\' side',
   assert.equal((await ask('eth_call', [{ to: ARENA, data: '0x78a2ce59' + '00'.repeat(200) }, 'latest'])).error.message, 'the views the site reads only', 'too long');
   assert.equal((await ask('eth_call', [{ to: ARENA, data: '0x78a2ce59', from: ARENA, gas: '0x1' }, 'latest'])).error.message, 'a plain call of a view');
   assert.equal((await ask('eth_call', [{ to: ARENA, data: '0x78a2ce59' }, 'latest', { [ARENA]: { code: '0x00' } }])).error.message, 'a plain call of a view', 'no state override');
-  const big = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode('x'.repeat(5000))); c.close(); } });
+  const big = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode('x'.repeat(40000))); c.close(); } });
   assert.equal((await get('/rpc', { method: 'POST', body: big, duplex: 'half' })).status, 413, 'too large, without a length: read only up to the limit');
   let limited = 0;
   const slow = { ...env, RPC_LIMIT: { limit: async () => ({ success: limited++ < 1 }) } };
@@ -988,7 +988,7 @@ test('the Cloudflare host: site settings, a read-only RPC, the fighters\' side',
   assert.equal((await ask('eth_getLogs', [{ address: '0x' + '99'.repeat(20), fromBlock: '0x1', toBlock: '0x2' }])).error.message, 'this arena only');
   assert.equal((await ask('eth_getLogs', [{ address: ARENA, fromBlock: '0x0', toBlock: '0x' + (60000).toString(16) }])).error.message, 'a range of at most 50000 blocks');
   assert.equal((await ask('eth_getBlockByNumber', ['latest', true])).error.message, 'no full blocks');
-  assert.equal((await get('/rpc', { method: 'POST', headers: { 'content-length': '9000' }, body: 'x' })).status, 413, 'too large, by its header');
+  assert.equal((await get('/rpc', { method: 'POST', headers: { 'content-length': '40000' }, body: 'x' })).status, 413, 'too large, by its header');
   const skill = await (await get('/skill.md')).text();
   assert.ok(skill.includes('https://arena.example/join/<your wallet address>'), 'links point at this site');
 });
@@ -1036,10 +1036,21 @@ const withSeason = (hex) => {
   return n >= 22 ? hex : hex + '0'.repeat(64 * (21 - n)) + '1'.padStart(64, '0');
 };
 
+/** A fake node that takes JSON-RPC batches too (as real nodes do): each call answered as alone. */
+const batching = (node) => {
+  const f = async (url, init) => {
+    const q = JSON.parse(init.body);
+    if (!Array.isArray(q)) return node(url, init);
+    const parts = await Promise.all(q.map(async (x) => (await f(url, { body: JSON.stringify(x) })).json()));
+    return { json: async () => parts };
+  };
+  return f;
+};
+
 /** A fake chain for judgeRun: `fights` by "agent#number" as fightOf words, Started `logs`, nonces. */
 function fakeJudgeChain({ fights = {}, logs = [], pending = 5, mined = 5, now = 100000, latest = 10000, hall = null }, sent) {
   const word = (h) => String(h).replace(/^0x/, '').padStart(64, '0');
-  return async (url, { body }) => {
+  return batching(async (url, { body }) => {
     const q = JSON.parse(body);
     const ok = (result) => ({ json: async () => ({ jsonrpc: '2.0', id: q.id, result }) });
     const p = q.params?.[0];
@@ -1056,6 +1067,7 @@ function fakeJudgeChain({ fights = {}, logs = [], pending = 5, mined = 5, now = 
         return ok('0x' + word('70997970c51812dc3a010c7d01b50e0d17dc79c8')); // judge()
       }
       case 'eth_getTransactionCount': return ok('0x' + (q.params[1] === 'pending' ? pending : mined).toString(16));
+      case 'eth_getBalance': return ok('0x' + (10n ** 18n).toString(16));
       case 'eth_blockNumber': return ok('0x' + latest.toString(16));
       case 'eth_getBlockByNumber': return ok({ timestamp: '0x' + now.toString(16) });
       case 'eth_getLogs': return ok(logs.filter((l) => q.params[0].topics[0].includes?.(l.topics[0]) || q.params[0].topics[0] === l.topics[0]).filter((l) => parseInt(l.blockNumber, 16) >= parseInt(p.fromBlock, 16)));
@@ -1065,7 +1077,7 @@ function fakeJudgeChain({ fights = {}, logs = [], pending = 5, mined = 5, now = 
       case 'eth_getTransactionReceipt': return ok({ status: '0x1' });
       default: throw new Error(q.method);
     }
-  };
+  });
 }
 
 test('the judge locks the trap plan of a fresh match before its bell, once for both fighters, and judges with it', async () => {
@@ -1136,7 +1148,7 @@ test('the judge replaces a transaction that is stuck instead of waiting for ever
   assert.equal(sent[0], signTx({ nonce: 5n, gasPrice: 200000000n, gas: 21000n, to: '0x70997970c51812dc3a010c7d01b50e0d17dc79c8', data: '0x', chainId: 56 }, JUDGE_KEY));
 });
 
-test('the Cloudflare judge keeps to 60 judgements an hour, counted on the chain', async () => {
+test('the Cloudflare judge keeps to 60 judgements an hour, counted on the chain (one node: the whole hour, as before)', async () => {
   const { judgeRun, addressOf, JUDGED, STARTED } = await import('../src/judge-cron.js');
   assert.equal(JUDGED, '0x72e2438d123b5dc0eb021a0e91584f9268b8dbc84049b95899e13a1697bb2f2f', 'the Judged event the site reads');
   const key = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
@@ -1146,9 +1158,10 @@ test('the Cloudflare judge keeps to 60 judgements an hour, counted on the chain'
   const fight = '0x' + [SEED, '1', '64', '0', '1', '0', '5', '0', '1', 'a', '0', '0', '0', KEYS.commitment(ARENA, A, 1), '0', '1', '0', '1', locked].map(word).join('');
   const run = async (judgedLastHour) => {
     const sent = [];
-    // judged at block 9968: in the last hour, and more than HEAD_MARGIN (25) blocks behind the head (10000)
-    const logs = [{ topics: [STARTED, '0x' + word(A), '0x' + word('1')], blockNumber: '0x2328' }, ...Array.from({ length: judgedLastHour }, () => ({ topics: [JUDGED], blockNumber: '0x26f0' }))];
-    const fetchFn = async (url, { body }) => {
+    // judged at block 9968 and, older than the live window but in the last hour, at block 7000 (a block a
+    // second here): more than HEAD_MARGIN (25) blocks behind the head (10000)
+    const logs = [{ topics: [STARTED, '0x' + word(A), '0x' + word('1')], blockNumber: '0x2328' }, ...Array.from({ length: judgedLastHour }, (_, i) => ({ topics: [JUDGED], blockNumber: '0x' + (i % 2 ? 7000 : 9968).toString(16) }))];
+    const fetchFn = batching(async (url, { body }) => {
       const q = JSON.parse(body);
       const ok = (result) => ({ json: async () => ({ jsonrpc: '2.0', id: q.id, result }) });
       const p = q.params?.[0];
@@ -1161,19 +1174,21 @@ test('the Cloudflare judge keeps to 60 judgements an hour, counted on the chain'
           if (p.data.startsWith('0x748e1910')) return ok('0x' + word('0')); // nextDrawAt(): nobody registered
           return ok('0x' + word(addressOf(key))); // judge()
         case 'eth_getTransactionCount': return ok('0x5');
+        case 'eth_getBalance': return ok('0x' + (10n ** 18n).toString(16));
         case 'eth_blockNumber': return ok('0x' + (10000).toString(16));
         case 'eth_getBlockByNumber': return ok({ timestamp: '0x' + (100000).toString(16) });
-        case 'eth_getLogs': return ok(logs.filter((l) => parseInt(l.blockNumber, 16) >= parseInt(p.fromBlock, 16) && parseInt(l.blockNumber, 16) <= parseInt(p.toBlock, 16)));
+        case 'eth_getLogs': return ok(logs.filter((l) => parseInt(l.blockNumber, 16) >= parseInt(p.fromBlock, 16) && (p.toBlock === 'latest' || parseInt(l.blockNumber, 16) <= parseInt(p.toBlock, 16))));
         case 'eth_estimateGas': return ok('0x30000');
         case 'eth_gasPrice': return ok('0x5f5e100');
         case 'eth_sendRawTransaction': sent.push(q.params[0]); return ok('0x' + 'aa'.repeat(32));
         case 'eth_getTransactionReceipt': return ok({ status: '0x1' });
         default: throw new Error(q.method);
       }
-    };
+    });
     await judgeRun({ RPC_URL: 'http://rpc', ARENA, CHAIN_ID: 56, DEPLOY_BLOCK: 0, BLOCKS_PER_WEEK: 604800, SECRET: '11'.repeat(32), JUDGE_KEY: key, MAX_PER_HOUR: 60 }, { fetchFn, log: () => {}, wait: async () => {} });
     return sent.length;
   };
+  // a server with one node (the testnet's) reads the whole look-back window every run and counts the hour
   assert.equal(await run(60), 0, 'sixty judgements in the last hour: no more');
   assert.equal(await run(59), 1, 'fifty-nine: one more');
   assert.equal(await run(0), 1, 'none: the fight is judged');

@@ -15,8 +15,13 @@ const word = (h) => String(h).replace(/^0x/, '').padStart(64, '0');
 /** A fake chain for judgeRun: season 1 judged by JUDGE, two agents in the hall and a draw due (so a run
  *  sends one transaction, the seal), and the judge's balance `balance` (an Error: the read fails). */
 function fakeChain(balance, sent, reads) {
-  return async (url, { body }) => {
+  const node = async (url, { body }) => {
     const q = JSON.parse(body);
+    // a JSON-RPC batch (the judge's first reads): each call answered as alone, in one reply
+    if (Array.isArray(q)) {
+      const parts = await Promise.all(q.map(async (x) => (await node(url, { body: JSON.stringify(x) })).json()));
+      return { json: async () => parts };
+    }
     const ok = (result) => ({ json: async () => ({ jsonrpc: '2.0', id: q.id, result }) });
     const p = q.params?.[0];
     switch (q.method) {
@@ -45,6 +50,7 @@ function fakeChain(balance, sent, reads) {
       default: throw new Error(q.method);
     }
   };
+  return node;
 }
 
 async function run(balance, extra = {}) {
@@ -117,6 +123,10 @@ test('a run that only replaces a stuck transaction still warns first', async () 
   const chain = fakeChain(1n, sent, reads);
   const fetchFn = async (url, init) => {
     const q = JSON.parse(init.body);
+    if (Array.isArray(q)) {
+      const parts = await Promise.all(q.map(async (x) => (await fetchFn(url, { body: JSON.stringify(x) })).json()));
+      return { json: async () => parts };
+    }
     if (q.method === 'eth_getTransactionCount') return { json: async () => ({ jsonrpc: '2.0', id: q.id, result: q.params[1] === 'pending' ? '0x6' : '0x5' }) };
     return chain(url, init);
   };

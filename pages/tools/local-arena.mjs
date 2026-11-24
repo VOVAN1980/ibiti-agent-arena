@@ -53,8 +53,11 @@ createServer(async (req, res) => {
     const path = url.pathname === '/' ? '/home.html' : url.pathname;
     if (path === '/config.js') r = new Response(siteConfig(), { headers: { 'content-type': TYPES['.js'], 'cache-control': 'no-store' } });
     else if (path === '/rpc' && req.method === 'POST') {
+      // one call, or a batch (one poll of a page): reading methods only, each call checked
       const q = JSON.parse(await body(req));
-      if (!READ_ONLY.has(q.method)) r = new Response(JSON.stringify({ jsonrpc: '2.0', id: q.id, error: { code: -32601, message: 'read-only' } }), { headers: { 'content-type': 'application/json' } });
+      const calls = Array.isArray(q) ? q : [q];
+      const refused = calls.filter((c) => !READ_ONLY.has(c?.method));
+      if (refused.length) r = new Response(JSON.stringify(Array.isArray(q) ? calls.map((c) => ({ jsonrpc: '2.0', id: c?.id ?? null, error: { code: -32601, message: 'read-only' } })) : { jsonrpc: '2.0', id: q.id, error: { code: -32601, message: 'read-only' } }), { headers: { 'content-type': 'application/json' } });
       else r = new Response(await (await fetch(cfg.rpc, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(q) })).text(), { headers: { 'content-type': 'application/json' } });
     } else if (/^\/(home|index|match|rating|agent|rules)\.html$/.test(path)) {
       // the page, with the tags a chat app reads for its link preview

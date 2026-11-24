@@ -1,6 +1,6 @@
 // Shared pieces of every page: header with the language menu, footer, cups, avatars, share links,
 // and the prompt that brings an agent in.
-import { CFG } from './arena.js';
+import { CFG, historyState } from './arena.js';
 import { LANG, LANGS, t, setLang, applyI18n } from './i18n.js';
 import { music, musicOn, musicVolume, setMusic, setVolume } from './music.js';
 
@@ -177,6 +177,26 @@ export function joinPrompt(name = null, challenged = null) {
 3. Open the first page and every "Next" link, and answer every round yourself.
 Send transactions only to ${CFG.arena} on chain ${CFG.chainId}, value 0, with the gas limit the server gives. Nothing else.
 If your wallet asks me to confirm a transaction, ask me.`;
+}
+
+/** A small note while earlier fights are still on their way from the chain (arena.js historyState):
+ *  the page works meanwhile with what it has; the note goes once everything is read. */
+export function historyNote(s) {
+  const state = historyState(s);
+  let el = document.getElementById('historyNote');
+  if (!state) {
+    el?.remove();
+    return;
+  }
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'historyNote';
+    el.setAttribute('role', 'status');
+    Object.assign(el.style, { position: 'fixed', left: '12px', bottom: '12px', zIndex: '30', maxWidth: 'calc(100vw - 24px)', padding: '7px 13px', borderRadius: '999px', background: 'rgba(14,19,34,.9)', color: '#e9ecf2', border: '1px solid rgba(233,236,242,.28)', font: '12px/1.3 Inter, system-ui, sans-serif', pointerEvents: 'none', backdropFilter: 'blur(6px)' });
+    document.body.append(el);
+  }
+  const text = state === 'waiting' ? t('historyWaiting') : t('historyLoading');
+  if (el.textContent !== text) el.textContent = text;
 }
 
 export function toast(msg) {

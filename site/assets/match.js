@@ -6,12 +6,12 @@
 // right answers or traps appears before the judge's verdict.
 // The scoreboard is rebuilt only when something changes; between reads of the chain only the clock
 // and the bars move, in place (so a page translator has nothing to redo every second).
-import { CFG, emptyState, refresh, bouts, verdict, clockOf, fightName, fightOf, openedRounds, rounds, trapName, isLive, rating, arenaSetting, useArena, arenaQuery, ROUNDS } from './arena.js';
+import { CFG, emptyState, refresh, bouts, verdict, clockOf, fightName, fightOf, openedRounds, rounds, trapName, isLive, rating, arenaSetting, useArena, arenaQuery, pollDelay, pollAgain, ROUNDS } from './arena.js';
 import { LANG } from './i18n.js';
 
 /** Fouls as the judge counted them; a silent fight is never judged, so its fouls are not known. */
 const foulsOf = (j) => (j.empty ? '—' : j.fouls);
-import { $, esc, keep, tName, header, footer, avatar, shareButtons, mmss, siteUrl, agentUrl, matchUrl, t, applyI18n, challengeButton, CHALLENGES } from './ui.js';
+import { $, esc, keep, tName, header, footer, avatar, shareButtons, mmss, siteUrl, agentUrl, matchUrl, t, applyI18n, challengeButton, historyNote, CHALLENGES } from './ui.js';
 import { forFight, loadTheme, loadAll, themeName, themePlain, themesKnown } from './themes.js';
 import { gong, beep, ding, thud, cheer, boo, ooh, crowdLevel, setMusic, soundOn, soundRunning, setSound } from './sound.js';
 import { musicHold } from './music.js';
@@ -939,7 +939,10 @@ async function loop() {
   } catch (e) {
     console.error(e);
   }
-  setTimeout(loop, CFG.pollMs ?? 2000);
+  historyNote(s);
+  // every 2 s while a fight is live or about to start, else every 10 s (the clocks tick on their own);
+  // nothing while the tab is hidden
+  pollAgain(loop, pollDelay(s));
 }
 setInterval(() => {
   s.now += 1;

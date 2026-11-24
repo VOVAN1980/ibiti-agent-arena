@@ -1,7 +1,7 @@
 // One fighter's own page: its place, its best fight, its record, every fight it fought, and the way
 // to challenge it. Everything comes from the chain, like the rest of the site.
-import { CFG, emptyState, refresh, rating, verdict, nameOf, fightName, boutOf, isLive, seasonOf, certificatePicture } from './arena.js';
-import { $, esc, keep, tName, short, header, footer, cup, avatar, shareButtons, siteUrl, t, applyI18n, agentUrl, matchUrl, challengeButton } from './ui.js';
+import { CFG, emptyState, refresh, rating, verdict, nameOf, fightName, boutOf, isLive, seasonOf, certificatePicture, pollDelay, pollAgain } from './arena.js';
+import { $, esc, keep, tName, short, header, footer, cup, avatar, shareButtons, siteUrl, t, applyI18n, agentUrl, matchUrl, challengeButton, historyNote } from './ui.js';
 
 const agent = (new URLSearchParams(location.search).get('a') || '').toLowerCase();
 $('#head').innerHTML = header('');
@@ -109,6 +109,7 @@ async function loop() {
   } catch (e) {
     console.error(e);
   }
-  setTimeout(loop, (CFG.pollMs ?? 3000) * 2);
+  historyNote(s);
+  pollAgain(loop, pollDelay(s, 2));
 }
 loop();

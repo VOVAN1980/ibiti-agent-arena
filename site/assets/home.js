@@ -1,5 +1,5 @@
 // The front door: both rings, the season, how it works. Scrolling moves the camera to the ring.
-import { CFG, emptyState, refresh, nameOf, seasonState, podiumSeason } from './arena.js';
+import { CFG, emptyState, refresh, nameOf, seasonState, podiumSeason, pollDelay, pollAgain } from './arena.js';
 import { t } from './i18n.js';
 import { seasonLine, esc, keep, gear } from './ui.js';
 import { music, musicOn, setMusic } from './music.js';
@@ -65,8 +65,7 @@ document.addEventListener('click', () => setTimeout(() => {
 const s = emptyState();
 async function season() {
   try {
-    await refresh(s);
-    const st = await seasonState();
+    const [, st] = await Promise.all([refresh(s), seasonState()]);
     $('#seasonLine').innerHTML = seasonLine(st, (a) => nameOf(s, a)) || esc(tr('homeNoSeason', 'The first season opens soon.'));
     const p = await podiumSeason();
     $('#podium').innerHTML = p?.top.length
@@ -76,5 +75,10 @@ async function season() {
     console.error(e);
   }
 }
-season();
-setInterval(season, 30000);
+// every 30 s; while the names of earlier fights are still on their way, the next part at once (later
+// after a failed poll); nothing while the tab is hidden
+const again = async () => {
+  await season();
+  pollAgain(again, pollDelay(s, 1, 30000));
+};
+again();

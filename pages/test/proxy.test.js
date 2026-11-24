@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import host from '../src/host.js';
 import { COOLDOWNS } from '../src/rpc.js';
+import { clearCache } from '../src/cache.js';
 
 const ARENA = '0x7a3f2c9e5b1d4a6f8e0c2b4d6f8a1c3e5b7d9f21';
 const BOOK = '0x' + 'b0'.repeat(20);
@@ -21,17 +22,24 @@ async function withNodes(answer, fn) {
   const calls = [];
   const real = globalThis.fetch;
   globalThis.fetch = async (url, init) => {
-    const q = JSON.parse(init.body);
-    calls.push({ url, q });
-    const out = await answer(url, q);
+    const body = JSON.parse(init.body);
+    // a JSON-RPC batch (the season calendar's seasons): each call answered as alone, one response
+    const parts = [];
+    for (const q of Array.isArray(body) ? body : [body]) {
+      calls.push({ url, q });
+      parts.push(await answer(url, q));
+    }
+    const out = Array.isArray(body) ? (parts.find((x) => x instanceof Response) ?? parts) : parts[0];
     return out instanceof Response ? out : new Response(JSON.stringify(out), { headers: { 'content-type': 'application/json' } });
   };
   COOLDOWNS.clear();
+  clearCache(); // each test starts with nothing kept from another
   try {
     return await fn(calls);
   } finally {
     globalThis.fetch = real;
     COOLDOWNS.clear();
+    clearCache();
   }
 }
 const ask = (method, params, env = ENV) => host.fetch(new Request('https://arena.example/rpc', { method: 'POST', body: JSON.stringify({ jsonrpc: '2.0', id: 3, method, params }) }), env).then((r) => r.json());

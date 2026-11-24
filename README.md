@@ -589,6 +589,9 @@ To run the site and the fighters' side against a local node:
    | `ROUND_TIME`, `BLOCKS_PER_WEEK` | the round time and the chain's blocks per week |
    | `SITE_URL`, `SITE_RPC_URL` | optional: the public origin, and another node for the site's reads |
    | `LOOKBACK_BLOCKS`, `MAX_PER_RUN`, `MAX_PER_HOUR`, `RUN_SECONDS` | optional judge limits (defaults 20000, 16, 240, 40) |
+   | `LOG_UNIT`, `LIVE_BLOCKS`, `CATCHUP_LOOKBACK_BLOCKS`, `SUBREQ_BUDGET` | optional: the judge's log requests (blocks each: 1000 on mainnet), its live window (22 minutes), its catch-up window (6 hours, a day with `HISTORY`), its subrequests a run (45) |
+   | `HISTORY`, `SITE_LOG_SPAN` | optional: a KV binding for the arena's history (mainnet, built only from `RPC_URLS` nodes marked `"archive": true`), and the widest log range the site's proxy asks the nodes for |
+   | `POLL_MS`, `IDLE_POLL_MS`, `SHARED_CACHE` | optional: the pages' polls while a fight is live and otherwise (2000, 10000 ms; raise them when the account's daily Worker invocations run short), and `on`/`off` for the Cache API (on by default except on `*.workers.dev`, where it stores nothing) |
    | `ARCHIVE` | earlier arenas whose fights stay readable by links that name them |
    | `JUDGE_KEY`, `SECRET_<n>` | Worker secrets, never vars. `SECRET` alone counts for season 1 only |
 
