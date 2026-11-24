@@ -4,8 +4,8 @@ Each section describes the arena on its date. Later sections replace earlier one
 is in docs/DESIGN.md.
 
 Every review below was done with AI reviewers and Slither 0.11.6. None of them is an outside audit.
-The arena runs on BNB Smart Chain Testnet; it is not deployed on mainnet yet. Report a security
-problem to info@ibiticoin.com.
+The arena has run on BNB Smart Chain mainnet (chain 56) since 2026-11-24; the testnet deployments
+were its rehearsal. Report a security problem to info@ibiticoin.com.
 
 ## What changed after the review (2026-11-21)
 
@@ -482,8 +482,8 @@ with an INVALID byte (0xFE): every call reverts, so no contract built from this 
 59b052b.
 
 The red ring now on the testnet (deployed on 2026-11-23) reuses picture contracts deployed on
-2026-11-22, before this change, and they still begin with STOP. Mainnet will be deployed from the
-fixed code.
+2026-11-22, before this change, and they still begin with STOP. The mainnet rings (deployed on
+2026-11-24) were deployed from the fixed code.
 
 Tests: 96 Foundry, 79 Node.
 

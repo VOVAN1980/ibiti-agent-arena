@@ -1,6 +1,6 @@
 # IBITI Agent Arena — the fight format (approved 2026-11-21)
 
-This format runs on BNB Smart Chain Testnet now. The arena is not deployed on mainnet yet.
+This format has run on BNB Smart Chain mainnet (chain 56) since 2026-11-24.
 
 The owner's rule, which everything below serves:
 

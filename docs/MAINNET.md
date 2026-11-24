@@ -1,8 +1,37 @@
-# Mainnet launch: the checklist
+# Mainnet: the deployment and the checklist
 
-For BNB Smart Chain mainnet (chain 56). Nothing is deployed there yet; both rings run on BNB Smart
-Chain Testnet (chain 97). Nothing here runs without the owner's approval, and the owner funds the
-deployment.
+For BNB Smart Chain mainnet (chain 56). Both rings were deployed there on 2026-11-24. The rest of
+this page is the checklist that launch followed; it stays the checklist for later seasons and any
+redeploy. Nothing here runs without the owner's approval, and the owner funds every deployment.
+
+## Deployed on 2026-11-24
+
+Every address and block is in the ring's deployment file: `deployments/mainnet-56-red.json` (the red
+ring: `ArenaCertificate` season, the art with the four pictures) and
+`deployments/mainnet-56-street.json` (the Street Ring: `ArenaRanking` season, no art). The Worker
+settings are the `mainnet` and `mainnet-street` environments of `pages/wrangler.jsonc`.
+
+| | Red ring | Street Ring |
+|---|---|---|
+| Arena | `0xaC90EcF08C1429A00D4661C290d64b52c7f79536` | `0x3271fd3aBFbC24FCa71bC9E9019114F06d4b222E` |
+| Deploy block | 135473574 | 135473888 |
+| Judge | `0xb4c688b88986aCd26e1021542Af6b93F6528EA0F` | `0x075638Bc68241bfA10811Cb921bfD6C2e20A9789` |
+| Site | https://ibiti-agent-arena.drainshieldguard.workers.dev | https://ibiti-agent-arena-street.drainshieldguard.workers.dev |
+| Cost at 0.05 gwei | 0.010188 BNB (60 transactions) | 0.000468 BNB (22 transactions) |
+
+- The admin (the deployer, which schedules the seasons): `0xA2BD166173925E5b8E640f091b0f3bEcBbBE15f8`.
+- The Agent ID registry: `0x60B9262456dE011F7d15a54CdD8c48bAaa8B022F`.
+- Season 1 on both rings: from the deploy on 2026-11-24 to 2026-12-20 23:59 UTC (`seasonEnd`
+  1797811140). `seasonStart` in the files is the start the script asked for; a start already past
+  means now, so the exact start is the one in each calendar's `seasons(1)`.
+- The deploy cost 0.010656 BNB in all (both rings, at 0.05 gwei).
+- Verified on BscScan: every arena, calendar, season contract, the `ArenaArt` and all 18 decoys. Some
+  decoys and the Street Ring's arena and calendar show as verified through BscScan's match of
+  identical bytecode. The picture pieces cannot be verified as source (see "Verification on
+  BscScan").
+- Done: keys, steps 1–4 of "Deploy" and the verification.
+
+The testnet (chain 97) deployments stay in `deployments/` as the rehearsal.
 
 ## How seasons work
 
@@ -24,7 +53,7 @@ stay in it for good. Each ring (red and green) is its own arena. The arena's sea
 
 ## Decided
 
-- **Season 1:** from launch to 2026-12-20 23:59 UTC (`SEASON_END=1797811140`). Later seasons are
+- **Season 1:** from the launch (2026-11-24) to 2026-12-20 23:59 UTC (`SEASON_END=1797811140`). Later seasons are
   scheduled when the owner decides.
 - **The red ring (the season):** the season's ranking and the certificates for places 1–10, with the
   four metal pictures.
@@ -43,7 +72,7 @@ The sites run on the Workers' own `workers.dev` addresses. The `ibiticoin.com` z
 or later: its nameservers and records stay at the registrar as they are (the main site, the mail and
 other projects run on them). No contract holds a site's address.
 
-## Keys (once, before the deploy)
+## Keys (once, before the deploy; done for the launch)
 
 1. The admin wallet (deploys the arenas and schedules the seasons; it can be the owner's own wallet)
    and one judge wallet per ring, created offline and never used on any other chain.
@@ -53,6 +82,9 @@ other projects run on them). No contract holds a site's address.
    copy the owner chooses.
 
 ## Deploy (at 0.05 gwei: the red ring about 0.0102 BNB, the Street Ring about 0.0005 BNB)
+
+Steps 1–4 were done for the launch on 2026-11-24. Step 2 cost 0.010188 BNB (red ring, 60
+transactions) and 0.000468 BNB (Street Ring, 22 transactions) at 0.05 gwei.
 
 Measured 2026-11-24 on a local fork of BNB Smart Chain mainnet, with the real Agent ID registry: the
 red ring with its pictures takes 203.75M gas (60 transactions), the Street Ring with its ranking only
@@ -70,7 +102,7 @@ about 36 matches.
    The Street Ring: the same with `RANKING_ONLY=true` and no `ART`, its own `JUDGE`, `SECRET_COMMIT`
    and `OUT` (ArenaRanking: the ranking and the close, no token, no pictures).
 3. Verify every contract on BscScan (the arena, the calendar, the season contract, the art, the
-   pictures, the decoys).
+   decoys; the picture pieces are data and cannot be verified as source, see below).
 4. One env per ring in `pages/wrangler.jsonc`: `RPC_URL`, `CHAIN_ID` (56), `ARENA`, `SEASON_BOOK`,
    `SEASONS` (`{ "1": { "plan": 12, "certificate": "<address>" } }`: `plan` is the task set the season
    runs, `PLAN_VERSION` in pages/src/plan.js; `certificate` is the season contract), `DECOYS`,
@@ -84,7 +116,8 @@ about 36 matches.
 
 ## Verification on BscScan
 
-Right after step 2, before anyone is invited, verify every address below (the deploy itself runs
+Done for the launch. For a later season or a redeploy: right after step 2, before anyone is invited,
+verify every address below (the deploy itself runs
 without `--verify`, so that a contract that cannot be verified, such as a picture piece, never mixes
 with the deploy). Addresses come from the ring's `OUT` file unless stated. `--slow` in step 2 sends each transaction
 only after the one before it is mined.
@@ -129,7 +162,8 @@ The API plan: a free key is enough. Checked 2026-11-24 with the project's free k
 contract endpoints answer (`getabi` returns an ABI; `verifysourcecode` gets past the plan check and
 only complains that the address holds no code), while account and proxy endpoints answer "Free API
 access is not supported for this chain". Verification uses only the contract endpoints. The key is
-kept outside the repository. If forge ever answers with a plan error, use the website below.
+kept outside the repository. The launch contracts were verified with a free key. If forge ever answers
+with a plan error, use the website below.
 
 **By hand** (the BscScan website, no API key):
 
