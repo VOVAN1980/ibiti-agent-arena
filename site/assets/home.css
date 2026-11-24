@@ -176,7 +176,7 @@ a { color: inherit; }
 .gearmenu .share { display: flex; flex-wrap: wrap; gap: 8px; }
 .gearmenu .share a, .gearmenu .share button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 42px; height: 42px; padding: 0; border-radius: 10px; border: 1px solid var(--line); background: rgba(255,255,255,.04); color: var(--ink-2); cursor: pointer; font: 600 13px var(--font); }
 .gearmenu .share svg { width: 19px; height: 19px; fill: currentColor; }
-.gearmenu .share .native { width: auto; padding: 0 14px; color: var(--ink); background: linear-gradient(135deg, #1d4ed8, #3b82f6); border-color: transparent; }
+.gearmenu .share .native { width: auto; padding: 0 14px; color: var(--ink); background: linear-gradient(135deg, #15803d, #22c55e); border-color: transparent; }
 .gearmenu .share a:hover, .gearmenu .share button:hover { background: rgba(255,255,255,.1); }
 .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 40; background: #0e1322; color: #f3f6fc; border: 1px solid rgba(233,236,242,.4); padding: 12px 18px; border-radius: 12px; font: 15px 'Inter', system-ui, sans-serif; box-shadow: 0 18px 50px rgba(0,0,0,.6); opacity: 0; transition: opacity .2s; pointer-events: none; }
 .toast.on { opacity: 1; }

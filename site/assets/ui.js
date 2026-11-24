@@ -108,7 +108,7 @@ export function cup(place) {
 let avatarId = 0;
 /** A fighter's hexagon with its initials, in its corner's colour. */
 export function avatar(name, side) {
-  const col = side === 'blue' ? '#3b82f6' : side === 'red' ? '#ef4444' : '#cfd4dc';
+  const col = side === 'blue' ? '#22c55e' : side === 'red' ? '#ef4444' : '#cfd4dc';
   const initials = String(name).split(/\s+/).map((x) => x[0] ?? '').join('').slice(0, 2).toUpperCase();
   const id = `av${++avatarId}`;
   return `<svg class="avatar" viewBox="0 0 64 64" translate="no"><defs><radialGradient id="${id}" cx=".5" cy=".35" r=".7"><stop offset="0" stop-color="${col}" stop-opacity=".9"/><stop offset="1" stop-color="#0b0f1a"/></radialGradient></defs><path d="M32 3 57 17v30L32 61 7 47V17Z" fill="url(#${id})" stroke="${col}" stroke-width="2"/><text x="32" y="39" text-anchor="middle">${esc(initials)}</text></svg>`;

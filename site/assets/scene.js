@@ -13,7 +13,7 @@ const W = 1600;
 const H = 900;
 const SIDE = {
   red: { x: 590, color: '#ef4444', deep: '#7f1d1d', glow: 'rgba(239,68,68,' },
-  blue: { x: 1010, color: '#3b82f6', deep: '#1e3a8a', glow: 'rgba(59,130,246,' },
+  blue: { x: 1010, color: '#22c55e', deep: '#14532d', glow: 'rgba(34,197,94,' },
 };
 const FEET = 762;
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -28,7 +28,7 @@ function defs() {
     ${['red', 'blue'].map((s) => `<radialGradient id="glove-${s}" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset=".25" stop-color="${SIDE[s].color}"/><stop offset="1" stop-color="${SIDE[s].deep}"/></radialGradient>
       <radialGradient id="pool-${s}" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="${SIDE[s].color}" stop-opacity=".55"/><stop offset="1" stop-color="${SIDE[s].color}" stop-opacity="0"/></radialGradient>
       <linearGradient id="holo-${s}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${SIDE[s].color}" stop-opacity=".55"/><stop offset="1" stop-color="${SIDE[s].color}" stop-opacity=".12"/></linearGradient>`).join('')}
-    <linearGradient id="rope" gradientUnits="userSpaceOnUse" x1="180" y1="0" x2="1420" y2="0"><stop offset="0" stop-color="#ef4444"/><stop offset=".5" stop-color="#e6ebf5"/><stop offset="1" stop-color="#3b82f6"/></linearGradient>
+    <linearGradient id="rope" gradientUnits="userSpaceOnUse" x1="180" y1="0" x2="1420" y2="0"><stop offset="0" stop-color="#ef4444"/><stop offset=".5" stop-color="#e6ebf5"/><stop offset="1" stop-color="#22c55e"/></linearGradient>
     <linearGradient id="matShade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0b1222" stop-opacity=".2"/><stop offset="1" stop-color="#03060c" stop-opacity=".75"/></linearGradient>
     <pattern id="hexes" width="56" height="48.5" patternUnits="userSpaceOnUse" patternTransform="scale(1 .42)"><path d="M14 0h28l14 24.25L42 48.5H14L0 24.25Z" fill="none" stroke="rgba(120,150,230,.22)" stroke-width="2"/></pattern>
     <filter id="neon" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
@@ -332,7 +332,7 @@ export function createScene(root) {
     const band = ctx.createLinearGradient(x0, 0, x1, 0);
     band.addColorStop(0, 'rgba(239,68,68,.9)');
     band.addColorStop(0.5, 'rgba(245,179,1,.9)');
-    band.addColorStop(1, 'rgba(59,130,246,.9)');
+    band.addColorStop(1, 'rgba(34,197,94,.9)');
     ctx.fillStyle = band;
     ctx.fillRect(x0, 528, x1 - x0, 2);
     ctx.fillRect(x0, 556, x1 - x0, 2);

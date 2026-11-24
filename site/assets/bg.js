@@ -1,5 +1,5 @@
 // The living background: a neon arena floor that slowly moves, and sparks drifting up through the
-// red and blue spotlights. Light on the CPU; still when the reader asks for reduced motion.
+// red and green spotlights. Light on the CPU; still when the reader asks for reduced motion.
 const canvas = document.getElementById('bg');
 const ctx = canvas.getContext('2d');
 const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -28,7 +28,7 @@ function spark(anywhere) {
 function floor(t) {
   // a perspective grid: the ring floor running toward the horizon
   const horizon = h * 0.58;
-  ctx.strokeStyle = 'rgba(59,130,246,0.10)';
+  ctx.strokeStyle = 'rgba(34,197,94,0.10)';
   ctx.lineWidth = 1;
   for (let i = -14; i <= 14; i++) {
     ctx.beginPath();
@@ -56,15 +56,15 @@ function frame(t) {
   ctx.fillStyle = g1;
   ctx.fillRect(0, 0, w, h);
   const g2 = ctx.createRadialGradient(w * 0.85, h * 0.1, 0, w * 0.85, h * 0.1, w * 0.55);
-  g2.addColorStop(0, 'rgba(59,130,246,0.18)');
-  g2.addColorStop(1, 'rgba(59,130,246,0)');
+  g2.addColorStop(0, 'rgba(34,197,94,0.18)');
+  g2.addColorStop(1, 'rgba(34,197,94,0)');
   ctx.fillStyle = g2;
   ctx.fillRect(0, 0, w, h);
   floor(t);
   for (const s of sparks) {
     if (!still) s.y -= s.v;
     if (s.y < -10) Object.assign(s, spark(false));
-    ctx.fillStyle = s.red ? `rgba(248,113,113,${s.a})` : `rgba(96,165,250,${s.a})`;
+    ctx.fillStyle = s.red ? `rgba(248,113,113,${s.a})` : `rgba(74,222,128,${s.a})`;
     ctx.beginPath();
     ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
     ctx.fill();

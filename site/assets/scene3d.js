@@ -19,8 +19,8 @@ import { VignetteShader } from 'three/addons/shaders/VignetteShader.js';
 import { beamMaterial, buildHaze, buildScreens, buildPyro, buildFlags } from './atmosphere.js';
 import { loadXbot, makeXRobot } from './xbot.js';
 
-const COLOR = { red: 0xef4444, blue: 0x3b82f6, ref: 0xe6ebf5, gold: 0xf5b301 };
-const CSS = { red: '#ef4444', blue: '#3b82f6' };
+const COLOR = { red: 0xef4444, blue: 0x22c55e, ref: 0xe6ebf5, gold: 0xf5b301 };
+const CSS = { red: '#ef4444', blue: '#22c55e' };
 const FLOOR = 0.6; // the top of the ring
 const RING = 6; // the ring's radius (corner to centre)
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -73,10 +73,10 @@ function drawEmblem(g, cx, cy, size, rot = 0) {
   g.rotate(rot);
   const k = size / 32;
   const metal = g.createLinearGradient(-16 * k, -16 * k, 16 * k, 16 * k);
-  metal.addColorStop(0, '#fff6cc');
-  metal.addColorStop(0.4, '#f7d672');
-  metal.addColorStop(0.75, '#e0b042');
-  metal.addColorStop(1, '#f7d672');
+  metal.addColorStop(0, '#ffe9a0');
+  metal.addColorStop(0.4, '#f2c75a');
+  metal.addColorStop(0.75, '#d49f2c');
+  metal.addColorStop(1, '#f2c75a');
   g.fillStyle = metal;
   g.strokeStyle = metal;
   g.lineWidth = 3 * k;
@@ -587,7 +587,7 @@ export async function createScene(root) {
   // the ring
   const ringMat = [
     new THREE.MeshStandardMaterial({ map: hazardTex(), roughness: 0.55, metalness: 0.2 }),
-    new THREE.MeshStandardMaterial({ map: floorTex(), roughness: 0.3, metalness: 0.5, envMapIntensity: 0.7, emissive: 0xffffff, emissiveMap: floorGlowTex(), emissiveIntensity: 0.5 }),
+    new THREE.MeshStandardMaterial({ map: floorTex(), roughness: 0.3, metalness: 0.5, envMapIntensity: 0.7, emissive: 0xffffff, emissiveMap: floorGlowTex(), emissiveIntensity: 0.3 }),
     M.black,
   ];
   const ring = new THREE.Mesh(new THREE.CylinderGeometry(RING, RING + 0.22, FLOOR, 6, 1, false, Math.PI / 6), ringMat);
@@ -632,7 +632,7 @@ export async function createScene(root) {
   mesh(new THREE.BoxGeometry(3.1, 0.08, 3.1), M.glow(COLOR.gold, 1.1), [0, -0.7, 0], cube);
   scene.add(bar(new THREE.Vector3(0, 7.6, 0.1), new THREE.Vector3(0, 16, 0.1), 0.05, M.dark));
 
-  // the stands: a raked bowl of fans, red on the left, blue on the right
+  // the stands: a raked bowl of fans, red on the left, green on the right (the green corner's key is "blue")
   const bowl = [];
   const rings = small ? 10 : 16;
   for (let k = 0; k < rings; k++) {
@@ -684,7 +684,7 @@ export async function createScene(root) {
   const armsGeo = mergeGeometries([-1, 1].map((s2) => tint(new THREE.CapsuleGeometry(0.06, 0.36, 2, 6).rotateZ(-0.38 * s2).translate(0.35 * s2, 0.93, 0))));
   const armed = bowl.filter(() => Math.random() < 0.45);
   const arms = new THREE.InstancedMesh(armsGeo, fanMat, armed.length);
-  const shirt = { red: [0xb91c1c, 0xdc2626, 0x7f1d1d, 0xef4444, 0x991b1b], blue: [0x1d4ed8, 0x2563eb, 0x1e3a8a, 0x3b82f6, 0x1e40af], plain: [0x1f2937, 0x374151, 0x8b93a1, 0x111827, 0x6b7280] };
+  const shirt = { red: [0xb91c1c, 0xdc2626, 0x7f1d1d, 0xef4444, 0x991b1b], blue: [0x15803d, 0x16a34a, 0x14532d, 0x22c55e, 0x166534], plain: [0x1f2937, 0x374151, 0x8b93a1, 0x111827, 0x6b7280] };
   const skin = [0xf1c27d, 0xe0ac69, 0xc68642, 0x8d5524, 0xffdbac, 0x6b4423, 0xd9a066];
   const c = new THREE.Color();
   const mtx = new THREE.Matrix4();
@@ -707,7 +707,7 @@ export async function createScene(root) {
     heads.setColorAt(i, c.setHex(pick(skin)).multiplyScalar(p.shade * 0.9));
     const cap = Math.random() < 0.22;
     caps.setMatrixAt(i, cap ? mtx : mtx.clone().scale(scl.set(0, 0, 0)));
-    caps.setColorAt(i, c.setHex(p.side === 'red' ? 0xef4444 : 0x3b82f6).multiplyScalar(p.shade));
+    caps.setColorAt(i, c.setHex(p.side === 'red' ? 0xef4444 : 0x22c55e).multiplyScalar(p.shade));
   });
   armed.forEach((p, i) => arms.setColorAt(i, c.setHex(p.shirt).multiplyScalar(p.shade)));
   // glow sticks: a third of those who raise their arms hold one up in their team's colour

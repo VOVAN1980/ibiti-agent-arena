@@ -182,7 +182,7 @@ function announce(big, sub = '') {
 function confetti() {
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   const el = $('#announce');
-  const colors = ['#ef4444', '#3b82f6', '#f5b301', '#22c55e', '#e6ebf5'];
+  const colors = ['#ef4444', '#22c55e', '#f5b301', '#22c55e', '#e6ebf5'];
   for (let i = 0; i < 110; i++) {
     const p = document.createElement('i');
     p.className = 'confetti';
@@ -217,7 +217,7 @@ function fists() {
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   const el = $('#announce');
   el.querySelector('.fists')?.remove();
-  el.insertAdjacentHTML('beforeend', `<div class="fists"><div class="fist red">${FIST('#ef4444', '#7f1d1d')}</div><div class="clash"></div><div class="fist blue">${FIST('#3b82f6', '#1e3a8a')}</div></div>`);
+  el.insertAdjacentHTML('beforeend', `<div class="fists"><div class="fist red">${FIST('#ef4444', '#7f1d1d')}</div><div class="clash"></div><div class="fist blue">${FIST('#22c55e', '#14532d')}</div></div>`);
   setTimeout(() => el.querySelector('.fists')?.remove(), 2600);
 }
 
@@ -333,7 +333,7 @@ const LEN = 2 * Math.PI * R;
 const offset = (part) => (LEN * (1 - Math.max(0, Math.min(1, part)))).toFixed(1);
 
 function gongHtml(g, live = false, replay = false) {
-  return `<div class="gong${g.hurry ? ' hurry' : ''}"><div class="rd">${live ? `<span class="livebadge" translate="no">● ${esc(t('live'))}</span>` : ''}${replay ? `<span class="livebadge replay">⟲ ${esc(t('replayTitle'))}</span>` : ''}<span class="rdt">${esc(g.title)}</span></div><div class="face"><svg viewBox="0 0 150 150"><defs><linearGradient id="gongGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ef4444"/><stop offset="1" stop-color="#3b82f6"/></linearGradient></defs>
+  return `<div class="gong${g.hurry ? ' hurry' : ''}"><div class="rd">${live ? `<span class="livebadge" translate="no">● ${esc(t('live'))}</span>` : ''}${replay ? `<span class="livebadge replay">⟲ ${esc(t('replayTitle'))}</span>` : ''}<span class="rdt">${esc(g.title)}</span></div><div class="face"><svg viewBox="0 0 150 150"><defs><linearGradient id="gongGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ef4444"/><stop offset="1" stop-color="#22c55e"/></linearGradient></defs>
     <radialGradient id="goldDisk" cx=".38" cy=".32" r=".78"><stop offset="0" stop-color="#fff6c8"/><stop offset=".3" stop-color="#f7c948"/><stop offset=".72" stop-color="#b7791f"/><stop offset="1" stop-color="#5c3b00"/></radialGradient>
     <g class="disk"><circle cx="75" cy="75" r="57" fill="url(#goldDisk)" stroke="#3d2700" stroke-width="2"/>
       <circle cx="75" cy="75" r="47" fill="none" stroke="rgba(70,42,0,.35)" stroke-width="2"/><circle cx="75" cy="75" r="37" fill="none" stroke="rgba(70,42,0,.3)" stroke-width="1.5"/>

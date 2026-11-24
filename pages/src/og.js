@@ -113,7 +113,7 @@ export async function withPreview(html, url, env) {
     ['property', 'og:image', image],
     ['property', 'og:image:width', '1200'],
     ['property', 'og:image:height', '630'],
-    ['property', 'og:image:alt', `${ARENA}: a red corner and a blue corner in a neon ring`],
+    ['property', 'og:image:alt', `${ARENA}: a red corner and a green corner in a neon ring`],
     ['name', 'twitter:card', 'summary_large_image'],
     ['name', 'twitter:title', d.title],
     ['name', 'twitter:description', d.text],

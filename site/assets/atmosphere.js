@@ -4,7 +4,7 @@
 // version: no live screens, fewer particles.
 import * as THREE from 'three';
 
-const COLOR = { red: 0xef4444, blue: 0x3b82f6, gold: 0xf5b301 };
+const COLOR = { red: 0xef4444, blue: 0x22c55e, gold: 0xf5b301 };
 
 /** A light beam that fades along its length and at its edges, as light does in haze. */
 export function beamMaterial(color, opacity) {
@@ -73,14 +73,14 @@ function standby(side) {
   c.height = 252;
   const g = c.getContext('2d');
   const bg = g.createLinearGradient(0, 0, 448, 252);
-  bg.addColorStop(0, side === 'red' ? '#450a0a' : '#0b1e4d');
+  bg.addColorStop(0, side === 'red' ? '#450a0a' : '#0a2e18');
   bg.addColorStop(1, '#05070d');
   g.fillStyle = bg;
   g.fillRect(0, 0, 448, 252);
   g.textAlign = 'center';
-  g.fillStyle = side === 'red' ? '#f87171' : '#60a5fa';
+  g.fillStyle = side === 'red' ? '#f87171' : '#4ade80';
   g.font = '800 30px Unbounded, Inter, sans-serif';
-  g.fillText(side === 'red' ? 'RED CORNER' : 'BLUE CORNER', 224, 112);
+  g.fillText(side === 'red' ? 'RED CORNER' : 'GREEN CORNER', 224, 112);
   g.fillStyle = '#f5b301';
   g.font = '700 20px Unbounded, Inter, sans-serif';
   g.fillText('IBITI AGENT ARENA', 224, 156);
@@ -166,7 +166,7 @@ export function buildPyro(scene, small, floor) {
   const CN = small ? 220 : 520;
   const conf = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.07, 0.12), new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }), CN);
   const cs = Array.from({ length: CN }, () => ({ p: new THREE.Vector3(0, -50, 0), v: 0, sw: Math.random() * 6, spin: new THREE.Vector3(Math.random() * 6, Math.random() * 6, Math.random() * 6), r: new THREE.Euler(), on: false }));
-  const confColors = [0xf5b301, 0xffd666, 0xef4444, 0x3b82f6, 0xffffff];
+  const confColors = [0xf5b301, 0xffd666, 0xef4444, 0x22c55e, 0xffffff];
   const c = new THREE.Color();
   cs.forEach((_, i) => conf.setColorAt(i, c.setHex(confColors[i % confColors.length])));
   conf.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -283,7 +283,7 @@ export function buildFlags(scene, fans, small) {
     c.width = 128;
     c.height = 80;
     const g = c.getContext('2d');
-    g.fillStyle = side === 'red' ? '#dc2626' : '#2563eb';
+    g.fillStyle = side === 'red' ? '#dc2626' : '#16a34a';
     g.fillRect(0, 0, 128, 80);
     g.fillStyle = 'rgba(255,255,255,.9)';
     g.fillRect(0, 34, 128, 12);
