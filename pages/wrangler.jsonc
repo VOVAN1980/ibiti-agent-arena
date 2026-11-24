@@ -136,6 +136,23 @@
           { "url": "https://56.rpc.thirdweb.com", "logs": 1000, "archive": true },
           { "url": "https://bsc-rpc.publicnode.com", "logs": 50000 }
         ],
+        // the viewers' own reads (site/assets/rpc-client.js): the pages poll these nodes straight from
+        // the browser (each answers a browser: CORS open, batches accepted; measured 2026-11-24), so a
+        // poll costs no Worker invocation; /rpc serves the history (KV archive) and the moments when no
+        // node answers. Calls: the dataseeds (they serve no logs at all). Logs: 48.club (250 blocks a
+        // request), thirdweb (1000, an archive; it rate-limits bursts per address), publicnode (50000,
+        // but logs older than about 2 to 2.5 hours come back empty with no error: trusted for 1 hour).
+        // "keep": the hours of logs a pruning node is trusted for (48.club answered in full 2.5 to 100 h
+        // back, 4 tries each, 2026-11-24: 6 like the judge; publicnode empty from about 2.5 h).
+        // At most one request per node every 2 s per viewer on average (a burst of 3).
+        "BROWSER_RPC_URLS": [
+          { "url": "https://bsc-dataseed.bnbchain.org", "calls": true, "logs": 0 },
+          { "url": "https://bsc-dataseed2.defibit.io", "calls": true, "logs": 0 },
+          { "url": "https://bsc-dataseed1.ninicoin.io", "calls": true, "logs": 0 },
+          { "url": "https://rpc-bsc.48.club", "logs": 250, "keep": 6 },
+          { "url": "https://56.rpc.thirdweb.com", "logs": 1000, "archive": true },
+          { "url": "https://bsc-rpc.publicnode.com", "logs": 50000, "keep": 1 }
+        ],
         // the judge's log reads in requests of 1000 blocks: one request on thirdweb, four on 48.club
         "LOG_UNIT": 1000,
         // the widest range the site's proxy asks the log nodes for at once (thirdweb: four requests);
@@ -203,6 +220,23 @@
           { "url": "https://rpc-bsc.48.club", "logs": 250 },
           { "url": "https://56.rpc.thirdweb.com", "logs": 1000, "archive": true },
           { "url": "https://bsc-rpc.publicnode.com", "logs": 50000 }
+        ],
+        // the viewers' own reads (site/assets/rpc-client.js): the pages poll these nodes straight from
+        // the browser (each answers a browser: CORS open, batches accepted; measured 2026-11-24), so a
+        // poll costs no Worker invocation; /rpc serves the history (KV archive) and the moments when no
+        // node answers. Calls: the dataseeds (they serve no logs at all). Logs: 48.club (250 blocks a
+        // request), thirdweb (1000, an archive; it rate-limits bursts per address), publicnode (50000,
+        // but logs older than about 2 to 2.5 hours come back empty with no error: trusted for 1 hour).
+        // "keep": the hours of logs a pruning node is trusted for (48.club answered in full 2.5 to 100 h
+        // back, 4 tries each, 2026-11-24: 6 like the judge; publicnode empty from about 2.5 h).
+        // At most one request per node every 2 s per viewer on average (a burst of 3).
+        "BROWSER_RPC_URLS": [
+          { "url": "https://bsc-dataseed.bnbchain.org", "calls": true, "logs": 0 },
+          { "url": "https://bsc-dataseed2.defibit.io", "calls": true, "logs": 0 },
+          { "url": "https://bsc-dataseed1.ninicoin.io", "calls": true, "logs": 0 },
+          { "url": "https://rpc-bsc.48.club", "logs": 250, "keep": 6 },
+          { "url": "https://56.rpc.thirdweb.com", "logs": 1000, "archive": true },
+          { "url": "https://bsc-rpc.publicnode.com", "logs": 50000, "keep": 1 }
         ],
         // the judge's log reads in requests of 1000 blocks: one request on thirdweb, four on 48.club
         "LOG_UNIT": 1000,

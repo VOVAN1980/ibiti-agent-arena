@@ -3,8 +3,9 @@
 // to a node as one request, reads shared through the cache (the isolate's memory; the Cache API only on
 // a custom domain, one entry for a poll's calls), the season calendar read once for a whole batch, log
 // ranges from the KV archive (a span of 50000 blocks in one read) merged with the live tail, a range
-// older than six hours only from the archive node, a final range kept long only from the archive, and
-// a range not available yet answered with an error for that call only.
+// older than an hour (or any range while the isolate knows no head) only from the archive node, a final
+// range kept long only from the archive, and a range not available yet answered with an error for that
+// call only.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import host, { forgetHead, forgetCalendar } from '../src/host.js';
@@ -333,6 +334,51 @@ test('a whole span of 50000 blocks is one KV read; a range older than six hours 
         assert.ok(reqs.length > k2, 'after a minute: read again');
       });
       assert.ok(requests.length >= m);
+    });
+  } finally {
+    Date.now = realNow;
+  }
+});
+
+test('with direct reads a page sends /rpc only its history: the isolate asks the head itself, so a pruning node never answers blocks older than an hour, and a final range is kept a week', async () => {
+  const realNow = Date.now;
+  let shift = 0;
+  Date.now = () => realNow() + shift;
+  const logReads = (reqs) => reqs.filter((r) => [].concat(r.body).some((q) => q.method === 'eth_getLogs'));
+  const heads = (reqs) => reqs.filter((r) => [].concat(r.body).some((q) => q.method === 'eth_blockNumber'));
+  try {
+    const env = { ...ENV, BLOCKS_PER_WEEK: 1343552 };
+    await withNodes(chain, async (requests) => {
+      // a fresh isolate, no eth_blockNumber from the page; 980000-983999 is 2 to 2.5 hours old, where
+      // publicnode already answers []: the archive node only
+      const [a] = await (await post([logsCall(1, 980_000, 983_999)], env)).json();
+      assert.equal(a.result.length, 40);
+      assert.equal(heads(requests).length, 1, 'the head asked once');
+      assert.ok(logReads(requests).every((r) => r.url === TW), 'only the archive node for blocks two hours old');
+      // final and from the archive node: kept long
+      const n = requests.length;
+      shift += 120_000;
+      await post([logsCall(1, 980_000, 983_999)], env);
+      assert.equal(requests.length, n, 'a final range: from the cache');
+      // a range within the hour: any log node; the head asked again only once it is 30 s old
+      await post([logsCall(2, 999_000, 999_249)], env);
+      await post([logsCall(3, 999_250, 999_499)], env);
+      assert.equal(heads(requests).length, 2, 'once more after two minutes, then not again within 30 s');
+    });
+    // thirdweb down: a range two hours old is not available now (the page asks again later); 48.club,
+    // which may have pruned it, is never asked
+    const twDown = (url, q) => (url === TW ? (() => { throw Object.assign(new Error('rate limit exceeded'), { code: -32005 }); })() : chain(url, q));
+    await withNodes(twDown, async (requests) => {
+      const [b] = await (await post([logsCall(4, 984_000, 984_999)], env)).json();
+      assert.ok(b.error, 'not available now');
+      assert.ok(!logReads(requests).some((r) => r.url === CLUB));
+    });
+    // no head to be had (every node fails eth_blockNumber): the archive node only, even for recent blocks
+    const noHead = (url, q) => (q.method === 'eth_blockNumber' ? (() => { throw new Error('unavailable'); })() : chain(url, q));
+    await withNodes(noHead, async (requests) => {
+      const [c] = await (await post([logsCall(5, 999_000, 999_249)], env)).json();
+      assert.ok(Array.isArray(c.result));
+      assert.ok(logReads(requests).every((r) => r.url === TW), 'no head known: the archive node only');
     });
   } finally {
     Date.now = realNow;

@@ -4,6 +4,8 @@
 // the judge scored higher. Which trap calls were punches of their round and which were fouls is known
 // only once the judge reveals the fight's trap plan (event Revealed), after the fight.
 
+import { createClient } from './rpc-client.js';
+
 export const CFG = window.ARENA_CONFIG;
 export const ROUNDS = 12;
 export const BREAK = 10;
@@ -43,7 +45,15 @@ export const trapName = (id) => TRAP_NAMES[id] ?? 'an unknown call to the arena'
 // The calls a page makes in the same moment (one turn of its code) travel together as one JSON-RPC
 // batch: one request to the server and one Worker invocation, however many calls a poll needs (the
 // server checks each call of a batch as it would check it alone, and shares the answers between viewers).
+// Where the config names nodes a browser may read directly (mainnet: CFG.nodes), the batch goes to them
+// instead, from the viewer's own address (rpc-client.js): the polls cost the Worker nothing, and only
+// the history (its KV archive) and a moment when no node answers go through the Worker.
 const MAX_BATCH = 40;
+const direct = Array.isArray(CFG.nodes) && CFG.nodes.length
+  ? createClient({ nodes: CFG.nodes, worker: CFG.rpc, fetchFn: (url, init) => fetch(url, init), blocksPerHour: (CFG.blocksPerWeek ?? 604800) / 168 })
+  : null;
+/** For tests and the console: what the direct reads did (requests per node, Worker requests). */
+export const directStats = () => direct?.stats ?? null;
 let rpcId = 0;
 let queue = null;
 /** An answer with a JSON-RPC error (or none): `code` is the node's or the server's. */
@@ -53,13 +63,15 @@ export class RpcError extends Error {
     this.code = error?.code ?? null;
   }
 }
-function rpc(method, params) {
+/** One call, sent with the others of this moment. `meta`: resolves to { result, mayPrune } instead of
+ *  the result (mayPrune: a log range a node that prunes old logs answered: never kept in storage). */
+function rpc(method, params, meta = false) {
   return new Promise((resolve, reject) => {
     if (!queue) {
       queue = [];
       setTimeout(flush, 0);
     }
-    queue.push({ q: { jsonrpc: '2.0', id: ++rpcId, method, params }, resolve, reject });
+    queue.push({ q: { jsonrpc: '2.0', id: ++rpcId, method, params }, resolve: meta ? (result, mayPrune = false) => resolve({ result, mayPrune }) : resolve, reject });
   });
 }
 function flush() {
@@ -68,6 +80,16 @@ function flush() {
   for (let i = 0; i < items.length; i += MAX_BATCH) send(items.slice(i, i + MAX_BATCH));
 }
 async function send(items) {
+  if (direct) {
+    const out = await direct.send(items.map((x) => x.q)).catch((e) => items.map(() => ({ fail: e })));
+    items.forEach((it, k) => {
+      const o = out[k];
+      if (!o || o.fail) it.reject(Object.assign(o?.fail ?? new RpcError(it.q.method, null), { busy: !!o?.busy }));
+      else if ('result' in o) it.resolve(o.result, !!o.mayPrune);
+      else it.reject(Object.assign(new RpcError(it.q.method, o.error), { whole: !!o.whole }));
+    });
+    return;
+  }
   try {
     const res = await fetch(CFG.rpc, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(items.length === 1 ? items[0].q : items.map((x) => x.q)) });
     const j = await res.json();
@@ -182,16 +204,47 @@ function fight(s, agent, n) {
 // its parts) and the page says so; the newest blocks go on being read meanwhile: a failed range never
 // freezes the page. After a poll whose history read failed, the next poll comes at the page's normal
 // pace, not at once; after a poll that failed whole (the server refused or broke), later and later
-// (twice as late each time, up to a minute), with fewer history ranges in it.
+// (twice as late each time, up to a minute), with fewer history ranges in it. With direct reads the
+// poll itself goes well while the Worker refuses or breaks on its history ranges: then the history
+// alone waits (2 s, twice as long each time, up to a minute) and the polls keep their normal pace.
 const FRONT = 2000;
 const FRONT_ALIGN = 128;
 const FRONT_QUANT = 4;
 const HISTORY_STEP = 50000; // the server's widest range
 const HISTORY_ALIGN = 50000; // the archive's spans
 const HISTORY_MIN = 1000;
-const HISTORY_PER_POLL = 6;
+// (with direct reads every history range of a poll goes to the Worker: the config says how many one
+// invocation serves within its subrequests, CFG.historyPerPoll)
+const HISTORY_PER_POLL = Math.max(1, Number(CFG.historyPerPoll) || 6);
 const HISTORY_MS = 300; // the next part of the history, while it comes in
 const BACKOFF_MAX = 60000;
+const HISTORY_BACKOFF_MIN = 2000; // the history's first wait after it was refused as a whole
+
+// A history range read once is kept in the tab's sessionStorage (this arena, this exact range, only
+// once it is FINAL_BLOCKS behind the head: it never changes again), so moving between the site's pages
+// does not read the history again. Never needed: without storage (private mode, full, blocked) the
+// range is simply read again.
+const FINAL_BLOCKS = 200;
+const KEEP_MAX = 1_500_000; // characters of one range; a larger one is not kept
+const keptKey = (g) => `arena-logs|${String(CFG.arena).toLowerCase()}|${g.from}|${g.to}`;
+function keptLogs(g) {
+  try {
+    const t = globalThis.sessionStorage?.getItem(keptKey(g));
+    if (!t) return null;
+    const logs = JSON.parse(t);
+    return Array.isArray(logs) ? logs : null;
+  } catch {
+    return null;
+  }
+}
+function keepLogs(g, logs) {
+  try {
+    const t = JSON.stringify(logs);
+    if (t.length <= KEEP_MAX) globalThis.sessionStorage?.setItem(keptKey(g), t);
+  } catch {
+    // full or blocked: read again next time
+  }
+}
 
 /** Adds [from, to] to the ranges still to read, in pieces that end on the archive's chunk boundaries. */
 function addGap(s, from, to) {
@@ -227,7 +280,18 @@ export async function refresh(s) {
   try {
     const out = await poll(s);
     s.failures = 0;
-    s.gapsPerPoll = Math.min(HISTORY_PER_POLL, (s.gapsPerPoll ?? HISTORY_PER_POLL) + 1);
+    const sent = s.sentGaps.length;
+    if (s.historyRefused) {
+      // history ranges refused as a whole (the server refused or broke, no node and no server now): not
+      // asked again before a backoff (2 s, twice as long each time, up to a minute), half as many then
+      // (at least one): each attempt is a Worker invocation, however well the polls themselves go
+      s.historyDelay = Math.min(BACKOFF_MAX, s.historyDelay ? s.historyDelay * 2 : HISTORY_BACKOFF_MIN);
+      s.historyAt = Date.now() + s.historyDelay;
+      s.gapsPerPoll = Math.max(1, Math.floor(sent / 2));
+    } else if (!s.historyHeld) {
+      if (s.historyRead) s.historyDelay = s.historyAt = 0;
+      s.gapsPerPoll = Math.min(HISTORY_PER_POLL, (s.gapsPerPoll ?? HISTORY_PER_POLL) + 1);
+    }
     return out;
   } catch (e) {
     s.failures = (s.failures ?? 0) + 1;
@@ -246,6 +310,7 @@ async function poll(s) {
   s.sentGaps = [];
   // the logs of this poll: the history ranges first (oldest first), then the newest blocks
   const reads = [];
+  const stored = [];
   const first = !s.latestBlock;
   if (!first) {
     const settled = s.latestBlock - (CFG.confirmations ?? 2);
@@ -257,13 +322,22 @@ async function poll(s) {
       }
       reads.push({ front: true, from: Math.max(CFG.deployBlock ?? 0, s.fromBlock - (s.fromBlock % FRONT_ALIGN)), to });
     }
-    s.sentGaps = s.gaps.slice(0, s.gapsPerPoll ?? HISTORY_PER_POLL);
+    // the history ranges this tab has read already (another page of the site, a moment ago) come from
+    // its own storage at once; the others go out, a few per poll
+    for (const g of s.gaps) {
+      const logs = keptLogs(g);
+      if (logs) stored.push({ r: { gap: g, from: g.from, to: g.to }, logs });
+    }
+    const done = new Set(stored.map((x) => x.r.gap));
+    // (none while the history's backoff runs: see refresh)
+    s.historyHeld = Date.now() < (s.historyAt ?? 0);
+    s.sentGaps = s.historyHeld ? [] : s.gaps.filter((g) => !done.has(g)).slice(0, s.gapsPerPoll ?? HISTORY_PER_POLL);
     for (const g of s.sentGaps) reads.push({ gap: g, from: g.from, to: g.to });
     reads.sort((x, y) => x.from - y.from);
   }
-  const logsOf = (r) => rpc('eth_getLogs', [{ address: CFG.arena, fromBlock: '0x' + r.from.toString(16), toBlock: '0x' + r.to.toString(16) }]).then((logs) => ({ r, logs }), (e) => ({ r, e }));
+  const logsOf = (r) => rpc('eth_getLogs', [{ address: CFG.arena, fromBlock: '0x' + r.from.toString(16), toBlock: '0x' + r.to.toString(16) }], true).then(({ result, mayPrune }) => ({ r, logs: result, mayPrune }), (e) => ({ r, e }));
   const clocks = [...s.fights.values()].filter(wantsClock(s));
-  const [latestHex, block, views, logs, read] = await Promise.all([
+  const [latestHex, block, views, got, read] = await Promise.all([
     rpc('eth_blockNumber', []),
     rpc('eth_getBlockByNumber', ['latest', false]),
     Promise.all([SEL.hall, SEL.hallCount, SEL.nextDrawAt, SEL.pendingCutoff].map((data) => rpc('eth_call', [{ to: CFG.arena, data }, 'latest']))),
@@ -271,6 +345,10 @@ async function poll(s) {
     Promise.all(clocks.map((f) => fightOf(f.agent, f.number).catch(() => null))),
   ]);
   const latest = parseInt(latestHex, 16);
+  // a history range read now that never changes again is kept for the other pages of this tab (not one
+  // a node that prunes old logs answered: only the Worker's archive or an archive node is sure)
+  for (const x of got) if (x.r.gap && x.logs && !x.mayPrune && x.r.to <= latest - FINAL_BLOCKS) keepLogs(x.r.gap, x.logs);
+  const logs = [...stored, ...got].sort((x, y) => x.r.from - y.r.from);
   fold(s, logs);
   s.latestBlock = latest;
   s.now = parseInt(block.timestamp, 16);
@@ -312,16 +390,27 @@ async function poll(s) {
 function fold(s, results) {
   let stuck = false; // a range as narrow as it gets that could not be read
   let failed = false; // a history range that could not be read in this poll
+  let refused = false; // a history range refused with its whole request
+  let read = false; // a history range read from the network in this poll
   for (const { r, logs, e } of results) {
     if (e) {
       if (r.front) {
         // the newest blocks not read now: a range to read later; the cursor moves on all the same
         if (r.to >= s.fromBlock) addGap(s, s.fromBlock, r.to);
         s.fromBlock = Math.max(s.fromBlock, r.to + 1);
-      } else {
+      } else if (e.busy) {
+        // every node that serves it had spent its budget for now (rpc-client.js): as it is, at the
+        // page's normal pace
+        failed = true;
+      } else if (e instanceof RpcError && !e.whole) {
         // too wide for what can serve it now: two parts, split on a boundary of HISTORY_MIN blocks
         failed = true;
         if (!splitGap(s, r.gap)) stuck = true;
+      } else {
+        // not this range's fault (the server refused the whole request, the network failed: with
+        // direct reads the poll itself went well): asked again as it is, fewer at a time
+        failed = true;
+        refused = true;
       }
       continue;
     }
@@ -335,12 +424,15 @@ function fold(s, results) {
     else {
       const i = s.gaps.indexOf(r.gap);
       if (i >= 0) s.gaps.splice(i, 1);
+      if (s.sentGaps?.includes(r.gap)) read = true;
     }
   }
   // the page tells the viewer while earlier fights are still on their way (historyNote in ui.js)
   // (a wide range that failed is split and asked again with a later poll; one as narrow as it gets waits)
   s.historyStalled = stuck && s.gaps.length > 0;
   s.historyFailed = failed;
+  s.historyRefused = refused;
+  s.historyRead = read;
 }
 
 /** Earlier fights still on their way: 'loading' (read with the next polls), 'waiting' (not available
@@ -348,7 +440,7 @@ function fold(s, results) {
 export const historyState = (s) => (!s.gaps?.length ? null : s.historyStalled ? 'waiting' : 'loading');
 
 /** A page's next poll: soon while its history is still coming in (not after a poll whose history read
- *  failed), every pollMs (2 s) while a fight is live or about to start (a draw near, a sealed draw
+ *  failed, nor while the history waits out its backoff), every pollMs (2 s) while a fight is live or about to start (a draw near, a sealed draw
  *  waiting, a fight in its countdown or rounds), else every idlePollMs (10 s); both `slowFactor` times
  *  longer on a page that shows fewer clocks, or `calm` ms whatever the ring does. After a poll that
  *  failed whole: twice as late each time, up to a minute. The clocks on a page tick on their own. */
@@ -356,7 +448,7 @@ export function pollDelay(s, slowFactor = 1, calm = null) {
   const fast = (CFG.pollMs ?? 2000) * slowFactor;
   const slow = calm ?? (CFG.idlePollMs ?? 10000) * slowFactor;
   if (s.failures) return Math.min(Math.max(BACKOFF_MAX, calm ?? 0), Math.max(calm ?? fast, 2000) * 2 ** (s.failures - 1));
-  if (s.gaps?.length && !s.historyStalled && !s.historyFailed) return HISTORY_MS;
+  if (s.gaps?.length && !s.historyStalled && !s.historyFailed && !(Date.now() < (s.historyAt ?? 0))) return HISTORY_MS;
   if (!s.latestBlock) return calm ?? fast;
   return calm ?? (isHot(s) ? fast : slow);
 }

@@ -16,13 +16,15 @@
 // SITE_RPC_URL (optional: other nodes for the site's reads and link previews, so the audience never
 // spends the judge's quota; without them the site reads through RPC_URLS / RPC_URL), SITE_LOG_SPAN (the
 // widest log range the proxy asks the nodes for at once), HISTORY (a KV binding: the arena's history,
-// archive.js). RPC_LIMIT (a rate-limit binding) caps each visitor's reads (a batch weighs one per eight calls). The season secret and the judge's key are Worker secrets (`wrangler secret put SECRET`,
+// archive.js), BROWSER_RPC_URLS (optional: public nodes that answer a browser directly; the pages then
+// poll them from the viewer's own address and use /rpc only for the history and as a last resort, see
+// site/assets/rpc-client.js; without it every read of the site goes through /rpc). RPC_LIMIT (a rate-limit binding) caps each visitor's reads (a batch weighs one per eight calls). The season secret and the judge's key are Worker secrets (`wrangler secret put SECRET`,
 // `wrangler secret put JUDGE_KEY`), never vars. Static files are served straight from Cloudflare's
 // asset store; only the HTML pages and the routes above run this code (assets.run_worker_first).
 
 import { handleFight } from './worker.js';
 import { withPreview } from './og.js';
-import { judgeRun, NODE_TRUST_HOURS } from './judge-cron.js';
+import { judgeRun } from './judge-cron.js';
 import { rpcFetch, endpointsOf, COOLDOWNS } from './rpc.js';
 import { archiveRun, ARCHIVE_BUDGET, chunkOf, chunkRange, chunkText, spanOf, spanRange, spanText } from './archive.js';
 import { cacheFor } from './cache.js';
@@ -133,7 +135,31 @@ function rings(env) {
   return r && ok(r.red) && ok(r.green) ? { red: r.red, green: r.green } : null;
 }
 
-export function siteConfig(env) {
+/** The nodes a viewer's browser reads directly (BROWSER_RPC_URLS: [{ url, calls, logs, archive, keep }],
+ *  site/assets/rpc-client.js), or null: then the site reads everything through /rpc (testnet). */
+export function browserNodes(env) {
+  let list = env.BROWSER_RPC_URLS;
+  if (typeof list === 'string') {
+    try {
+      list = JSON.parse(list);
+    } catch {
+      list = null;
+    }
+  }
+  const out = (Array.isArray(list) ? list : [])
+    .filter((x) => typeof x?.url === 'string' && /^https?:\/\/[^\s"'<>]+$/.test(x.url))
+    .map((x) => ({ url: x.url, calls: x.calls === true, logs: Math.max(0, Math.floor(Number(x.logs ?? 0) || 0)), ...(x.archive === true ? { archive: true } : {}), ...(Number(x.keep) > 0 ? { keep: Number(x.keep) } : {}) }));
+  return out.length ? out : null;
+}
+
+/** Whether /rpc shares reads through the Cache API: off on *.workers.dev (it stores nothing there). */
+const sharedCacheOf = (env, url) => env.SHARED_CACHE === 'on' || (env.SHARED_CACHE !== 'off' && !url.hostname.endsWith('.workers.dev'));
+
+/** The site's settings (config.js). `url`: the request's, for how many history ranges one /rpc call
+ *  serves: each range of a whole archived span costs the call one KV read, plus Cache API calls where
+ *  the shared cache is on (a custom domain), of the 45 subrequests it may spend. */
+export function siteConfig(env, url = null) {
+  const nodes = browserNodes(env);
   return `window.ARENA_CONFIG = ${JSON.stringify({
     rpc: '/rpc',
     arena: env.ARENA,
@@ -158,6 +184,9 @@ export function siteConfig(env) {
     rings: rings(env),
     // earlier arenas of this site: a link that names one opens its fight
     archive: archive(env).map((x) => ({ arena: x.arena, deployBlock: Number(x.deployBlock ?? 0), season: x.season ?? null, certificate: x.certificate ?? null })),
+    // mainnet: the page polls these nodes from the viewer's own address (no Worker invocation per poll)
+    // and sends only its history ranges (the KV archive) to /rpc, this many in one call
+    ...(nodes ? { nodes, historyPerPoll: url && sharedCacheOf(env, url) ? 6 : 12 } : {}),
   })};\n`;
 }
 
@@ -276,8 +305,16 @@ const MID_TTL = 60;
 const LONG_TTL = 7 * 24 * 3600;
 // views the contracts never change: drawEvery(), roundTime(), cooldown(), seasonBook()
 const IMMUTABLE = new Set(['0xa2fcf826', '0xee5f8c8f', '0x787a08a6', '0xfda7b9db']);
-// the head this isolate saw last (a log range far behind it never changes, so it is kept long)
+// a log range older than this is read only from the archive nodes, when the site's list has any:
+// publicnode, measured 2026-11-24, answers [] with no error for blocks older than about 2 to 2.5 hours
+// (its backends differ), so the site trusts a pruning node for an hour only (the judge keeps its own
+// NODE_TRUST_HOURS)
+export const SITE_TRUST_HOURS = 1;
+// the head this isolate saw last (a log range far behind it never changes, so it is kept long); one
+// older than HEAD_FRESH_MS is asked again before a log range is read from the nodes (with direct reads
+// the pages send /rpc their history ranges only, without an eth_blockNumber of their own)
 let seenHead = { block: 0, at: 0 };
+const HEAD_FRESH_MS = 30000;
 const noteHead = (q, result) => {
   if (q.method === 'eth_blockNumber' && typeof result === 'string') seenHead = { block: parseInt(result, 16) || 0, at: Date.now() };
 };
@@ -303,10 +340,13 @@ const archivesOf = (env) => new Set(siteNodes(env).filter((e) => e.archive).map(
  * eth_getLogs for the site: the archived part of the range from the cache or KV (HISTORY, this arena
  * only: a whole span of 50000 blocks in one read where the range covers it, else chunk by chunk), the
  * rest from the log nodes in spans of SITE_LOG_SPAN blocks (each split by rpc.js into the node's
- * pieces). A part older than NODE_TRUST_HOURS goes only to the archive nodes when the list has any (a
- * pruning node may answer [] for it). The result as JSON text, or { error } when a part could not be
- * read (the site keeps that range for a later poll). A final range is kept long only when it came from
- * the KV archive or an archive node; one a pruning node answered a minute; one near the head a second.
+ * pieces). A part older than SITE_TRUST_HOURS goes only to the archive nodes when the list has any (a
+ * pruning node may answer [] for it); so does every part while this isolate knows no recent head and
+ * cannot ask one (the head is asked once, before the nodes, when the one it saw is older than
+ * HEAD_FRESH_MS). The result as JSON text, or { error } when a part could not be read (the site keeps
+ * that range for a later poll). A final range is kept long only when it came from the KV archive or an
+ * archive node (a range the KV archive answered whole is final by itself); one a pruning node answered
+ * a minute; one near the head a second.
  */
 async function logsOf(env, q, { cache, net, budget }) {
   const p = q.params[0];
@@ -359,11 +399,18 @@ async function logsOf(env, q, { cache, net, budget }) {
     const fromNodes = [];
     const span = Math.max(1, Number(env.SITE_LOG_SPAN ?? 50000));
     const archives = archivesOf(env);
-    const trusted = Math.ceil(Number(env.BLOCKS_PER_WEEK ?? 604800) / 168) * NODE_TRUST_HOURS;
+    const trusted = Math.ceil(Number(env.BLOCKS_PER_WEEK ?? 604800) / 168) * SITE_TRUST_HOURS;
     let byArchive = true; // every node answer came from an archive node
+    if (cursor <= to && Date.now() - seenHead.at > HEAD_FRESH_MS && budget.left > 2) {
+      // the head, so a pruning node is never asked for blocks it may have dropped (one subrequest)
+      const { j } = await net.call({ jsonrpc: '2.0', id: 1, method: 'eth_blockNumber', params: [] });
+      noteHead({ method: 'eth_blockNumber' }, j?.result);
+    }
+    const headKnown = seenHead.block > 0 && Date.now() - seenHead.at <= HEAD_FRESH_MS * 2;
     for (let a = cursor; a <= to; a += span) {
       const b = Math.min(to, a + span - 1);
-      const old = seenHead.block > 0 && a < seenHead.block - trusted;
+      // no recent head: the archive nodes only
+      const old = !headKnown || a < seenHead.block - trusted;
       const { j, node } = await net.call({ jsonrpc: '2.0', id: 1, method: 'eth_getLogs', params: [{ address: p.address, fromBlock: '0x' + a.toString(16), toBlock: '0x' + b.toString(16), ...(topics ? { topics } : {}) }] }, { maxPieces: 4, archive: old });
       if (j.error || !Array.isArray(j.result)) return { error: j.error ?? { code: -32000, message: 'not a log list' } };
       if (!archives.has(node)) byArchive = false;
@@ -385,7 +432,8 @@ async function logsOf(env, q, { cache, net, budget }) {
       for (const l of fromNodes) logs.push(...l);
       text = JSON.stringify(logs);
     }
-    const final = seenHead.block > 0 && to <= seenHead.block - FINAL_BLOCKS;
+    // the KV archive holds final chunks only: a range it answered whole is final whatever the head
+    const final = (cursor > to && parts.length > 0) || (seenHead.block > 0 && to <= seenHead.block - FINAL_BLOCKS);
     cache.put(key, text, !final ? SHORT_TTL : byArchive ? LONG_TTL : MID_TTL);
     return { text };
   });
@@ -421,7 +469,7 @@ async function rpc(request, env, ctx) {
   const net = siteFetch(env, budget);
   const url = new URL(request.url);
   // the Cache API stores nothing on *.workers.dev: there it would only spend subrequests
-  const sharedCache = env.SHARED_CACHE === 'on' || (env.SHARED_CACHE !== 'off' && !url.hostname.endsWith('.workers.dev'));
+  const sharedCache = sharedCacheOf(env, url);
   const cache = cacheFor({ origin: url.origin, budget, later: (p) => (ctx?.waitUntil ? ctx.waitUntil(p.catch(() => {})) : p.catch(() => {})), reserve: 4, shared: sharedCache });
   const idOf = (x) => (x && typeof x === 'object' && !Array.isArray(x) && 'id' in x ? x.id : null);
   const answers = new Array(calls.length);
@@ -507,7 +555,7 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname === '/' ? '/home.html' : url.pathname; // the front door: both rings
     try {
-      if (path === '/config.js') return new Response(siteConfig(env), { headers: { ...NO_STORE, 'content-type': 'text/javascript; charset=utf-8' } });
+      if (path === '/config.js') return new Response(siteConfig(env, url), { headers: { ...NO_STORE, 'content-type': 'text/javascript; charset=utf-8' } });
       if (path === '/rpc') return await rpc(request, env, ctx);
       if (PAGES.test(path)) {
         // the page, with the tags a chat app reads for its link preview
