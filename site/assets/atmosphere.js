@@ -1,7 +1,7 @@
 // The atmosphere of the arena, on top of the 3D scene: light beams you can see in the haze, the
 // haze itself, two big screens with live close-ups of the fighters, pyrotechnics (spark fountains
-// from the corner posts, flame jets, confetti), fans' flags and glow sticks. Phones get a lighter
-// version: no live screens, fewer particles.
+// from the corner posts, flame jets, confetti). Phones get a lighter version: no live screens, fewer
+// particles.
 import * as THREE from 'three';
 
 const COLOR = { red: 0xef4444, blue: 0x22c55e, gold: 0xf5b301 };
@@ -43,24 +43,59 @@ function softDot(size = 128, inner = 'rgba(255,255,255,1)', outer = 'rgba(255,25
   return new THREE.CanvasTexture(c);
 }
 
-/** Haze drifting over the ring: the beams show in it, the lights glow through it. */
-export function buildHaze(scene, small) {
-  const tex = softDot();
-  const puffs = [];
-  for (let i = 0; i < (small ? 12 : 26); i++) {
-    const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: 0x8fa3d8, transparent: true, opacity: 0.025 + Math.random() * 0.03, blending: THREE.AdditiveBlending, depthWrite: false }));
-    const s = 5 + Math.random() * 6;
-    m.scale.set(s, s * 0.6, 1);
+/** A puff of smoke: soft blobs inside a round falloff, so the haze is not a row of perfect discs. */
+function smokeTex(size = 256) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const g = c.getContext('2d');
+  for (let i = 0; i < 46; i++) {
     const a = Math.random() * Math.PI * 2;
-    const r = Math.random() * 7;
-    puffs.push({ m, a, r, y: 2 + Math.random() * 5, sp: (Math.random() - 0.5) * 0.05 });
-    scene.add(m);
+    const d = Math.random() * size * 0.26;
+    const x = size / 2 + Math.cos(a) * d;
+    const y = size / 2 + Math.sin(a) * d * 0.7;
+    const r = size * (0.08 + Math.random() * 0.2);
+    const b = g.createRadialGradient(x, y, 0, x, y, r);
+    b.addColorStop(0, 'rgba(255,255,255,.16)');
+    b.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = b;
+    g.fillRect(0, 0, size, size);
   }
+  g.globalCompositeOperation = 'destination-in';
+  const fall = g.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  fall.addColorStop(0, 'rgba(0,0,0,1)');
+  fall.addColorStop(0.6, 'rgba(0,0,0,.6)');
+  fall.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = fall;
+  g.fillRect(0, 0, size, size);
+  return new THREE.CanvasTexture(c);
+}
+
+/** Haze in the hall: a thin layer up in the lights, where the beams show, and a lower one lying round
+ *  the ring and over the floor. */
+export function buildHaze(scene, small) {
+  const tex = [smokeTex(), smokeTex()];
+  const puffs = [];
+  const puff = (low) => {
+    // denser low round the ring, thinning out with height: the upper air stays black
+    const y = low ? 0.3 + Math.random() * 0.8 : 1.6 + Math.pow(Math.random(), 1.6) * 4.5;
+    const thin = low ? 1 : Math.max(0.15, 1 - (y - 1.6) / 5.5);
+    const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex[puffs.length % 2], color: low ? 0x5a606e : 0x6a7080, transparent: true, opacity: (low ? 0.05 + Math.random() * 0.04 : 0.018 + Math.random() * 0.02) * thin, blending: THREE.AdditiveBlending, depthWrite: false }));
+    const s = low ? 4 + Math.random() * 4 : 5 + Math.random() * 5;
+    m.scale.set(s * 1.6, s * (low ? 0.45 : 0.6), 1);
+    m.material.rotation = Math.random() * 6.28;
+    const a = Math.random() * Math.PI * 2;
+    const r = low ? 6.4 + Math.random() * 3.2 : Math.random() * 6.5;
+    puffs.push({ m, a, r, y, sp: (Math.random() - 0.5) * 0.04, spin: (Math.random() - 0.5) * 0.03 });
+    scene.add(m);
+  };
+  for (let i = 0; i < (small ? 6 : 12); i++) puff(false);
+  for (let i = 0; i < (small ? 6 : 16); i++) puff(true);
   return {
     update(t) {
       for (const p of puffs) {
         const a = p.a + t * p.sp;
-        p.m.position.set(Math.cos(a) * p.r, p.y + Math.sin(t * 0.2 + p.a) * 0.3, Math.sin(a) * p.r);
+        p.m.position.set(Math.cos(a) * p.r, p.y + Math.sin(t * 0.2 + p.a) * 0.25, Math.sin(a) * p.r);
+        p.m.material.rotation += p.spin * 0.016;
       }
     },
   };
@@ -81,7 +116,7 @@ function standby(side) {
   g.fillStyle = side === 'red' ? '#f87171' : '#4ade80';
   g.font = '800 30px Unbounded, Inter, sans-serif';
   g.fillText(side === 'red' ? 'RED CORNER' : 'GREEN CORNER', 224, 112);
-  g.fillStyle = '#f5b301';
+  g.fillStyle = '#f2cf6e';
   g.font = '700 20px Unbounded, Inter, sans-serif';
   g.fillText('IBITI AGENT ARENA', 224, 156);
   const t = new THREE.CanvasTexture(c);
@@ -96,13 +131,13 @@ export function buildScreens(scene, renderer, stations, small, M) {
   for (const side of ['red', 'blue']) {
     const s = side === 'red' ? -1 : 1;
     const g = new THREE.Group();
-    g.position.set(14.5 * s, 5.2, -4.5);
+    g.position.set(14.5 * s, 6.5, -4.5);
     g.rotation.y = -0.62 * s;
     scene.add(g);
-    const frame = new THREE.Mesh(new THREE.BoxGeometry(6.6, 3.9, 0.3), M.black);
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(6.48, 3.72, 0.2), M.black);
     g.add(frame);
-    const rim = new THREE.Mesh(new THREE.BoxGeometry(6.8, 0.08, 0.32), M.glow(COLOR[side], 2.2));
-    rim.position.y = -2.0;
+    const rim = new THREE.Mesh(new THREE.BoxGeometry(6.48, 0.035, 0.22), M.glow(COLOR[side], 1.3));
+    rim.position.y = -1.88;
     g.add(rim);
     let map = null;
     let cam = null;
@@ -113,8 +148,8 @@ export function buildScreens(scene, renderer, stations, small, M) {
       screens.push({ rt, cam, side });
     }
     if (!map) map = standby(side); // phones: a still card instead of the live picture
-    const face = new THREE.Mesh(new THREE.PlaneGeometry(6.3, 3.55), new THREE.MeshBasicMaterial({ map }));
-    face.position.z = 0.16;
+    const face = new THREE.Mesh(new THREE.PlaneGeometry(6.36, 3.58), new THREE.MeshBasicMaterial({ map, color: 0xd0d0d0 }));
+    face.position.z = 0.105;
     g.add(face);
     faces.push(face);
   }
@@ -271,51 +306,6 @@ export function buildPyro(scene, small, floor) {
         conf.setMatrixAt(i, m4);
       });
       conf.instanceMatrix.needsUpdate = true;
-    },
-  };
-}
-
-/** Flags held up in the stands, waving; red on the red side, blue on the blue side. */
-export function buildFlags(scene, fans, small) {
-  const flagTex = {};
-  for (const side of ['red', 'blue']) {
-    const c = document.createElement('canvas');
-    c.width = 128;
-    c.height = 80;
-    const g = c.getContext('2d');
-    g.fillStyle = side === 'red' ? '#dc2626' : '#16a34a';
-    g.fillRect(0, 0, 128, 80);
-    g.fillStyle = 'rgba(255,255,255,.9)';
-    g.fillRect(0, 34, 128, 12);
-    g.fillStyle = '#f5b301';
-    g.fillRect(0, 30, 128, 4);
-    flagTex[side] = new THREE.CanvasTexture(c);
-    flagTex[side].colorSpace = THREE.SRGBColorSpace;
-  }
-  const poleMat = new THREE.MeshStandardMaterial({ color: 0x9aa4b8, roughness: 0.6 });
-  const flags = [];
-  const holders = fans.filter(() => Math.random() < (small ? 0.006 : 0.012));
-  for (const p of holders) {
-    const g = new THREE.Group();
-    g.quaternion.copy(p.q);
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.7, 6), poleMat);
-    pole.position.set(0.3, 1.5, 0);
-    g.add(pole);
-    const cloth = new THREE.Mesh(new THREE.PlaneGeometry(1.05, 0.66, 6, 1), new THREE.MeshStandardMaterial({ map: flagTex[p.side], side: THREE.DoubleSide, roughness: 0.8 }));
-    cloth.geometry.translate(0.52, 0, 0);
-    cloth.position.set(0.3, 2.0, 0);
-    g.add(cloth);
-    scene.add(g);
-    flags.push({ g, cloth, p, ph: Math.random() * 6 });
-  }
-  return {
-    update(t, exc) {
-      for (const f of flags) {
-        const e = exc[f.p.side];
-        f.g.position.set(f.p.x, f.p.y ?? f.p.base, f.p.z);
-        f.cloth.rotation.y = Math.sin(t * (2 + e * 3) + f.ph) * (0.35 + e * 0.6);
-        f.cloth.rotation.z = Math.sin(t * 1.3 + f.ph) * 0.08;
-      }
     },
   };
 }

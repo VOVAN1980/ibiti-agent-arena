@@ -6,17 +6,18 @@
 // throws its keyboard, flips its desk and hurls its chair, then sits on the floor.
 // The page tells the scene what happens (the same calls as the 2D scene in scene.js); the scene
 // only draws it.
+// The hall itself (the ring and its apron, the truss and its lights, the wet floor, the stands and
+// the fans, the picture's grade) is built in room.js.
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
-import { VignetteShader } from 'three/addons/shaders/VignetteShader.js';
-import { beamMaterial, buildHaze, buildScreens, buildPyro, buildFlags } from './atmosphere.js';
+import { buildHaze, buildScreens, buildPyro } from './atmosphere.js';
+import { buildRoom, hallEnvironment, volumeMaterial, softSpot, GradeShader, TRUSS } from './room.js';
 import { loadXbot, makeXRobot } from './xbot.js';
 
 const COLOR = { red: 0xef4444, blue: 0x22c55e, ref: 0xe6ebf5, gold: 0xf5b301 };
@@ -24,7 +25,9 @@ const CSS = { red: '#ef4444', blue: '#22c55e' };
 const FLOOR = 0.6; // the top of the ring
 const RING = 6; // the ring's radius (corner to centre)
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const small = Math.min(screen.width, screen.height) < 700 || matchMedia('(pointer: coarse)').matches;
+// phones and small screens get the light hall: no mirror on the floor, no shadows, fewer fans and
+// particles (a page can also ask for it: window.ARENA_QUALITY = 'small', or 'full' for the whole hall)
+const small = window.ARENA_QUALITY === 'small' || (window.ARENA_QUALITY !== 'full' && (Math.min(screen.width, screen.height) < 700 || matchMedia('(pointer: coarse)').matches));
 
 // ------------------------------------------------------------------ textures drawn on the fly
 
@@ -55,15 +58,6 @@ document.fonts?.load('800 40px Unbounded').then(() => {
   }
 }).catch(() => {});
 
-const hexPath = (g, x, y, r) => {
-  g.beginPath();
-  for (let i = 0; i < 6; i++) {
-    const a = Math.PI / 6 + (i * Math.PI) / 3;
-    g.lineTo(x + r * Math.cos(a), y + r * Math.sin(a));
-  }
-  g.closePath();
-};
-
 // metal gold, the gold of the ranking's podium
 const GOLD = '#f2cf6e';
 // the IBITI emblem (favicon.svg): a hexagon with three bars, `size` across, in polished gold
@@ -89,48 +83,6 @@ function drawEmblem(g, cx, cy, size, rot = 0) {
   g.restore();
 }
 
-const floorTex = () => canvasTex(1024, 1024, (g, w, h) => {
-  // the season's ring is red, the free ring green (window.ARENA_CONFIG.ring)
-  const green = window.ARENA_CONFIG?.ring === 'green';
-  const bg = g.createRadialGradient(w / 2, h / 2, 40, w / 2, h / 2, w / 2);
-  bg.addColorStop(0, green ? '#0f3a22' : '#3d1219');
-  bg.addColorStop(1, green ? '#04140b' : '#150509');
-  g.fillStyle = bg;
-  g.fillRect(0, 0, w, h);
-  g.strokeStyle = green ? 'rgba(80,220,140,.22)' : 'rgba(240,90,100,.22)';
-  g.lineWidth = 2;
-  const r = 34;
-  for (let y = 0, row = 0; y < h + r; y += r * 1.5, row++) for (let x = (row % 2) * r * 0.866; x < w + r; x += r * 1.732) {
-    hexPath(g, x, y, r);
-    g.stroke();
-  }
-  // the IBITI emblem in the centre; the floor's texture lies turned a quarter, so it is turned back
-  drawEmblem(g, w / 2, h / 2, 430, -Math.PI / 2);
-
-});
-
-// the emblem alone, as light: the floor is half metal, and under its reflections a painted gold turns
-// muddy, so the emblem also glows a little by itself
-const floorGlowTex = () => canvasTex(1024, 1024, (g, w, h) => {
-  g.fillStyle = '#000';
-  g.fillRect(0, 0, w, h);
-  drawEmblem(g, w / 2, h / 2, 430, -Math.PI / 2);
-});
-
-const hazardTex = () => canvasTex(256, 64, (g, w, h) => {
-  g.fillStyle = '#111318';
-  g.fillRect(0, 0, w, h);
-  g.fillStyle = '#f5b301';
-  for (let x = -h; x < w + h; x += 48) {
-    g.beginPath();
-    g.moveTo(x, h);
-    g.lineTo(x + 24, h);
-    g.lineTo(x + 24 + h, 0);
-    g.lineTo(x + h, 0);
-    g.fill();
-  }
-}, { repeat: [14, 1] });
-
 const stripeTex = () => canvasTex(64, 64, (g, w, h) => {
   g.fillStyle = '#f4f6fb';
   g.fillRect(0, 0, w, h);
@@ -143,7 +95,7 @@ function tickerTex() {
   return canvasTex(2048, 64, (g, w, h) => {
     g.fillStyle = '#05070d';
     g.fillRect(0, 0, w, h);
-    g.fillStyle = 'rgba(245,179,1,.35)';
+    g.fillStyle = 'rgba(242,207,110,.3)';
     g.fillRect(0, 4, w, 2);
     g.fillRect(0, h - 6, w, 2);
     g.font = '700 30px Unbounded, Inter, sans-serif';
@@ -198,14 +150,14 @@ function boardTex() {
     bg.addColorStop(1, '#02040a');
     g.fillStyle = bg;
     g.fillRect(0, 0, w, h);
-    g.strokeStyle = '#f5b301';
-    g.lineWidth = 10;
+    g.strokeStyle = '#c9a24c';
+    g.lineWidth = 6;
     g.strokeRect(10, 10, w - 20, h - 20);
     g.textAlign = 'center';
     g.textBaseline = 'middle';
     lines.slice(0, 3).forEach((line, i) => {
       const text = String(line);
-      g.fillStyle = i === 1 ? '#ffffff' : i === 0 ? '#ffc21a' : '#c7d6ff';
+      g.fillStyle = i === 1 ? '#ffffff' : i === 0 ? GOLD : '#c9d2e4';
       // as large as the line allows: a long line is fitted to the board, never cut
       let px = i === 1 ? 170 : 84;
       g.font = `800 ${px}px Unbounded, Inter, sans-serif`;
@@ -233,11 +185,12 @@ function materials() {
   const glow = (color, k = 3) => std({ color: 0x000000, emissive: color, emissiveIntensity: k });
   return {
     metal: std({ color: 0xaeb7c8, metalness: 0.85, roughness: 0.36, envMapIntensity: 0.55 }),
-    dark: std({ color: 0x262d3d, metalness: 0.75, roughness: 0.38 }),
-    black: std({ color: 0x0d1018, metalness: 0.4, roughness: 0.5 }),
+    dark: std({ color: 0x24272e, metalness: 0.8, roughness: 0.4 }),
+    black: std({ color: 0x0b0c0f, metalness: 0.4, roughness: 0.5 }),
+    glass: std({ color: 0x07080a, metalness: 0.3, roughness: 0.06, envMapIntensity: 1.2 }),
     visor: std({ color: 0x04060b, metalness: 1, roughness: 0.06 }),
     gold: std({ color: 0xf5b301, metalness: 0.85, roughness: 0.28, emissive: 0x2a1c00 }),
-    desk: std({ color: 0x1a2030, metalness: 0.5, roughness: 0.35 }),
+    desk: std({ color: 0x1b1d22, metalness: 0.85, roughness: 0.32 }),
     stripes: std({ map: stripeTex(), roughness: 0.6 }),
     accent: (c) => std({ color: c, metalness: 0.35, roughness: 0.32 }),
     glow,
@@ -496,44 +449,60 @@ const POSES = {
 
 function buildStation(side, M) {
   const g = new THREE.Group();
-  const acc = M.accent(COLOR[side]);
-  const glow = M.glow(COLOR[side], 2.6);
+  const col = COLOR[side];
+  const glow = M.glow(col, 2.2);
+  // a gaming chair in black leather, the corner's colour on its wings
+  const leather = new THREE.MeshPhysicalMaterial({ color: 0x101114, roughness: 0.48, metalness: 0, clearcoat: 0.45, clearcoatRoughness: 0.4 });
+  const wing = new THREE.MeshPhysicalMaterial({ color: side === 'red' ? 0x5a0b10 : 0x083d1f, roughness: 0.45, clearcoat: 0.5, clearcoatRoughness: 0.35 });
   const chair = new THREE.Group();
   chair.position.set(0, 0, -0.12);
   g.add(chair);
-  mesh(rbox(0.58, 0.09, 0.54, 0.04), acc, [0, 0.36, 0], chair);
-  mesh(rbox(0.58, 0.74, 0.08, 0.04), acc, [0, 0.78, -0.3], chair);
-  mesh(new THREE.BoxGeometry(0.08, 0.6, 0.02), glow, [0, 0.8, -0.255], chair);
-  mesh(cyl(0.035, 0.035, 0.32, 8), M.dark, [0, 0.18, 0], chair);
-  mesh(cyl(0.3, 0.32, 0.04, 5), M.dark, [0, 0.03, 0], chair);
+  mesh(rbox(0.5, 0.1, 0.5, 0.045), leather, [0, 0.36, 0], chair);
+  for (const s of [-1, 1]) mesh(rbox(0.08, 0.13, 0.5, 0.035), wing, [0.27 * s, 0.39, 0], chair);
+  mesh(rbox(0.48, 0.8, 0.09, 0.045), leather, [0, 0.8, -0.29], chair);
+  for (const s of [-1, 1]) mesh(rbox(0.075, 0.72, 0.11, 0.035), wing, [0.27 * s, 0.78, -0.28], chair);
+  mesh(new THREE.BoxGeometry(0.03, 0.5, 0.012), glow, [0, 0.82, -0.24], chair);
+  for (const s of [-1, 1]) mesh(new THREE.BoxGeometry(0.06, 0.035, 0.3), M.dark, [0.31 * s, 0.56, 0.02], chair);
+  mesh(cyl(0.03, 0.03, 0.32, 10), M.metal, [0, 0.18, 0], chair);
+  mesh(cyl(0.3, 0.32, 0.03, 5), M.dark, [0, 0.03, 0], chair);
+  // the desk: dark brushed metal on two panel legs, a thin line of the corner's light along its front
   const desk = new THREE.Group();
   desk.position.set(0, 0, 0.48);
   g.add(desk);
-  mesh(rbox(1.5, 0.06, 0.72, 0.02), M.desk, [0, 0.72, 0], desk);
-  for (const x of [-0.68, 0.68]) for (const z of [-0.28, 0.28]) mesh(new THREE.BoxGeometry(0.06, 0.7, 0.06), M.dark, [x, 0.35, z], desk);
-  mesh(new THREE.BoxGeometry(1.46, 0.025, 0.025), glow, [0, 0.685, 0.36], desk);
+  mesh(rbox(1.5, 0.045, 0.72, 0.012), M.desk, [0, 0.725, 0], desk);
+  for (const x of [-0.69, 0.69]) mesh(rbox(0.045, 0.7, 0.6, 0.012), M.dark, [x, 0.35, 0], desk);
+  mesh(new THREE.BoxGeometry(1.34, 0.12, 0.02), M.dark, [0, 0.6, -0.28], desk);
+  mesh(new THREE.BoxGeometry(1.46, 0.01, 0.01), glow, [0, 0.7, 0.362], desk);
+  // the monitor: a thin black bezel, the screen inset, the emblem on its back
   const monitor = new THREE.Group();
   monitor.position.set(0, 0.75, 0.7);
   g.add(monitor);
-  mesh(cyl(0.03, 0.03, 0.1, 8), M.dark, [0, 0.05, 0], monitor);
-  mesh(cyl(0.15, 0.17, 0.02, 16), M.dark, [0, 0.01, 0], monitor);
+  mesh(rbox(0.28, 0.012, 0.18, 0.006), M.dark, [0, 0.006, -0.02], monitor);
+  mesh(new THREE.BoxGeometry(0.04, 0.22, 0.025), M.dark, [0, 0.12, -0.045], monitor);
   const screens = { code: screenTex(side, 'code'), sent: screenTex(side, 'sent'), time: screenTex(side, 'time') };
   screens.code.wrapT = THREE.RepeatWrapping;
   const face = new THREE.MeshBasicMaterial({ map: screens.code, color: 0xc8d4ff });
-  const back = new THREE.MeshStandardMaterial({ map: screenTex(side, 'back'), emissive: 0xffffff, emissiveMap: screenTex(side, 'back'), emissiveIntensity: 1.6, roughness: 0.4 });
+  const backTex = screenTex(side, 'back');
+  const back = new THREE.MeshStandardMaterial({ map: backTex, emissive: 0xffffff, emissiveMap: backTex, emissiveIntensity: 0.9, roughness: 0.35, metalness: 0.3 });
   const dark = M.black;
-  mesh(new THREE.BoxGeometry(0.86, 0.5, 0.05), [dark, dark, dark, dark, back, face], [0, 0.33, 0], monitor);
+  mesh(new THREE.BoxGeometry(0.88, 0.52, 0.028), [dark, dark, dark, dark, back, dark], [0, 0.34, 0], monitor);
+  const screen = mesh(new THREE.PlaneGeometry(0.85, 0.49), face, [0, 0.34, -0.0145], monitor);
+  screen.rotation.y = Math.PI;
+  screen.castShadow = false;
+  // the keyboard, low, its keys lit from under
   const keyboard = new THREE.Group();
   keyboard.position.set(0, 0.765, 0.32);
   g.add(keyboard);
-  mesh(rbox(0.62, 0.03, 0.2, 0.01), M.black, [0, 0, 0], keyboard);
-  mesh(new THREE.BoxGeometry(0.58, 0.012, 0.16), M.glow(COLOR[side], 1.2), [0, 0.018, 0], keyboard);
+  mesh(rbox(0.6, 0.022, 0.19, 0.008), M.black, [0, 0, 0], keyboard);
+  mesh(new THREE.BoxGeometry(0.56, 0.006, 0.15), M.glow(col, 0.7), [0, 0.013, 0], keyboard);
+  // the computer: a black case with a smoked glass side and a strip of light inside
   const tower = new THREE.Group();
   tower.position.set(0.6, 0, 0.42);
   g.add(tower);
-  mesh(rbox(0.24, 0.5, 0.5, 0.02), M.black, [0, 0.25, 0], tower);
-  mesh(new THREE.BoxGeometry(0.01, 0.42, 0.42), glow, [0.125, 0.25, 0], tower);
-  const light = new THREE.PointLight(COLOR[side], 1.4, 2.6, 0);
+  mesh(rbox(0.22, 0.48, 0.46, 0.014), M.black, [0, 0.24, 0], tower);
+  mesh(new THREE.BoxGeometry(0.006, 0.4, 0.38), M.glass, [0.112, 0.25, 0], tower);
+  mesh(new THREE.BoxGeometry(0.004, 0.34, 0.016), glow, [0.106, 0.25, 0.16], tower);
+  const light = new THREE.PointLight(col, 1.1, 2.6, 0);
   light.position.set(0, 1.2, 0.45);
   g.add(light);
   const parts = { monitor, keyboard, desk, chair, tower };
@@ -550,205 +519,124 @@ export async function createScene(root) {
   });
   root.innerHTML = '';
   const renderer = new THREE.WebGLRenderer({ antialias: !small, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, small ? 1.25 : 1.75));
+  const pixelRatio = Math.min(window.devicePixelRatio || 1, small ? 1.25 : 1.75);
+  renderer.setPixelRatio(pixelRatio);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 0.98;
+  renderer.toneMappingExposure = 0.86; // low: the hall is black, only the lamps and what they hit are bright
   renderer.shadowMap.enabled = !small;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.domElement.className = 'gl';
   root.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x04060b);
-  scene.fog = new THREE.FogExp2(0x05070d, 0.03);
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  scene.environment = pmrem.fromScene(new RoomEnvironment(renderer), 0.04).texture;
+  scene.background = new THREE.Color(0x020304);
+  scene.fog = new THREE.FogExp2(0x020203, 0.03);
+  scene.environment = hallEnvironment(renderer);
   const M = materials();
 
-  // lights
-  scene.add(new THREE.HemisphereLight(0x8fa6ff, 0x120c18, 0.2));
-  const key = new THREE.DirectionalLight(0xffffff, 0.95);
+  // lights: a dim fill, a cool wash from above (the key over the ring is the room's), each corner's
+  // colour from the truss onto its fighter
+  scene.add(new THREE.HemisphereLight(0x8a96b8, 0x0a0608, 0.05));
+  const key = new THREE.DirectionalLight(0xdfe6ff, 0.08);
   key.position.set(3, 12, 7);
-  key.castShadow = !small;
-  key.shadow.mapSize.set(1024, 1024);
-  Object.assign(key.shadow.camera, { left: -7, right: 7, top: 7, bottom: -7, near: 1, far: 30 });
   scene.add(key);
   const spots = {};
   for (const side of ['red', 'blue']) {
-    const s = new THREE.SpotLight(COLOR[side], 1.15, 0, 0.42, 0.65, 0);
-    s.position.set(side === 'red' ? -4 : 4, 9, 3);
+    const s = new THREE.SpotLight(side === 'red' ? 0xff3030 : 0x20f080, 1.7, 0, 0.36, 0.7, 0);
+    s.position.set(side === 'red' ? -7.2 : 7.2, TRUSS.y - 0.6, -1.8);
     scene.add(s, s.target);
     spots[side] = s;
   }
-  const winSpot = new THREE.SpotLight(0xffd666, 0, 0, 0.3, 0.5, 0);
-  winSpot.position.set(0, 11, 2);
+  const winSpot = new THREE.SpotLight(0xffe2a0, 0, 0, 0.3, 0.5, 0);
+  winSpot.position.set(0, TRUSS.y, 4);
   scene.add(winSpot, winSpot.target);
 
-  // the ring
-  const ringMat = [
-    new THREE.MeshStandardMaterial({ map: hazardTex(), roughness: 0.55, metalness: 0.2 }),
-    new THREE.MeshStandardMaterial({ map: floorTex(), roughness: 0.3, metalness: 0.5, envMapIntensity: 0.7, emissive: 0xffffff, emissiveMap: floorGlowTex(), emissiveIntensity: 0.3 }),
-    M.black,
-  ];
-  const ring = new THREE.Mesh(new THREE.CylinderGeometry(RING, RING + 0.22, FLOOR, 6, 1, false, Math.PI / 6), ringMat);
-  ring.position.y = FLOOR / 2;
-  ring.receiveShadow = true;
-  scene.add(ring);
-  const corner = (k) => new THREE.Vector3(RING * Math.cos((k * Math.PI) / 3), FLOOR, RING * Math.sin((k * Math.PI) / 3));
-  const cornerColor = (k) => (k === 3 ? COLOR.red : k === 0 ? COLOR.blue : 0xe6ebf5);
-  for (let k = 0; k < 6; k++) {
-    const a = corner(k);
-    const b = corner((k + 1) % 6);
-    const edge = k === 2 || k === 3 ? COLOR.red : k === 5 || k === 0 ? COLOR.blue : 0xdfe6ff;
-    scene.add(bar(a.clone().setY(FLOOR + 0.02), b.clone().setY(FLOOR + 0.02), 0.035, M.glow(edge, 1.5)));
-    const post = a.clone().multiplyScalar(0.97);
-    scene.add(mesh(cyl(0.09, 0.1, 1.7, 12), M.dark, [post.x, FLOOR + 0.85, post.z]));
-    scene.add(mesh(rbox(0.26, 0.26, 0.26, 0.06), M.glow(cornerColor(k), cornerColor(k) === 0xe6ebf5 ? 0.9 : 2.2), [post.x, FLOOR + 1.72, post.z]));
-    const pb = b.clone().multiplyScalar(0.97);
-    for (const h of [0.55, 1.0, 1.45]) scene.add(bar(post.clone().setY(FLOOR + h), pb.clone().setY(FLOOR + h), 0.026, M.glow(edge === 0xdfe6ff ? 0x7f8db8 : edge, edge === 0xdfe6ff ? 0.35 : 0.75)));
-  }
-
-  // the LED boards around the ring and the scoreboard cube above it
+  // the hall: the ring, its apron, posts and ropes, the truss, the floor, the LED boards with the
+  // arena's words, the stands and the fans (room.js)
   const ticker = tickerTex();
   const tickerIn = ticker.clone();
   tickerIn.repeat.set(-3, 1); // seen from inside the circle, the text must not read backwards
-  const boardGeo = new THREE.CylinderGeometry(RING + 1.6, RING + 1.6, 0.7, 96, 1, true);
-  for (const [map, side] of [[ticker, THREE.FrontSide], [tickerIn, THREE.BackSide]]) {
-    const m = new THREE.Mesh(boardGeo, new THREE.MeshBasicMaterial({ map, side, color: 0xa8a8a8 }));
-    m.position.y = 0.35;
-    scene.add(m);
-  }
+  const room = buildRoom(scene, renderer, { R: RING, FLOOR, small, ring: window.ARENA_CONFIG?.ring, ticker: [ticker, tickerIn] });
+  const corner = (k) => new THREE.Vector3(RING * Math.cos((k * Math.PI) / 3), FLOOR, RING * Math.sin((k * Math.PI) / 3));
+
+  // the scoreboard cube over the ring: four screens in a steel frame, a band of light under and over it
   const board = boardTex();
   const cube = new THREE.Group();
   cube.position.set(0, 6.95, 0.1);
   scene.add(cube);
-  mesh(new THREE.BoxGeometry(3.0, 1.3, 3.0), M.black, [0, 0, 0], cube);
+  cube.add(new THREE.Mesh(new THREE.BoxGeometry(3.0, 1.3, 3.0), M.black));
   for (let i = 0; i < 4; i++) {
-    const p = new THREE.Mesh(new THREE.PlaneGeometry(2.86, 1.2), new THREE.MeshBasicMaterial({ map: board, color: 0xd8d8d8 }));
-    p.position.set(Math.sin((i * Math.PI) / 2) * 1.51, 0, Math.cos((i * Math.PI) / 2) * 1.51);
+    const p = new THREE.Mesh(new THREE.PlaneGeometry(2.8, 1.17), new THREE.MeshBasicMaterial({ map: board, color: 0xd6d6d6 }));
+    p.position.set(Math.sin((i * Math.PI) / 2) * 1.506, 0, Math.cos((i * Math.PI) / 2) * 1.506);
     p.rotation.y = (i * Math.PI) / 2;
     cube.add(p);
   }
-  mesh(new THREE.BoxGeometry(3.1, 0.08, 3.1), M.glow(COLOR.gold, 1.1), [0, -0.7, 0], cube);
-  scene.add(bar(new THREE.Vector3(0, 7.6, 0.1), new THREE.Vector3(0, 16, 0.1), 0.05, M.dark));
-
-  // the stands: a raked bowl of fans, red on the left, green on the right (the green corner's key is "blue")
-  const bowl = [];
-  const rings = small ? 10 : 16;
-  for (let k = 0; k < rings; k++) {
-    const r = RING + 2.6 + k * 0.92;
-    const base = 0.15 + k * 0.52;
-    const n = Math.floor((2 * Math.PI * r) / 0.6);
-    for (let j = 0; j < n; j++) {
-      const a = (j / n) * Math.PI * 2 + (k % 2) * (Math.PI / n);
-      const x = r * Math.cos(a);
-      const z = r * Math.sin(a);
-      if (k > 3 && z > 0 && Math.abs(Math.atan2(x, z)) < 0.85) continue; // behind the camera the stands stay open; the first rows are seen below
-      bowl.push({ x, z, base, side: x < -1.5 ? 'red' : x > 1.5 ? 'blue' : Math.random() < 0.5 ? 'red' : 'blue', ph: Math.random() * 6.28, sp: 0.8 + Math.random() * 0.6 });
+  {
+    const frameMat = new THREE.MeshStandardMaterial({ color: 0x5c616b, metalness: 0.9, roughness: 0.35 });
+    for (const x of [-1.52, 1.52]) for (const z of [-1.52, 1.52]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.38, 0.06), frameMat);
+      post.position.set(x, 0, z);
+      cube.add(post);
     }
-    const step = new THREE.Mesh(new THREE.CylinderGeometry(r + 0.46, r + 0.46, 0.08, 96, 1, true, 0.85 + Math.PI / 2 - Math.PI, Math.PI * 2 - 1.7), M.dark);
-    step.position.y = base - 0.02;
+    for (const y of [-0.67, 0.67]) {
+      for (const s of [-1, 1]) {
+        const a = new THREE.Mesh(new THREE.BoxGeometry(3.1, 0.05, 0.06), frameMat);
+        a.position.set(0, y, 1.52 * s);
+        cube.add(a);
+        const b = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.05, 3.1), frameMat);
+        b.position.set(1.52 * s, y, 0);
+        cube.add(b);
+      }
+    }
+    const band = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xf2cf6e).multiplyScalar(1.4) });
+    for (const y of [-0.705, 0.705]) for (const s of [-1, 1]) {
+      const a = new THREE.Mesh(new THREE.BoxGeometry(3.04, 0.022, 0.022), band);
+      a.position.set(0, y, 1.545 * s);
+      cube.add(a);
+      const b = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.022, 3.04), band);
+      b.position.set(1.545 * s, y, 0);
+      cube.add(b);
+    }
+    for (const x of [-1.2, 1.2]) for (const z of [-1.2, 1.2]) scene.add(bar(new THREE.Vector3(x, 7.6, z + 0.1), new THREE.Vector3(x * 0.3, 16, z * 0.3 + 0.1), 0.012, frameMat));
   }
-  const tiers = new THREE.Mesh(new THREE.CylinderGeometry(RING + 2.2 + rings * 0.92, RING + 2.2, rings * 0.52, 96, 1, true), new THREE.MeshStandardMaterial({ color: 0x0b1020, roughness: 0.9, side: THREE.BackSide }));
-  tiers.position.y = (rings * 0.52) / 2 - 0.1;
-  scene.add(tiers);
-  // the fans: a body in a team shirt (shoulders, arms at the sides) and a head with a face and hair;
-  // some wear a cap in their team's colour. Everyone faces the ring: far fans show their faces, near
-  // fans the backs of their heads.
-  const tint = (geo, rgb = [1, 1, 1]) => {
-    const n = geo.attributes.position.count;
-    const col = new Float32Array(n * 3);
-    for (let i = 0; i < n; i++) col.set(rgb, i * 3);
-    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    return geo;
-  };
-  const bodyGeo = mergeGeometries([
-    tint(new THREE.CapsuleGeometry(0.19, 0.3, 4, 10).scale(1.3, 1, 0.75).translate(0, 0.44, 0)),
-    ...[-1, 1].map((s2) => tint(new THREE.SphereGeometry(0.1, 10, 8).translate(0.27 * s2, 0.66, 0))),
-    ...[-1, 1].map((s2) => tint(new THREE.CapsuleGeometry(0.065, 0.3, 3, 8).rotateZ(0.12 * s2).translate(0.33 * s2, 0.45, 0.02))),
-  ]);
-  const HAIR = [0.13, 0.1, 0.08];
-  const headGeo = mergeGeometries([
-    tint(new THREE.CylinderGeometry(0.055, 0.06, 0.1, 8).translate(0, 0.81, 0)),
-    tint(new THREE.SphereGeometry(0.115, 14, 10).scale(0.92, 1.05, 1).translate(0, 0.95, 0.01)),
-    tint(new THREE.SphereGeometry(0.123, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.5).rotateX(-0.4).translate(0, 0.965, -0.015), HAIR),
-  ]);
-  const capGeo = mergeGeometries([
-    tint(new THREE.SphereGeometry(0.13, 12, 6, 0, Math.PI * 2, 0, Math.PI * 0.42).translate(0, 0.975, 0)),
-    tint(new THREE.CylinderGeometry(0.1, 0.1, 0.016, 12).scale(1, 1, 1.25).translate(0, 0.965, 0.12)),
-  ]);
-  const fanMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0 });
-  const crowd = new THREE.InstancedMesh(bodyGeo, fanMat, bowl.length);
-  const heads = new THREE.InstancedMesh(headGeo, fanMat, bowl.length);
-  const caps = new THREE.InstancedMesh(capGeo, fanMat, bowl.length);
-  const armsGeo = mergeGeometries([-1, 1].map((s2) => tint(new THREE.CapsuleGeometry(0.06, 0.36, 2, 6).rotateZ(-0.38 * s2).translate(0.35 * s2, 0.93, 0))));
-  const armed = bowl.filter(() => Math.random() < 0.45);
-  const arms = new THREE.InstancedMesh(armsGeo, fanMat, armed.length);
-  const shirt = { red: [0xb91c1c, 0xdc2626, 0x7f1d1d, 0xef4444, 0x991b1b], blue: [0x15803d, 0x16a34a, 0x14532d, 0x22c55e, 0x166534], plain: [0x1f2937, 0x374151, 0x8b93a1, 0x111827, 0x6b7280] };
-  const skin = [0xf1c27d, 0xe0ac69, 0xc68642, 0x8d5524, 0xffdbac, 0x6b4423, 0xd9a066];
-  const c = new THREE.Color();
-  const mtx = new THREE.Matrix4();
-  const pos = new THREE.Vector3();
-  const scl = new THREE.Vector3();
-  const pick = (a) => a[Math.floor(Math.random() * a.length)];
-  bowl.forEach((p, i) => {
-    p.h = 0.9 + Math.random() * 0.2;
-    p.q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.atan2(-p.x, -p.z) + (Math.random() - 0.5) * 0.4, 0));
-    p.shirt = Math.random() < 0.18 ? pick(shirt.plain) : pick(shirt[p.side]);
-    // a night crowd: the ring is the light of the hall, so the rows near it catch some of it and the
-    // rows above fall into the dark (the glow sticks and the phone lights do the rest)
-    const deep = Math.min(1, (p.base - 0.15) / (0.52 * Math.max(1, rings - 1)));
-    p.shade = (0.58 - 0.42 * deep) * (0.85 + Math.random() * 0.3);
-    const w = 0.9 + Math.random() * 0.2;
-    mtx.compose(pos.set(p.x, p.base, p.z), p.q, scl.set(w, p.h, w));
-    crowd.setMatrixAt(i, mtx);
-    heads.setMatrixAt(i, mtx);
-    crowd.setColorAt(i, c.setHex(p.shirt).multiplyScalar(p.shade));
-    heads.setColorAt(i, c.setHex(pick(skin)).multiplyScalar(p.shade * 0.9));
-    const cap = Math.random() < 0.22;
-    caps.setMatrixAt(i, cap ? mtx : mtx.clone().scale(scl.set(0, 0, 0)));
-    caps.setColorAt(i, c.setHex(p.side === 'red' ? 0xef4444 : 0x22c55e).multiplyScalar(p.shade));
-  });
-  armed.forEach((p, i) => arms.setColorAt(i, c.setHex(p.shirt).multiplyScalar(p.shade)));
-  // glow sticks: a third of those who raise their arms hold one up in their team's colour
-  const stickers = armed.filter(() => Math.random() < 0.35);
-  const sticks = new THREE.InstancedMesh(new THREE.CapsuleGeometry(0.03, 0.26, 2, 6).translate(0.43, 1.32, 0.04), new THREE.MeshBasicMaterial({ color: new THREE.Color(2.6, 2.6, 2.6) }), stickers.length);
-  stickers.forEach((p, i) => sticks.setColorAt(i, c.setHex(p.side === 'red' ? 0xff5a5a : 0x5aa0ff)));
-  for (const m of [crowd, heads, caps, arms, sticks]) {
-    m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    scene.add(m);
-  }
-  // phone lights twinkling in the stands
-  const flashN = small ? 120 : 260;
-  const flashPos = new Float32Array(flashN * 3);
-  const flashCol = new Float32Array(flashN * 3);
-  const flashOf = Array.from({ length: flashN }, () => bowl[Math.floor(Math.random() * bowl.length)]);
-  flashOf.forEach((p, i) => flashPos.set([p.x, p.base + 1.05, p.z], i * 3));
-  const flashGeo = new THREE.BufferGeometry();
-  flashGeo.setAttribute('position', new THREE.BufferAttribute(flashPos, 3));
-  flashGeo.setAttribute('color', new THREE.BufferAttribute(flashCol, 3));
-  const flashes = new THREE.Points(flashGeo, new THREE.PointsMaterial({ size: 0.16, vertexColors: true, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
-  scene.add(flashes);
+  room.reflect(cube);
 
-  // light beams from the roof
+  // light beams from the moving heads on the truss, and where the sweeping ones touch the canvas
   const beams = [];
-  const makeBeam = (color, o, width) => {
-    const m = new THREE.Mesh(new THREE.ConeGeometry(width, 1, 28, 1, true), beamMaterial(color, o));
+  const poolTex = softSpot(128, 1.8);
+  const makeBeam = (color, o, width, head, pool = false) => {
+    const m = new THREE.Mesh(new THREE.ConeGeometry(width, 1, 32, 1, true), volumeMaterial(color, o));
     scene.add(m);
-    const b = { m, from: new THREE.Vector3(), to: new THREE.Vector3(), base: o };
+    const b = { m, from: head.at.clone(), to: new THREE.Vector3(), base: o, head, color: new THREE.Color(color) };
+    head.color.set(color);
+    if (pool) {
+      b.pool = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 1.8).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: poolTex, color: new THREE.Color(color).multiplyScalar(0.1), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
+      scene.add(b.pool);
+    }
     beams.push(b);
     return b;
   };
-  const sweep = [0xef4444, 0x3b82f6, 0xef4444, 0x3b82f6].map((col) => makeBeam(col, 0.07, 1.3));
-  const focus = { red: makeBeam(0xff9a9a, 0.04, 1.1), blue: makeBeam(0x9ab8ff, 0.04, 1.1) };
-  const crown = makeBeam(0xffd666, 0.05, 1.4);
+  const H = room.headAt;
+  // most beams are white (about 5600 K) and narrow; the corners' colour is in two slow beams only, the
+  // red one kept on the left half of the ring and the green one on the right, so they never cross
+  const WHITE = 0xf3f1ec;
+  const sweep = [[WHITE, H(2, 0.5), 0.05, 'white'], [WHITE, H(0, 0.5), 0.05, 'white'], [0xd2605a, H(3, 0.5), 0.055, 'red'], [0x5cc890, H(5, 0.5), 0.055, 'green']].map(([col, h, o, kind]) => Object.assign(makeBeam(col, o, 0.95, h, true), { kind }));
+  // white beams straight down on the canvas from the front and the back of the truss
+  const washes = [H(1, 0.22), H(1, 0.78), H(4, 0.22), H(4, 0.78)].map((h) => makeBeam(WHITE, 0.035, 1.0, h));
+  washes.forEach((b) => b.to.set(b.from.x * 0.3, FLOOR, b.from.z * 0.25));
+  const focus = { red: makeBeam(0xffe0da, 0.08, 0.55, H(3, 0.22)), blue: makeBeam(0xdcffe8, 0.08, 0.55, H(5, 0.78)) };
+  for (const b of [focus.red, focus.blue]) b.m.material.uniforms.reach.value = 0.9; // these land on a fighter
+  const crown = makeBeam(0xffe8b8, 0.08, 0.7, H(1, 0.5));
   const aimBeam = (b, from, to) => {
     const d = new THREE.Vector3().subVectors(from, to);
     const len = d.length();
     b.m.scale.set(1, len, 1);
     b.m.position.copy(to).addScaledVector(d, 0.5);
     b.m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize());
+    if (b.head) b.head.dir.subVectors(to, from).normalize();
+    if (b.pool) b.pool.position.set(to.x, to.y + 0.012, to.z);
   };
+  washes.forEach((b) => aimBeam(b, b.from, b.to));
 
   // the fighters, their desks, and the referee
   const SEAT = { red: { x: -2.15, z: 0.25, rot: 0.8 }, blue: { x: 2.15, z: 0.25, rot: -0.8 } };
@@ -763,19 +651,18 @@ export async function createScene(root) {
     fighters[side] = { st, bot, pose: 'hype', since: 0, pos: new THREE.Vector2(0, 1.35), path: [], cur: {}, events: new Set(), wrecked: false, present: true, screen: 'code', placed: false };
     spots[side].target.position.set(SEAT[side].x, FLOOR, SEAT[side].z);
     focus[side].to.set(SEAT[side].x, FLOOR, SEAT[side].z);
-    focus[side].from.set(side === 'red' ? -4 : 4, 12, 2);
   }
   const refBot = xg ? makeXRobot('ref', xg, COLOR) : buildRobot('ref', M);
   refBot.root.position.set(0, FLOOR, -0.35);
   scene.add(refBot.root);
   const referee = { bot: refBot, pose: 'ref', since: 0, side: null, pos: new THREE.Vector2(0, -0.35), target: new THREE.Vector2(0, -0.35), cur: {} };
 
-  // the atmosphere: haze, two big screens with live close-ups, pyrotechnics, flags
+  // the atmosphere: haze, two big screens with live close-ups, pyrotechnics
   const haze = buildHaze(scene, small);
   const screens = buildScreens(scene, renderer, { red: fighters.red.st, blue: fighters.blue.st }, small, M);
   const pyro = buildPyro(scene, small, FLOOR);
-  const flags = buildFlags(scene, bowl, small);
-  const postTops = Array.from({ length: 6 }, (_, k) => corner(k).multiplyScalar(0.97).setY(FLOOR + 1.9));
+  const postTops = room.postTops;
+  room.lightsToMirror(); // every light also lights the floor's mirror picture
   const sidePosts = { red: [2, 3, 4].map((k) => postTops[k]), blue: [5, 0, 1].map((k) => postTops[k]) };
 
   // things flying around (the loser's desk), and sparks
@@ -831,13 +718,16 @@ export async function createScene(root) {
   const camUp = new THREE.Vector3();
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
-  const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), small ? 0.55 : 0.72, 0.5, 0.9);
+  const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), small ? 0.5 : 0.6, 0.6, 1.0);
   composer.addPass(bloom);
-  const vignette = new ShaderPass(VignetteShader);
-  vignette.uniforms.offset.value = 1.05;
-  vignette.uniforms.darkness.value = 1.2;
-  composer.addPass(vignette);
   composer.addPass(new OutputPass());
+  const grade = new ShaderPass(GradeShader);
+  composer.addPass(grade);
+  // the floor's mirror is drawn first, from the same camera
+  const draw = (dt) => {
+    room.beforeRender(camera);
+    composer.render(dt);
+  };
 
   let size = { w: 1, h: 1 };
   function resize() {
@@ -846,6 +736,8 @@ export async function createScene(root) {
     renderer.setSize(size.w, size.h, false);
     composer.setSize(size.w, size.h);
     bloom.resolution.set(size.w / 2, size.h / 2);
+    grade.uniforms.aspect.value = size.w / size.h;
+    room.setSize(size.w * renderer.getPixelRatio(), size.h * renderer.getPixelRatio());
     camera.aspect = size.w / size.h;
     camera.fov = camera.aspect < 0.8 ? 58 : 44;
     camera.updateProjectionMatrix();
@@ -1192,6 +1084,23 @@ export async function createScene(root) {
     else applyLimbs(r.bot, c, p, t, walking);
   }
 
+  // a slow device: once the hall has settled, if it cannot keep about 40 frames a second, the heavy
+  // parts go (the floor's mirror) and it draws at a lower resolution
+  let speedN = 0;
+  let speedT = 0;
+  let lightened = small;
+  function watchSpeed(dt) {
+    if (lightened || ++speedN < 90) return;
+    speedT += dt;
+    if (speedN < 90 + 120) return;
+    lightened = true;
+    if (speedT / 120 > 1 / 40) {
+      room.lighten();
+      renderer.setPixelRatio(Math.min(pixelRatio, 1));
+      resize();
+    }
+  }
+
   const v3 = new THREE.Vector3();
   let last = performance.now() / 1000;
   const camFollow = new THREE.Vector3();
@@ -1206,42 +1115,10 @@ export async function createScene(root) {
     const t = clock;
     for (const side of ['red', 'blue']) state.exc[side] += (0.32 - state.exc[side]) * Math.min(1, dt * 0.35);
 
-    // the fans jump with their side's mood
-    const arr = crowd.instanceMatrix.array;
-    const headArr = heads.instanceMatrix.array;
-    const capArr = caps.instanceMatrix.array;
-    for (let i = 0; i < bowl.length; i++) {
-      const p = bowl[i];
-      const e = state.exc[p.side];
-      p.y = p.base + (reduced ? 0 : Math.max(0, Math.sin(t * 3.4 * p.sp + p.ph)) * (0.04 + e * 0.42));
-      arr[i * 16 + 13] = p.y;
-      headArr[i * 16 + 13] = p.y;
-      capArr[i * 16 + 13] = p.y;
-    }
-    crowd.instanceMatrix.needsUpdate = true;
-    heads.instanceMatrix.needsUpdate = true;
-    caps.instanceMatrix.needsUpdate = true;
-    for (let i = 0; i < armed.length; i++) {
-      const p = armed[i];
-      const up = !reduced && Math.sin(t * 2.1 * p.sp + p.ph * 3) > 1.25 - state.exc[p.side];
-      mtx.compose(pos.set(p.x, p.y, p.z), p.q, up ? scl.set(1, p.h, 1) : scl.set(0, 0, 0));
-      arms.setMatrixAt(i, mtx);
-      p.up = up;
-    }
-    arms.instanceMatrix.needsUpdate = true;
-    for (let i = 0; i < stickers.length; i++) {
-      const p = stickers[i];
-      mtx.compose(pos.set(p.x, p.y, p.z), p.q, p.up ? scl.set(1, p.h, 1) : scl.set(0, 0, 0));
-      sticks.setMatrixAt(i, mtx);
-    }
-    sticks.instanceMatrix.needsUpdate = true;
-    for (let i = 0; i < flashN; i++) {
-      let v = flashCol[i * 3] * 0.9;
-      const e = state.exc[flashOf[i].side];
-      if (!reduced && Math.random() < 0.004 + e * 0.02) v = 1;
-      flashCol.set([v, v, v * 0.92], i * 3);
-    }
-    flashGeo.attributes.color.needsUpdate = true;
+    // the hall: the fans with their side's mood, the phone lights, the LED panels
+    room.update(t, dt, state.exc, reduced);
+    grade.uniforms.time.value = t;
+    watchSpeed(realDt);
 
     // robots, the referee, flying furniture, sparks
     for (const side of ['red', 'blue']) {
@@ -1282,10 +1159,14 @@ export async function createScene(root) {
 
     // beams
     sweep.forEach((b, i) => {
-      b.from.set(-9 + i * 6, 13, -5);
-      b.to.set(Math.sin(t * (0.45 + i * 0.12) + i * 1.7) * 5, FLOOR, Math.cos(t * (0.38 + i * 0.1) + i) * 3);
+      if (b.kind === 'white') b.to.set(Math.sin(t * (0.22 + i * 0.05) + i * 1.7) * 3.4, FLOOR, Math.cos(t * (0.18 + i * 0.04) + i) * 2.6);
+      else {
+        // the corner's own half of the ring, slowly
+        const s = b.kind === 'red' ? -1 : 1;
+        b.to.set(s * (2.7 + Math.sin(t * 0.16 + i) * 1.4), FLOOR, Math.cos(t * 0.13 + i * 2.1) * 2.4);
+      }
       aimBeam(b, b.from, b.to);
-      b.m.visible = state.lights === 'sweep';
+      b.m.visible = b.pool.visible = state.lights === 'sweep';
     });
     for (const side of ['red', 'blue']) {
       const f = fighters[side];
@@ -1293,7 +1174,7 @@ export async function createScene(root) {
       focus[side].to.copy(v3);
       aimBeam(focus[side], focus[side].from, focus[side].to);
       focus[side].m.visible = state.lights === 'focus' && f.present;
-      focus[side].m.material.uniforms.opacity.value = 0.03 + state.exc[side] * 0.025;
+      focus[side].m.material.uniforms.opacity.value = 0.07 + state.exc[side] * 0.04;
       spots[side].target.position.copy(v3);
     }
     if (state.winner) {
@@ -1304,9 +1185,11 @@ export async function createScene(root) {
       winSpot.target.position.copy(v3);
     }
     crown.m.visible = state.lights === 'winner';
+    // a lamp that throws a beam burns bright, the others glow
+    for (const b of beams) b.head.k = b.m.visible ? 5 : 1.1;
+    room.placeHeads();
     winSpot.intensity = state.lights === 'winner' ? 0.9 : 0;
     haze.update(t);
-    flags.update(t, state.exc);
     pyro.update(t, dt);
     screens.update();
     ticker.offset.x = reduced ? 0 : (t * 0.004) % 1; // a slow drift
@@ -1362,7 +1245,7 @@ export async function createScene(root) {
       cam.shot = 'wide';
       cam.at = t;
       cam.cut = true;
-      composer.render(dt);
+      draw(dt);
       requestAnimationFrame(frame);
       return;
     }
@@ -1377,7 +1260,15 @@ export async function createScene(root) {
       camLook.copy(v3).add(camUp.set(0, 1.4, 0));
       camera.lookAt(camLook);
       for (const b of beams) b.m.visible = false;
-      composer.render(dt);
+      draw(dt);
+      requestAnimationFrame(frame);
+      return;
+    }
+    if (cam.shot === 'peek' && cam.peek) {
+      // any point of view (for checks of the hall)
+      camera.position.fromArray(cam.peek[0]);
+      camera.lookAt(camLook.fromArray(cam.peek[1]));
+      draw(dt);
       requestAnimationFrame(frame);
       return;
     }
@@ -1388,7 +1279,7 @@ export async function createScene(root) {
       g.localToWorld(camLook.set(0, 1.5, 0));
       camera.position.copy(camAt);
       camera.lookAt(camLook);
-      composer.render(dt);
+      draw(dt);
       requestAnimationFrame(frame);
       return;
     }
@@ -1401,7 +1292,7 @@ export async function createScene(root) {
       for (const b of beams) b.m.visible = false; // no haze of the roof lights right in front of the lens
       camera.position.copy(camAt);
       camera.lookAt(camLook);
-      composer.render(dt);
+      draw(dt);
       requestAnimationFrame(frame);
       return;
     }
@@ -1421,7 +1312,7 @@ export async function createScene(root) {
       cam.shake = Math.max(0, cam.shake - dt * 0.6);
     }
     camera.lookAt(cam.aim);
-    composer.render(dt);
+    draw(dt);
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
@@ -1525,9 +1416,10 @@ export async function createScene(root) {
     bump() {
       cam.shake = 0.35;
     },
-    /** Hold one camera shot ('wide', 'red', 'blue', 'faceRed', 'faceBlue'), or null to let the cuts run (for videos and previews). */
-    holdShot(shot) {
+    /** Hold one camera shot ('wide', 'red', 'blue', 'faceRed', 'faceBlue', or 'peek' from `at` towards `look`), or null to let the cuts run (for videos and previews). */
+    holdShot(shot, at = null, look = null) {
       cam.fixed = shot;
+      cam.peek = at && look ? [at, look] : null;
       cam.at = now();
     },
   };
