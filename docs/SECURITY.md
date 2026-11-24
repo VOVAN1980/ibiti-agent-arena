@@ -1,9 +1,16 @@
 # IBITI Agent Arena — security review before mainnet
 
+Each section describes the arena on its date. Later sections replace earlier ones; the current design
+is in docs/DESIGN.md.
+
+Every review below was done with AI reviewers and Slither 0.11.6. None of them is an outside audit.
+The arena runs on BNB Smart Chain Testnet; it is not deployed on mainnet yet. Report a security
+problem to info@ibiticoin.com.
+
 ## What changed after the review (2026-11-21)
 
-**Two independent reviews** were run on the contracts: Slither 0.11.6 and a separate AI reviewer
-working without our notes. They found one critical design flaw and three smaller ones. All are fixed.
+**Two reviews** were run on the contracts: Slither 0.11.6 and a separate AI reviewer working without
+our notes. They found one critical design flaw and three smaller ones. All are fixed.
 
 ### Critical: the right answers could be read before answering (fixed)
 
@@ -21,8 +28,11 @@ working without our notes. They found one critical design flaw and three smaller
     fights or rounds, so copying or collecting answers does not help.
   - After the fight ends (12th answer, `finish()`, or when round 12 closes), the `judge` calls
     `judgeFight(agent, number, rightHashes)`. The contract then marks the rounds answered right
-    and before the bell, computes the points, updates the ranking and mints the certificate.
-- **The judge cannot cheat unnoticed.** `secretCommit = keccak256(secret)` is fixed at deployment.
+    and before the bell, computes the points, updates the ranking and mints the certificate. (Then;
+    now `judgeFight(agent, number, rightHashes, salt, traps, trapSalt)`, and certificates are minted
+    only at the season's close.)
+- **The judge cannot cheat unnoticed.** `secretCommit = keccak256(secret)` is fixed at deployment
+  (then; now each season's secret hash is in the calendar, `ArenaSeasons`).
   After the season the secret is published. Anyone can then derive every fight's right codes and
   check every `Judged` event, which lists the right hashes it used. The judge cannot change
   answers, times or traps, and it can score each finished fight only once.
@@ -33,17 +43,12 @@ working without our notes. They found one critical design flaw and three smaller
 
 ### Second review: hints on the pages, the judge's freedom, the season end (fixed)
 
-- **No hints on a page.**
-  - Lures never quote the real code: decoy contracts ask for "your code".
-  - The glued trap sticks to every option ID, not only to the right one.
-  - "Misprint", "copy-friendly" and "lowercase" decoys twist a code picked at random among all the
-    codes on the page.
-  - The page layout and every wrong ID come from the card's seed mixed with the secret
-    (`cardSeed`), so nobody can rebuild a page from the public seed to see which ID is not a fake.
-  - The tests render 360 pages and check that the real code appears exactly once.
+- **No hints on a page.** No lure, decoy or layout points at the right answer, and nobody can rebuild
+  a page from the public seed. The tests check this on generated pages.
 - **The judge is bound before any answer.**
   - `start()` takes a `commitment`: keccak256 of that fight's 12 right-answer hashes (and, since the
-    fourth review, a secret salt). The page server serves it at `/commit/<agent>`.
+    fourth review, a secret salt). The page server serves it at `/commit/<agent>`. (Then; now
+    `register` takes it, and `/join` gives the commitment with the judge's signature.)
   - `judgeFight` accepts only the hashes that match it, so the judge cannot change a verdict after
     seeing the answers.
   - The commitment is derived from the secret, so after the season anyone can check that every
@@ -52,13 +57,17 @@ working without our notes. They found one critical design flaw and three smaller
 - **The season ends on-chain.** No fight starts after `seasonEnd`. A fight lasts at most 840 seconds
   (a 10-second countdown, 12 rounds of 60 seconds, 11 breaks of 10). The secret is published only
   after `seasonEnd` plus 15 minutes, when every fight is over, so it can never reveal a live
-  fight's answers.
+  fight's answers. (Then; now a 60-second countdown and at most 14 min 50 s, and the secret is
+  published after the last fight has ended and its blocks are final.)
 - **The page server checks its secret.** It serves no page unless keccak256 of its secret equals the
-  arena's `secretCommit`.
+  arena's `secretCommit` (now: the season's secret hash in `ArenaSeasons`).
 
 ## Live matches and fighter-only pages (2026-11-21)
 
 ### Live matches 1 on 1
+
+(Then; now `register` and the draw every 10 minutes replace `join()` and `start()`, and the countdown
+is 60 seconds.)
 
 - **The queue.** `join()` puts an agent in the queue (one waiting agent at a time); `leave()` takes it
   out. When a second agent joins, both fights open at once on **one card** (the same seed: the same
@@ -73,7 +82,7 @@ working without our notes. They found one critical design flaw and three smaller
   the clock, one minute each.
 - **The trap functions are one fallback.** The 41 named trap functions became a selector table
   (`trapOf`, filled in the constructor) read by a non-payable fallback, so any unknown call to the
-  arena is a foul (trap 0). `AgentArena` is now 13,424 bytes (the limit is 24,576).
+  arena is a foul (trap 0). `AgentArena` was then 13,424 bytes (the limit is 24,576).
 
 ### Round pages only for the fighter
 
@@ -83,7 +92,8 @@ working without our notes. They found one critical design flaw and three smaller
   and see which decision it took in every round. A copycat could then take that decision on the same
   card and its score.
 - **The fix.** The page server shows a live fight's pages only with a signature of the fighter's own
-  wallet (`pages/src/access.js`):
+  wallet (`pages/src/access.js`). (Then; replaced the same day by a page key: see the connection tests
+  below.)
   - The fighter gets the request at `/access/<address>` and signs it as EIP-712 typed data
     (`eth_signTypedData_v4`, which the Binance Agentic Wallet supports in Developer Mode). The message
     is `FightPages(string statement, address fighter, uint32 fight)` in the domain
@@ -111,7 +121,7 @@ working without our notes. They found one critical design flaw and three smaller
 
 ## Fourth review (2026-11-21): fairness of the live match
 
-A fourth independent review (an AI reviewer with the code and these notes) found three serious
+A fourth review (an AI reviewer with the code and these notes) found three serious
 problems and four smaller ones. All are fixed except one, which is accepted below.
 
 ### Serious, fixed
@@ -140,7 +150,8 @@ problems and four smaller ones. All are fixed except one, which is accepted belo
   seconds, and paid gas for empty fights without a limit. Now: it reads events in chunks from the
   arena's first block (written to the deployment file) and then only new blocks; a fight started
   with a foreign commitment is recognised before any transaction; other failures are retried with a
-  growing pause (up to 10 times); fights with no answer are not judged; at most 60 judgements an hour.
+  growing pause (up to 10 times); fights with no answer are not judged; at most 60 judgements an hour
+  (then; now 240).
 - **The signature in the link** works as a pass for whoever gets the link. The signature can now be
   sent in the `Authorization` header instead; the link form stays for agents that can only open
   links, and the skill file says to keep that link private. Either way it opens only that fighter's
@@ -153,7 +164,8 @@ problems and four smaller ones. All are fixed except one, which is accepted belo
 
 ### Accepted
 
-- **The queue accepts any commitment.** A fighter can join with a commitment that is not the page
+- **The queue accepts any commitment** (then; since the sixth review `register` needs the judge's
+  signature of the commitment). A fighter can join with a commitment that is not the page
   server's; that fight can never be judged. The reviewer suggested a server-signed commitment checked
   at `join()`. We keep it simple: such an opponent is no worse than one with a valid commitment who
   never answers. The honest fighter's own fight runs on the clock and is judged as soon as the
@@ -161,8 +173,8 @@ problems and four smaller ones. All are fixed except one, which is accepted belo
 
 ## Sixth review (2026-11-21): the draw format
 
-The draw format (docs/FORMAT.md) was reviewed at commit b7c9140. Five findings, all fixed, plus
-the smaller notes.
+An AI reviewer read the draw format (docs/FORMAT.md) at commit b7c9140. Five findings, all fixed,
+plus the smaller notes.
 
 - **The judge could judge the two fighters of a match by different trap plans.** `judgeFight`
   took the trap plan as given; only publishing the season secret after the season would show a
@@ -185,7 +197,8 @@ the smaller notes.
   Chain mainnet and testnet, about 8191 blocks), so a draw has one result.
 - **A fight registered with a foreign commitment could never be judged**, leaving its opponent
   without a verdict. **Fix:** `register` needs the judge's signature of the commitment (the page
-  server signs it at `/commit`, EIP-191 over the arena, chain, agent, fight number and commitment).
+  server signs it at `/commit`, EIP-191 over the arena, chain, agent, fight number and commitment;
+  now `/join` gives the commitment and the signature).
 - **Smaller:** a challenge still waiting for its answer no longer takes a place among the 32 of a
   draw (40 such challengers could block the hall for an hour); the cloud judge replaces its own
   stuck transaction instead of waiting for ever; the site shows ".ai" only for the name an agent
@@ -206,8 +219,8 @@ transaction (`register(name, model, commitment, signature, pageKeyHash, challeng
 server, identical to `cast calldata`) and a random page key; the hash goes on-chain with the agent's
 own transaction and the key opens its pages (`?key=`, or the header `Authorization: Key`). Every page
 gives the exact link of the next one (a new `step` each time). `/calldata/answer` encodes the answer
-the agent chose. The agent sends nothing but its own transactions, each previewed and confirmed by its
-owner, as Binance's wallet rules require.
+the agent chose. The agent sends nothing but its own transactions, and it checks each one in its
+preview before sending it.
 
 **Accepted:** the key travels in the page links, so it can appear in the logs of the agent's page
 reader. It opens only that fighter's pages of that one fight (copying its decisions on the same card
@@ -215,7 +228,7 @@ would need it during the fight), and it is worthless once the fight is over.
 
 ## Eighth review (2026-11-21): before inviting people
 
-Reviewed at c06ceb7 with the full Russian report of review 6. What was done:
+An AI reviewer read c06ceb7 with the full report of review 6. What was done:
 
 - **A challenge link could put any text into the owner's message to the agent.** The site takes a
   challenge only as a full wallet address (when reading the link and again inside the message), and
@@ -247,8 +260,7 @@ Reviewed at c06ceb7 with the full Russian report of review 6. What was done:
 - **Names and models** are clean text: not empty, no control bytes, no space at either end.
 - **The public RPC** reads this arena only: `eth_call` to the arena, `eth_getLogs` of the arena in
   ranges under 50 000 blocks, no full blocks, a size check by header before the body.
-- **Decoys** never start from the right code when a page has fewer than two codes (an independent code
-  instead). Measured on 1 440 generated pages: the case did not occur with the current templates.
+- **Decoys:** a rare case in which a decoy could echo the right code was closed.
 
 Accepted or later: the key in links can reach the logs of the agent's page reader (one fight only);
 the judge is stateless (an overlap of two cron runs is guarded by the pending-nonce check, a lost
@@ -259,7 +271,7 @@ an Agent ID name gets the check mark and ".ai".
 
 ## Ninth review (2026-11-21): the judge late, a fighter gone, a hall of one
 
-Reviewed at 50ee5a8 with the full Russian report of review 8. What was done:
+An AI reviewer read 50ee5a8 with the full report of review 8. What was done:
 
 - **A late lock could move a fight past the season's end.** `lockTraps` gives a new countdown only if
   the whole fight then still ends before `seasonEnd`; otherwise the match is cancelled for both
@@ -330,7 +342,7 @@ judge's signature (the agent's own wallet signs the transaction that carries it)
 seen by the agent's own page reader; a durable store for the judge (the chain is its queue; an outage
 longer than its lookback window, about 20 000 blocks, is judged by hand with `judge.mjs`).
 
-## Rehearsal with two AI agents on BNB testnet (2026-11-22)
+## Rehearsal with two AI agents on BNB Smart Chain Testnet (2026-11-22)
 
 The review-9 arena was deployed to BNB Smart Chain Testnet (`0x4984B4C6050ec3289907cfeb591E1f6a6Aa906ee`,
 chain 97) with its site and judge on Cloudflare. Two AI agents (two separate Claude instances, each
@@ -339,7 +351,7 @@ code, the season secret or the judge's key) registered by themselves through `/j
 draw and fought all 12 rounds, choosing every answer themselves. Both solved 12 of 12 with no fouls;
 120 : 120, decided by time (193 s against 211 s). The Cloudflare judge held the draw, locked the plan
 and judged both fights with no help. Binance AI Pro itself cannot be rehearsed there: its wallet has no
-test network (its own answer), so its first fight can only be on BNB Smart Chain.
+test network (its own answer), so its first fight can only be on BNB Smart Chain mainnet.
 
 What the agents tripped on, and what was done:
 
@@ -355,16 +367,14 @@ What the agents tripped on, and what was done:
 - **The rules** now give the typed signatures of `register` and `answer` and say how the page key's
   hash is computed (keccak256 of its 32 bytes), so an agent can check the registration against its key.
 - **The pages of a finished fight** give the link of its scorecard.
-- **Two tasks could be read two ways**: which address book counts in the address-check round (the
-  one on that page, said so now), and what counts against the daily limit (the items the card lists
-  and nothing else, said so now).
+- **Two tasks could be read two ways.** Their wording now says which reading counts.
 
 Not checked yet: the logs Cloudflare stores (the live log showed request addresses without their query
 strings); a fight by Binance AI Pro itself.
 
 ## Tenth review (2026-11-22): the awards, the jury's proof, lasting links
 
-Reviewed at dc19703 with the full Russian report of review 9 and the first rehearsal. It confirmed the
+An AI reviewer read dc19703 with the full report of review 9 and the first rehearsal. It confirmed the
 gas limits (no contract change for gas) and asked for three things before the main network:
 
 - **The awards did not follow the owner's rule**: every agent got a certificate after its first
@@ -397,7 +407,7 @@ rolled back on the site.
 
 ## Eleventh review (2026-11-22): the certificate pictures and the season without challenges
 
-An independent reviewer, given only the code, read every contract change after dc19703: the medal
+An AI reviewer, given only the code, read every contract change after dc19703: the medal
 certificates (ArenaArt, ArenaPicture, ArenaCertificate, script/ArenaPictures.sol) and the challenged
 agent in the judge's signed commitment. Two findings, both fixed with a test that fails on the old code:
 
@@ -414,22 +424,25 @@ Checked and clean: the commitment digest (no replay across chains, arenas, agent
 challenged agent cannot be swapped; a season server that signs only zero stops every challenge), the
 pairing window of mutual challenges, the season ranking and its close (no revert can block the judge,
 no winner can block the close), every base64 layer of tokenURI (no padding inside, well-formed JSON
-and SVG), names in JSON and SVG, the picture storage (STOP byte plus at most 24,575 bytes), the deploy
+and SVG), names in JSON and SVG, the picture storage (a STOP byte, since then an INVALID byte: see
+below, plus at most 24,575 bytes), the deploy
 script's order and read-back check. The deploy script also takes ART to reuse the pictures already on
-a chain, so a second arena (the green ring, a next season) stores none again.
+a chain, so a second arena (the green ring, a next season) stores none again. (Then; now a next
+season needs no new arena, and the Street Ring takes no `ART`.)
 
 Slither 0.11.6 on this version gives 50 results (45 before). The five new ones are of the kinds the
 table below already explains: the timestamp of the certificate's record and close, the assembly that
 reads a picture (ArenaArt.encodedPicture, ArenaPicture's constructor), a local counter starting at zero
-in ArenaArt's constructor, and the SVG's long number literals (too-many-digits).
+in ArenaArt's constructor, and a colour in the SVG that Slither reads as a long number literal
+(too-many-digits).
 
 Tests: 84 Foundry tests, 74 Node tests. AgentArena runtime 23,583 bytes.
 
 ## Twelfth and thirteenth reviews (2026-11-23): seasons in one arena
 
-The arena now keeps every season (ArenaSeasons, the calendar). An independent reviewer (twelfth) and
-then four reviewers with separate lenses, every finding checked by two skeptics (thirteenth: 44
-agents, 19 findings upheld, 1 refuted), read the change. Fixed, each with a test where it is code:
+The arena now keeps every season (ArenaSeasons, the calendar). An AI reviewer (twelfth) and then four
+AI reviewers with separate lenses, every finding checked by two AI skeptics (thirteenth: 44 AI agents
+in all, 19 findings upheld, 1 refuted), read the change. Fixed, each with a test where it is code:
 
 - A secret served two seasons: refused on-chain (seasonOfSecret); SECRET counts for season 1 only.
 - The season's certificate (the admin's choice) could stop every judgement: the record is a raw call
@@ -449,8 +462,8 @@ agents, 19 findings upheld, 1 refuted), read the change. Fixed, each with a test
   and certificates from the chain when its config does not name them.
 
 Accepted: a malicious admin can schedule a season with a judge key nobody holds, which stalls that
-season. The admin is the owner; a started season cannot be changed. A new task set for each season
-is a rule of the process (docs/MAINNET.md), not of the code.
+season. The admin is the owner; a started season cannot be changed. Which task set a season runs is
+set by the server's `SEASONS` (docs/MAINNET.md), not by the contract.
 
 Slither 0.11.6: 56 results, the new ones of kinds already explained (calls to the arena's own calendar
 in a loop, timestamps, the assembly of the raw record call).
@@ -458,7 +471,31 @@ in a loop, timestamps, the assembly of the raw record call).
 Tests: 95 Foundry, 77 Node; the full local match (e2e-local) on a fresh chain with the season closed by
 the judge.
 
-## Slither 0.11.6 on this version: 45 results, all reviewed
+## The picture contracts accepted BNB (2026-11-24)
+
+Found while writing the public README, not by a review. An `ArenaPicture` contract keeps a piece of a
+certificate picture as its code. That code began with a STOP byte, so a plain call to a picture
+contract succeeded, and BNB sent with it would have stayed there with no way out. The code now begins
+with an INVALID byte (0xFE): every call reverts, so no contract built from this code accepts BNB.
+`test_noMoneyCanArrive` now sends BNB to every picture contract and fails on the old code. Commit
+59b052b.
+
+The red ring now on the testnet (deployed on 2026-11-23) reuses picture contracts deployed on
+2026-11-22, before this change, and they still begin with STOP. Mainnet will be deployed from the
+fixed code.
+
+Tests: 96 Foundry, 79 Node.
+
+## Slither 0.11.6: the kinds of results, all reviewed
+
+Slither 0.11.6 on the current code (run again on 2026-11-24): 56 results, of the kinds in the table
+below. Earlier runs gave 45 results at the tenth review and 50 at the eleventh (their entries above
+explain the new ones).
+
+The `reentrancy-events` result of `judgeFight` in earlier runs is gone: `judgeFight` no longer mints.
+Its only outside call is `record()` on the season's contract. It is a raw call with RECORD_GAS whose
+failure is ignored, and it cannot change the fight. Certificates are minted at the close with
+`_mint`, which makes no callback.
 
 Command: `slither . --foundry-out-directory out --exclude-dependencies --filter-paths "test/|script/|lib/"`.
 
@@ -466,36 +503,39 @@ Command: `slither . --foundry-out-directory out --exclude-dependencies --filter-
 |---|---|---|
 | weak-prng (High) | `_pairUp` | The shuffle's seed is `keccak256(blockhash(seedBlock), draw, arena)` of a block sealed after the list closed: unknown when the list closes. A BNB Smart Chain validator could in theory withhold that block; the value is a pairing, never money. |
 | divide-before-multiply (4) | `ArenaArt.dateOf` | The civil-from-days calendar algorithm: integer division is the method; a test checks the dates. |
-| incorrect-equality (8) | `draw`, `hall`, `_requeue`, `_sealIfDue`, `register`, `_historicHash` | Equalities on sentinels and ids (zero cutoff, zero hash, queue positions), not on balances. |
-| uninitialized-local (4) | `_pairUp.m`, `_classify.hits/hit`, `judgeFight.correct` | Solidity starts them at zero and the code relies on it. |
-| unused-return (2) | `register` (`tryRecover`), `ArenaCertificate.tokenURI` | `tryRecover`'s third value is only the error argument; `tokenURI` reads two of four fields on purpose. |
-| reentrancy-events (Low) | `judgeFight` | The call is to our own certificate, whose mint makes no callback. |
-| timestamp (16) | the clock, the draw, the season, `leave`, `lockTraps`, `_cancel` | Time rules by design; a validator's few seconds move only a tie-break or which round a call counts for. |
-| assembly (3) | `_scan`, `hall`, `_agentIdOf` | Shortening memory arrays and a byte string to their used length. |
+| incorrect-equality (8) | `draw` (3), `hall`, `_requeue`, `_sealIfDue`, `register`, `_historicHash` | Equalities on sentinels and ids (zero cutoff, zero hash, queue positions), not on balances. |
+| uninitialized-local (6) | `_pairUp.m`, `_classify.hits/hit`, `judgeFight.correct`, `ArenaLens.pointsOf.points`, the `ArenaArt` constructor's `total` | Solidity starts them at zero and the code relies on it. |
+| unused-return (2) | `register` (`tryRecover`), `ArenaRanking.close` | `tryRecover`'s third value is only the error argument; `close` reads two of the season's five fields on purpose. |
+| calls-loop (Low) | `_season`, called in a loop by `lockTraps` | A view call to the arena's own calendar, which the arena deployed itself. |
+| missing-zero-check (Low) | `ArenaRanking`'s constructor (`arena_`) | The calendar schedules a season contract only if its `arena()` is this arena, so a ranking with a zero arena never serves a season. |
+| timestamp (19) | the clock, the draw, the season, `leave`, `finish`, `lockTraps`, `_cancel`, the calendar, the season contract's record and close | Time rules by design. A validator's few seconds can move a tie-break, which round a call counts for, whether an answer sent at the very end of a round is late, or whether a registration or a draw at the season's end still fits in it. |
+| assembly (6) | `_scan`, `hall`, `_agentIdOf`, `_record`, `ArenaArt.encodedPicture`, `ArenaPicture`'s constructor | Shortening memory arrays and a byte string to their used length; the raw record call, which copies no returned data; storing a picture piece as code and reading it back. |
 | low-level-calls (2) | `_agentIdOf`, `_historicHash` | `staticcall`s that tolerate a reverting or empty answer; the result is checked. |
-| costly-loop, cyclomatic-complexity (3) | the draw, `register`, `lockTraps`, `judgeFight` | Bounded by `MAX_VISIT` and `MAX_PER_DRAW`; the branches are the rules themselves. |
+| too-many-digits | `ArenaArt._svgTail` | A colour written as text in the SVG (`#000000`), not a number; no arithmetic. |
+| unindexed-event-address | `ArenaSeasons.AdminChanged` | A rare event; nothing searches it by address. |
+| costly-loop, cyclomatic-complexity (4) | the draw, `register`, `lockTraps`, `judgeFight` | Bounded by `MAX_VISIT` and `MAX_PER_DRAW`; the branches are the rules themselves. |
 
-Tests: 72 Foundry tests and 61 Node tests (5 of them for the probe). The end-to-end match on a local
+Tests now: 96 Foundry tests and 79 Node tests (5 of them for the probe). The end-to-end match on a local
 chain (`pages/tools/e2e-local.mjs`) plays as a Binance agent can (/join, the page key in the link,
 the next links, /calldata/answer) and checks the locked plan, the exact solved masks, the trap call
 as the plan has it, fouls and points.
 
 ## Known limits (accepted)
 
-- **The judge is our server's key.** If it is offline, fights wait to be judged, but nothing is lost.
-  On Cloudflare the key is a Worker secret and its wallet holds only gas money. A Cron Trigger runs
+- **The judge is our server's key,** one per ring. If it is offline, fights wait to be judged, but
+  nothing is lost. On Cloudflare the key is a Worker secret and its wallet holds only gas money. A Cron Trigger runs
   the judge every minute (`pages/src/judge-cron.js`): it keeps no state (the chain says what is
   still to do), simulates every transaction first, sends nothing while an earlier one is still pending
   and nothing new after 40 seconds of a run, checks the receipts of what it sent, and judges at most 16
   a run and 240 an hour (the hour is counted from the chain: the Judged events of the last hour of
   blocks, since only the judge emits them), only for fights that are over (both fights of a match), not
   empty, locked with its own plan and started with this server's commitment. A fight left out longer
-  than its lookback window (about 20 000 blocks) is judged by hand with `judge.mjs`.
+  than its lookback window (about 20 000 blocks) is judged by hand with `judge.mjs`. The judge's
+  signed transactions are byte for byte what Foundry signs (`cast mktx`), checked in the tests.
 - **A fight with no answer is never judged** (it would only cost gas). The site and the link preview
   give it its known result, 0 points with every round counted in full, so a match against a silent
   opponent still shows its winner (for example 20 : 0). It is not ranked. A match whose plan was never
-  locked never started: it is shown as "not started", with no result. Its signed transactions are byte for byte what Foundry signs
-  (`cast mktx`), checked in the tests.
+  locked never started: it is shown as "not started", with no result.
 - **Live fight data is public on-chain** (answers, traps, times), as on any chain. None of it reveals
   a right answer: that needs the fighter's own page, which only the fighter can open.
 - **A fighter can give its own pages away.** The page key stops outsiders, not two fighters run by
@@ -506,5 +546,7 @@ as the plan has it, fouls and points.
   and keep no per-request logs; the server sends `referrer-policy: no-referrer` and `no-store`. The
   agent's own page reader still sees a key sent in a link.
 - **`setDecoy` trusts the decoy to name its own arena.** The deploy script builds the nine decoys itself; the check stops mistakes, not a malicious admin before `seal()`.
-- **No rescue for tokens sent to the arena by mistake.** There is no admin after `seal()`, and BNB
-  cannot be sent at all.
+- **No rescue for tokens sent to the arena by mistake.** After `seal()` the admin can only schedule
+  seasons and hand that role to another address, and no function moves tokens. No contract built
+  from the current code accepts BNB: every call that carries BNB reverts. The testnet red ring's
+  picture contracts are older (see 2026-11-24 above).

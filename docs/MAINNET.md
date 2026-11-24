@@ -1,73 +1,101 @@
 # Mainnet launch: the checklist
 
-Nothing here runs without the owner's «да» and his BNB. Every value marked **owner** is his decision.
+For BNB Smart Chain mainnet (chain 56). Nothing is deployed there yet; both rings run on BNB Smart
+Chain Testnet (chain 97). Nothing here runs without the owner's approval, and the owner funds the
+deployment.
 
 ## How seasons work
 
 One arena, deployed once, keeps every season: its agents, fights, answers and the all-time ranking
-stay in it for good. The arena's season calendar (ArenaSeasons) is scheduled by its admin:
+stay in it for good. Each ring (red and green) is its own arena. The arena's season calendar
+(ArenaSeasons) is scheduled by its admin:
 
-- a season has a start, an end, a judge, the hash of its secret and its certificate contract (its
-  ranking and medals);
+- a season has a start, an end, a judge, the hash of its secret and its season contract (its ranking,
+  and on the red ring its certificates);
 - the admin schedules a season whenever needed: it starts at or after the end of the last one (a
   start already past means now); there can be a gap of any length between two seasons, during which
   nobody can register;
 - while a season has not started, it can be scheduled again; a season that has started never
   changes, not even by the admin;
-- one judge key for all seasons; a season gets a new judge only if the key is lost or stolen;
+- one judge key per ring, for all of that ring's seasons: two judges never share a nonce, as on the
+  testnet; a season gets a new judge only if that key is lost or stolen;
 - each season has its own secret: it is published after the season so anyone can recheck every
   judgement, and it must not reveal the next season's answers.
 
-## Decisions first (owner)
+## Decided
 
-- **The first season's dates** (start can be "now"); later seasons whenever he wants.
-- **The green ring (street ring) on mainnet:** at launch, with a ranking and no award at all (decided
-  2026-11-23: nothing is given for street fights until the ring has pictures of its own). The four
-  metal pictures belong to the red ring (tournaments) only.
-- **License and the public repository:** the hackathon asks for contracts verified on BscScan and
-  "the code publicly open-source".
-- **The site's address:** ibitilabs.ai (or a subdomain) on the Cloudflare account.
-- **TEST_VERSION** printed on the certificates: stays "2" unless the owner says otherwise.
+- **Season 1:** from launch to 2026-12-20 23:59 UTC (`SEASON_END=1797811140`). Later seasons are
+  scheduled when the owner decides.
+- **The red ring (the season):** the season's ranking and the certificates for places 1–10, with the
+  four metal pictures.
+- **The Street Ring (the green ring)** on mainnet at launch: challenges open, a ranking and no award.
+  The four metal pictures belong to the red ring only.
+- **The sites:** `arena.ibiticoin.com` (the red ring) and `street.ibiticoin.com` (the Street Ring),
+  as custom domains of the two Workers. `ibitilabs.ai` is the Agent ID name of the project's own
+  agent, not a web address.
+- **License:** the project's own code is open source under Apache-2.0 (LICENSE). Third-party code
+  keeps its own license. The names and logos, and the site's music and pictures, are not licensed
+  under Apache-2.0 (NOTICE).
+- **TEST_VERSION** on the certificates: "2" (a constant of the arena).
+
+## The domain (once, before the deploy)
+
+The Workers can have custom domains only in a zone on Cloudflare, so the `ibiticoin.com` DNS zone
+moves to Cloudflare (free plan):
+
+1. Add `ibiticoin.com` to the Cloudflare account. Copy every existing record of the site and the mail
+   (MX, SPF, DKIM, DMARC) and check each one against the current DNS.
+2. The owner changes the nameservers at the registrar to the two that Cloudflare gives.
+3. Once the zone is active, check that the existing site opens and that mail still arrives.
 
 ## Keys (once, before the deploy)
 
-1. The admin wallet (schedules the seasons) and the judge wallet, created offline, never used on any
-   other chain. The admin can be the owner's own wallet.
-2. Season 1's secret (`node pages/tools/make-secret.mjs <dir>`); a new secret for every later season.
-3. Copies of the judge key and every season secret into
-   `Desktop\LVS-private\IBITI-Agent-Arena-КЛЮЧИ\mainnet` and one more place the owner chooses.
+1. The admin wallet (deploys the arenas and schedules the seasons; it can be the owner's own wallet)
+   and one judge wallet per ring, created offline and never used on any other chain.
+2. Season 1's secret for each ring (`node pages/tools/make-secret.mjs <dir outside the repository>`);
+   a new secret for every later season.
+3. The judge keys and every season secret are kept offline, outside the repository, with a second
+   copy the owner chooses.
 
-## Deploy (at 0.05 gwei: the red ring about 0.0102 BNB, the green ring about 0.0005 BNB)
+## Deploy (at 0.05 gwei: the red ring about 0.0102 BNB, the Street Ring about 0.0005 BNB)
 
 Measured 2026-11-23 on a local chain: the red ring with its pictures takes 203.9M gas (61
-transactions), the green ring with its ranking only 9.5M gas (23 transactions). Keep about 0.002 BNB
-more for the judge.
+transactions), the Street Ring with its ranking only 9.5M gas (23 transactions). Keep about 0.002 BNB
+more for each judge.
 
-1. Fund the deployer (the admin) and the judge wallets from the owner's BNB.
-2. `forge script script/Deploy.s.sol --rpc-url <BSC> --broadcast --verify` with `RANKING_ONLY=false`
-   (the red ring; on chain 56 the script refuses to run without it), `JUDGE`,
-   `SECRET_COMMIT`, `SEASON_START` (optional), `SEASON_END`, `COOLDOWN=86400`, `DRAW_EVERY=600`,
-   `AGENT_ID_REGISTRY=0x60B9262456dE011F7d15a54CdD8c48bAaa8B022F` (the script refuses anything else on
-   chain 56). It deploys the arena (with its calendar), the decoys, seals it, and schedules season 1.
-   The green ring: the same with `RANKING_ONLY=true` (ArenaRanking: the ranking and the close, no
-   token, no pictures). A later green season can give certificates with pictures of its own: deploy
-   an ArenaArt with them and schedule that season with `ART=<it>`; the arena stays.
-3. Verify every contract on BscScan (the arena, the calendar, the certificate, the art, the
+1. Fund the deployer (the admin) and both judge wallets.
+2. The red ring: `forge script script/Deploy.s.sol --rpc-url <BSC> --broadcast --verify` with
+   `RANKING_ONLY=false` (on chain 56 the script refuses to run without it), `JUDGE` (the red ring's
+   judge), `SECRET_COMMIT`, `SEASON_START` (optional: now), `SEASON_END=1797811140`,
+   `COOLDOWN=86400`, `DRAW_EVERY=600`, `AGENT_ID_REGISTRY=0x60B9262456dE011F7d15a54CdD8c48bAaa8B022F`
+   (the script refuses anything else on chain 56) and its own `OUT` file. It deploys the arena (with
+   its calendar), the decoys, seals it, and schedules season 1.
+   The Street Ring: the same with `RANKING_ONLY=true` and no `ART`, its own `JUDGE`, `SECRET_COMMIT`
+   and `OUT` (ArenaRanking: the ranking and the close, no token, no pictures).
+3. Verify every contract on BscScan (the arena, the calendar, the season contract, the art, the
    pictures, the decoys).
-4. A `mainnet` env in `pages/wrangler.jsonc`: `ARENA`, `SEASON_BOOK`, `SEASONS`
-   (`{ "1": { "certificate": "<address>" } }`), `DECOYS`, `DEPLOY_BLOCK`, `RINGS`; Worker secrets
-   `JUDGE_KEY` and `SECRET_1`; `wrangler deploy --env mainnet`.
-5. The first real fight: `ibitilabs.ai` through Binance AI Pro, recorded for the video.
+4. One env per ring in `pages/wrangler.jsonc`: `RPC_URL`, `CHAIN_ID` (56), `ARENA`, `SEASON_BOOK`,
+   `SEASONS` (`{ "1": { "plan": 12, "certificate": "<address>" } }`: `plan` is the task set the season
+   runs, `PLAN_VERSION` in pages/src/plan.js; `certificate` is the season contract), `DECOYS`,
+   `DEPLOY_BLOCK`, `BLOCKS_PER_WEEK` (blocks in a week at the block time measured on mainnet; the
+   testnet uses 1342500 for 0.45-second blocks), `ROUND_TIME` (60), `RING` and `RINGS`
+   (`{ "red": "https://arena.ibiticoin.com", "green": "https://street.ibiticoin.com" }`); the Street
+   Ring also `DECK=workshop` and `CHALLENGES=open`. Each env also gets its custom domain in `routes`
+   (`{ "pattern": "arena.ibiticoin.com", "custom_domain": true }`, or `street.ibiticoin.com`).
+   Worker secrets: `JUDGE_KEY` (that ring's judge) and `SECRET_1`. Then `wrangler deploy --env <name>`.
+5. The first real fight: the project's own agent, Agent ID name `ibitilabs.ai`, through Binance AI
+   Pro.
 
 ## A new season
 
-1. `node pages/tools/make-secret.mjs <dir>` for its secret.
+1. `node pages/tools/make-secret.mjs <dir outside the repository>` for its secret, one per ring.
 2. `forge script script/ScheduleSeason.s.sol --broadcast` (by the admin) with `ARENA`, `ART`,
-   `JUDGE`, `SECRET_COMMIT`, `SEASON_START`, `SEASON_END`. The green ring: `RANKING_ONLY=true` and no
-   `ART` (never the red ring's art); `ART=<its own art>` only once it has pictures of its own.
-3. Add the season's certificate to `SEASONS`, upload `SECRET_<n>`, `wrangler deploy`.
+   `JUDGE` (that ring's judge), `SECRET_COMMIT`, `SEASON_START`, `SEASON_END`. The Street Ring:
+   `RANKING_ONLY=true` and no `ART` (never the red ring's art).
+3. Add the season to `SEASONS` (its `plan` and `certificate`), upload `SECRET_<n>`,
+   `wrangler deploy`.
 
 ## After a season
 
-Publish its secret: anyone can then recompute every fight's right answers and traps and check the
-judge.
+Publish its secret only after the last fight has ended and its blocks are final. Anyone can then
+recompute every fight's right answers and traps and check the judge.

@@ -114,7 +114,7 @@ export default {
   homeStep4Text: "Agent ID를 가진 시즌 상위 10개 에이전트에게 온체인 인증서를 수여합니다.",
   homeRules: "규칙",
   homeNoSeason: "첫 시즌이 곧 개막합니다.",
-  noChallenge: '시즌 대전은 무작위 추첨으로 정해지므로 지금은 상대를 고를 수 없습니다. 직접 고른 에이전트끼리의 대전은 시즌이 끝난 뒤 가능합니다.',
+  noChallenge: '시즌 대전은 무작위 추첨으로 정해지므로 여기서는 상대를 고를 수 없습니다. 도전은 스트리트 링에서 할 수 있습니다.',
   challengeCopied: '도전 링크 복사됨', badChallenge: '이 도전 링크는 손상되었습니다: 지갑 주소가 없습니다. 메시지는 도전 없이 만들어졌습니다.', challenged: '도전장이 도착했습니다: 메시지가 준비됐습니다',
   footer: 'IBITI Agent Arena · 모든 결과는 체인에서 읽어옵니다', contractOn: '{0}의 컨트랙트', localChain: '로컬 테스트 체인',
   shareArena: '당신의 AI 에이전트는 실제 드레이너 사기 12라운드를 버틸 수 있을까? IBITI Agent Arena: 힌트 없음, 온체인 판정.',

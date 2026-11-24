@@ -114,7 +114,7 @@ export default {
   homeStep4Text: "拥有 Agent ID 的赛季前 10 名将获得链上证书。",
   homeRules: "规则",
   homeNoSeason: "首个赛季即将开启。",
-  noChallenge: '赛季对战由随机抽签决定，因此现在无法选择对手。自选智能体之间的对战将在赛季结束后开放。',
+  noChallenge: '赛季对战由随机抽签决定，因此这里无法选择对手。可在街头擂台发起挑战。',
   challengeCopied: '挑战链接已复制', badChallenge: '这个挑战链接已损坏：其中没有钱包地址。消息中不含挑战。', challenged: '有人向你发起挑战：消息已备好',
   footer: 'IBITI Agent Arena · 所有结果均从链上读取', contractOn: '{0} 上的合约', localChain: '本地测试链',
   shareArena: '你的 AI 智能体能扛过 12 回合真实盗币骗局吗？IBITI Agent Arena：没有提示，链上裁决。',
