@@ -248,7 +248,8 @@ function archived(env, address) {
   return (Array.isArray(list) ? list : []).find((x) => String(x?.arena).toLowerCase() === address) ?? null;
 }
 
-/** deps: { chain } to read the arena through, { authorization } the request's Authorization header. */
+/** deps: { chain } to read the arena through, { authorization } the request's Authorization header,
+ *  { fetchFn } for the Agent ID registry read when `chain` has no agentIdHolder (tests). */
 export async function handleFight(url, env, deps = {}) {
   if (url.pathname === '/skill.md') {
     // the draw and the pause between fights as the arena itself has them (the defaults if unreadable)
@@ -321,7 +322,7 @@ export async function handleFight(url, env, deps = {}) {
     if (nextSlot + 60 + 12 * (await roundTimeOf(chain, env.ARENA)) + 11 * BREAK > season.end) {
       return text(410, 'This season is about to end: no fight that starts now could finish in it. Registration opens again with the next season.');
     }
-    return join(url, env, chain, keys, n, agent, chainId, site);
+    return join(url, env, chain, keys, n, agent, chainId, site, deps);
   }
 
   // the page key: in the link (an agent's page reader may not send headers), or the header
@@ -444,8 +445,71 @@ const deckOf = (env) => env.DECK ?? 'season';
 /** Whether this arena lets an agent name its opponent: never in a season arena (the default). */
 const challengesOpen = (env) => env.CHALLENGES === 'open';
 
+/** The Agent ID registry the arena checks names against (immutable: read once per arena). */
+const REGISTRIES = new Map();
+const SEL_AGENT_ID_REGISTRY = '0x8854a0ff'; // agentIdRegistry()
+const SEL_OWNER_OF = '0x6352211e'; // ownerOf(uint256)
+
+/** A read-only eth_call: the returned hex (no 0x), or '' if the call reverted. Throws if the node
+ *  could not be asked. */
+async function ethCall(rpc, to, data, fetchFn = fetch) {
+  if (!rpc) throw new Error('no RPC_URL');
+  const res = await fetchFn(rpc, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to, data }, 'latest'] }) });
+  const j = await res.json();
+  if (j.error) {
+    if (j.error.code === 3 || /revert/i.test(String(j.error.message ?? ''))) return ''; // a reverted call: no holder
+    throw new Error(`eth_call failed: ${j.error.message}`);
+  }
+  return String(j.result ?? '').replace(/^0x/, '');
+}
+
+/** Who holds the Agent ID with this token number (keccak256 of the label), as the arena reads it: the
+ *  zero address if the registry reverts or answers nothing. Asks only for this one token. */
+async function agentIdHolder(env, chain, deps, tokenId) {
+  if (chain.agentIdHolder) return String(await chain.agentIdHolder(tokenId)).toLowerCase();
+  const arena = String(env.ARENA).toLowerCase();
+  if (!REGISTRIES.has(arena)) {
+    const w = await ethCall(env.RPC_URL, env.ARENA, SEL_AGENT_ID_REGISTRY, deps.fetchFn);
+    if (w.length < 64) throw new Error('agentIdRegistry() unreadable');
+    REGISTRIES.set(arena, '0x' + w.slice(24, 64));
+  }
+  const out = await ethCall(env.RPC_URL, REGISTRIES.get(arena), SEL_OWNER_OF + tokenId.replace(/^0x/, ''), deps.fetchFn);
+  return out.length >= 64 ? '0x' + out.slice(24, 64).toLowerCase() : ZERO;
+}
+
+/** Whether `name` registers `agent` officially, the way AgentArena._agentIdOf decides it: A-Z lowered,
+ *  a trailing ".ai" dropped to get the label, official only if the registry's ownerOf(keccak256(label))
+ *  is `agent`. A ".ai" name it does not hold, and another holder's name, revert (NameTaken): refused
+ *  here before any gas is spent. Only this address and this name are checked, and no holder is named.
+ *  Returns { official, note } or { refuse, status }. */
+async function agentIdCheck(env, chain, deps, agent, name) {
+  const lower = name.replace(/[A-Z]/g, (c) => c.toLowerCase()); // the contract lowers ASCII A-Z only
+  const dotAi = lower.endsWith('.ai');
+  const label = dotAi ? lower.slice(0, -3) : lower;
+  let holder = ZERO;
+  if (label) {
+    const hex = [...new TextEncoder().encode(label)].map((b) => b.toString(16).padStart(2, '0')).join('');
+    try {
+      holder = await agentIdHolder(env, chain, deps, keccak256(hex));
+    } catch {
+      if (dotAi) return { status: 503, refuse: 'The Agent ID registry could not be read just now, so this server cannot confirm that this ".ai" name is your own Agent ID. A ".ai" name you do not hold makes the arena refuse the registration (NameTaken) and the gas is lost. Ask again in a few seconds.' };
+      return { official: null, note: 'The Agent ID registry could not be read just now, so this answer cannot say whether this registration is official. Ask again in a few seconds before you send it.' };
+    }
+  }
+  const own = label !== '' && holder === agent.toLowerCase();
+  if (dotAi && !own) {
+    return { status: 409, refuse: `A name ending in ".ai" must be your own Agent ID, and this address does not hold the Agent ID "${label}". The arena would refuse this registration (NameTaken) and the gas would be lost. Register under your own Agent ID name (with or without ".ai"), or under a name without ".ai" to fight in the open ranking.` };
+  }
+  if (!own && holder !== ZERO) {
+    return { status: 409, refuse: 'This name is an Agent ID that this address does not hold. The arena would refuse this registration (NameTaken) and the gas would be lost. Register under your own Agent ID name, or under another name to fight in the open ranking.' };
+  }
+  return own
+    ? { official: true, note: 'This name is your own Agent ID: this registration is official, and its fights count in the official ranking of the season.' }
+    : { official: false, note: 'This name is not an Agent ID you hold: this registration is open, and its fights count only in the open ranking.' };
+}
+
 /** The agent's registration, ready to preview with its wallet, and its page key. */
-function join(url, env, chain, keys, season, agent, chainId, site) {
+function join(url, env, chain, keys, season, agent, chainId, site, deps = {}) {
   return (async () => {
     if (!env.JUDGE_KEY) return text(500, 'The arena is not configured: the judge key is missing.');
     const name = (url.searchParams.get('name') ?? '').trim();
@@ -456,6 +520,9 @@ function join(url, env, chain, keys, season, agent, chainId, site) {
     }
     if (challenge && !challengesOpen(env)) return text(400, 'Season fights are drawn at random: in this arena an agent cannot choose its opponent. Register without challenge.');
     if (challenge && !/^0x[0-9a-f]{40}$/.test(challenge)) return text(400, 'challenge=<the wallet address of the agent you challenge>, or leave it out for the draw.');
+    // official or open, as the arena will decide it (AgentArena._agentIdOf): only this address and this name
+    const id = await agentIdCheck(env, chain, deps, agent, name);
+    if (id.refuse) return text(id.status, id.refuse);
     const fight = (await chain.lastFight(agent)) + 1;
     const commitment = keys.commitment(env.ARENA, agent, fight);
     const signature = signCommitment(env.JUDGE_KEY, chainId, env.ARENA, season, agent, fight, commitment, challenge || '0x0');
@@ -463,6 +530,8 @@ function join(url, env, chain, keys, season, agent, chainId, site) {
     const pageKeyHash = keccak256(pageKey);
     return json(200, {
       fight,
+      official: id.official,
+      officialNote: id.note,
       transaction: { chainId, to: env.ARENA, value: '0', gasLimit: REGISTER_GAS, inputData: registerData({ name, model, commitment, signature, pageKeyHash, challenge }) },
       pageKey,
       pageKeyHash,

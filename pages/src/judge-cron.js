@@ -34,7 +34,8 @@
 //
 // Environment: RPC_URL, ARENA, CHAIN_ID, DEPLOY_BLOCK, BLOCKS_PER_WEEK, SECRET (Worker secret),
 // JUDGE_KEY (Worker secret), LOOKBACK_BLOCKS (default 20000), MAX_PER_RUN (default 16),
-// MAX_PER_HOUR (default 240), RUN_SECONDS (default 40).
+// MAX_PER_HOUR (default 240), RUN_SECONDS (default 40), JUDGE_LOW_BALANCE (wei, default LOW_BALANCE:
+// below it each run logs a warning to top up the judge's wallet; it never stops the judge).
 
 import { secp256k1 } from '@noble/curves/secp256k1.js';
 import { keccak256 } from './keccak.js';
@@ -57,6 +58,18 @@ const CLOSE = SEL('close()');
 const CHUNK = 5000;
 const ZERO = '0x' + '0'.repeat(40);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// The default JUDGE_LOW_BALANCE, in wei: a day of one match an hour at 0.05 gwei. Measured on the BSC
+// testnet (the season-3 rehearsal arena, an earlier version): sealing a draw 29,085 gas, holding it
+// 462,800, locking both trap plans 88,757, judging the two fights 264,430 and 247,330. That is
+// 1,092,402 gas a match, 26.2M gas a day, 0.00131 BNB at 0.05 gwei, rounded up to 0.0015 BNB.
+export const LOW_BALANCE = 1_500_000_000_000_000n;
+
+/** wei as BNB, at most six decimals (rounded down): 400000000000000n -> "0.0004". */
+export function bnb(wei) {
+  const s = (wei / 10n ** 12n).toString().padStart(7, '0');
+  return (s.slice(0, -6) + '.' + s.slice(-6)).replace(/\.?0+$/, '');
+}
 
 function utf8Hex(s) {
   return [...new TextEncoder().encode(s)].map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -138,6 +151,14 @@ export async function judgeRun(env, { fetchFn = fetch, log = console.log, wait =
   const arena = env.ARENA;
   const chain = makeChain({ rpc: rpcUrl, arena, fetchFn });
   const me = addressOf(env.JUDGE_KEY);
+  // the judge's gas money, read once a run: below JUDGE_LOW_BALANCE one warning line; judging goes on
+  try {
+    const balance = BigInt(await rpc('eth_getBalance', [me, 'latest']));
+    const low = BigInt(env.JUDGE_LOW_BALANCE ?? LOW_BALANCE);
+    if (balance < low) log(`judge balance low: ${bnb(balance)} BNB (warning below ${bnb(low)} BNB), top up ${me}`);
+  } catch (e) {
+    log('judge balance not read: ' + e.message);
+  }
   // the seasons this key judges (normally all of them: one judge), each with its own secret
   // (SECRET_<n>, or SECRET), checked against the secret's hash in the season calendar
   const mine = new Map(); // season number -> { s: its settings, keys, serves: this server builds its pages }

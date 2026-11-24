@@ -332,9 +332,10 @@ An AI reviewer read 50ee5a8 with the full report of review 8. What was done:
 - **Docs and tests.** `skill.md` takes the round time from the contract too; the known limits below
   match the code; the end-to-end run works out from the card's plan, before the judge comes, whether
   Red's trap call is a punch of round 2 or a foul, and compares the exact solved masks, hits and fouls
-  of both. `pages/tools/counters.mjs` gives the arena's numbers from the events alone: wallets
+  of both. `pages/tools/counters.mjs` gives the arena's numbers from its events: wallets
   registered (with their own Agent ID), fights that ran, wallets with a judged (official) fight,
-  matches cancelled.
+  matches cancelled. Its `agentIdUsage` section also reads the transactions that left an arena log
+  and counts their senders, and how many of them hold an Agent ID (`balanceOf` on the registry).
 
 Accepted or later: binding the generator's version and the shown card to a commitment (the page
 server's plan check covers a server that differs from the judge); the page key's hash is not in the
