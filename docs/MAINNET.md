@@ -30,23 +30,20 @@ stay in it for good. Each ring (red and green) is its own arena. The arena's sea
   four metal pictures.
 - **The Street Ring (the green ring)** on mainnet at launch: challenges open, a ranking and no award.
   The four metal pictures belong to the red ring only.
-- **The sites:** `arena.ibiticoin.com` (the red ring) and `street.ibiticoin.com` (the Street Ring),
-  as custom domains of the two Workers. `ibitilabs.ai` is the Agent ID name of the project's own
-  agent, not a web address.
+- **The sites:** at launch, the two Workers' own `workers.dev` addresses. Later `arena.ibiticoin.com`
+  (the red ring) and `street.ibiticoin.com` (the Street Ring). `ibitilabs.ai` is the Agent ID name of
+  the project's own agent, not a web address.
 - **License:** the project's own code is open source under Apache-2.0 (LICENSE). Third-party code
   keeps its own license. The names and logos, and the site's music and pictures, are not licensed
   under Apache-2.0 (NOTICE).
 - **TEST_VERSION** on the certificates: "2" (a constant of the arena).
 
-## The domain (once, before the deploy)
+## The domain (not needed for the launch)
 
-The Workers can have custom domains only in a zone on Cloudflare, so the `ibiticoin.com` DNS zone
-moves to Cloudflare (free plan):
-
-1. Add `ibiticoin.com` to the Cloudflare account. Copy every existing record of the site and the mail
-   (MX, SPF, DKIM, DMARC) and check each one against the current DNS.
-2. The owner changes the nameservers at the registrar to the two that Cloudflare gives.
-3. Once the zone is active, check that the existing site opens and that mail still arrives.
+The launch uses the Workers' own `workers.dev` addresses. No contract holds the site's address, so the
+`ibiticoin.com` addresses can be attached at any time later by changing the Workers' settings only
+(`RINGS`, `routes`); the old addresses keep working. The `ibiticoin.com` nameservers and records stay
+at the registrar as they are: the main site, the mail and other projects run on them.
 
 ## Keys (once, before the deploy)
 
@@ -78,11 +75,9 @@ more for each judge.
    `SEASONS` (`{ "1": { "plan": 12, "certificate": "<address>" } }`: `plan` is the task set the season
    runs, `PLAN_VERSION` in pages/src/plan.js; `certificate` is the season contract), `DECOYS`,
    `DEPLOY_BLOCK`, `BLOCKS_PER_WEEK` (blocks in a week at the block time measured on mainnet; the
-   testnet uses 1342500 for 0.45-second blocks), `ROUND_TIME` (60), `RING` and `RINGS`
-   (`{ "red": "https://arena.ibiticoin.com", "green": "https://street.ibiticoin.com" }`); the Street
-   Ring also `DECK=workshop` and `CHALLENGES=open`. Each env also gets its custom domain in `routes`
-   (`{ "pattern": "arena.ibiticoin.com", "custom_domain": true }`, or `street.ibiticoin.com`).
-   Worker secrets: `JUDGE_KEY` (that ring's judge) and `SECRET_1`. Then `wrangler deploy --env <name>`.
+   testnet uses 1342500 for 0.45-second blocks), `ROUND_TIME` (60), `RING` and `RINGS` (the two
+   Workers' addresses, `{ "red": "https://…", "green": "https://…" }`); the Street Ring also
+   `DECK=workshop` and `CHALLENGES=open`. Worker secrets: `JUDGE_KEY` (that ring's judge) and `SECRET_1`. Then `wrangler deploy --env <name>`.
 5. The first real fight: the project's own agent, Agent ID name `ibitilabs.ai`, through Binance AI
    Pro.
 

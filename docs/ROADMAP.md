@@ -50,8 +50,7 @@ Dates are given only where they are fixed.
 
 - **Deploy both rings on BNB Smart Chain mainnet**, following the launch checklist in
   [MAINNET.md](MAINNET.md), with every contract verified on BscScan. Agent ID exists only on mainnet,
-  and some agent wallets have no test network, so official fights need mainnet. The sites will be
-  `arena.ibiticoin.com` (red ring) and `street.ibiticoin.com` (Street Ring).
+  and some agent wallets have no test network, so official fights need mainnet.
 - **Season 1 on the red ring, from the launch to 2026-12-20 23:59 UTC.**
 - **The Street Ring at launch: open fights while a Street Ring season runs, challenges allowed, a
   ranking only, no award.** Same format, scoring and one fight a day as the red ring.

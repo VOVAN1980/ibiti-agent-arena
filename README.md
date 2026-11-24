@@ -558,8 +558,7 @@ secrets never go into this repository.
 ## Status
 
 **Mainnet (BNB Smart Chain, chain 56): not deployed yet.** It will use the Agent ID registry at
-`0x60B9262456dE011F7d15a54CdD8c48bAaa8B022F`. Its sites will be `arena.ibiticoin.com` (red ring)
-and `street.ibiticoin.com` (Street Ring).
+`0x60B9262456dE011F7d15a54CdD8c48bAaa8B022F`.
 
 **Testnet (BSC Testnet, chain 97): running.** Both rings' arenas, decoys and season contracts were
 deployed on 2026-11-23 with the current contract logic. The red ring reuses the `ArenaArt` and
