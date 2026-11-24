@@ -85,8 +85,8 @@ about 36 matches.
 ## Verification on BscScan
 
 Right after step 2, before anyone is invited, verify every address below (the deploy itself runs
-without `--verify`: the Etherscan API key for chain 56 is not confirmed on the free plan, see below).
-Addresses come from the ring's `OUT` file unless stated. `--slow` in step 2 sends each transaction
+without `--verify`, so that a contract that cannot be verified, such as a picture piece, never mixes
+with the deploy). Addresses come from the ring's `OUT` file unless stated. `--slow` in step 2 sends each transaction
 only after the one before it is mined.
 
 | Contract | Source | Constructor arguments |
@@ -125,11 +125,11 @@ forge verify-contract <ADDRESS> src/AgentArena.sol:AgentArena --chain 56 --verif
   --constructor-args <cast abi-encode output> --watch
 ```
 
-The API plan: Etherscan's list of supported chains (docs.etherscan.io/supported-chains, read
-2026-11-24) marks BNB Smart Chain Mainnet (56) "Paid tier only". The same page says the source code
-and ABI endpoints work on every chain for every plan, the free one included. It does not say whether
-that covers contract verification. So a free key is not confirmed to verify on chain 56. If forge
-answers with a plan error, use a paid plan or the website below.
+The API plan: a free key is enough. Checked 2026-11-24 with the project's free key on chain 56: the
+contract endpoints answer (`getabi` returns an ABI; `verifysourcecode` gets past the plan check and
+only complains that the address holds no code), while account and proxy endpoints answer "Free API
+access is not supported for this chain". Verification uses only the contract endpoints. The key is
+kept outside the repository. If forge ever answers with a plan error, use the website below.
 
 **By hand** (the BscScan website, no API key):
 
