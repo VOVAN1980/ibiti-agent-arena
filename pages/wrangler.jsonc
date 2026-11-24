@@ -99,6 +99,72 @@
         "BLOCKS_PER_WEEK": 1342500,
         "ROUND_TIME": 60
       }
+    },
+    // BNB Smart Chain mainnet (chain 56), the red ring: season 1 with its ranking and certificates. Its
+    // judge key and season secret are Worker secrets, uploaded from outside the project.
+    "mainnet": {
+      "name": "ibiti-agent-arena",
+      "triggers": { "crons": ["* * * * *"] },
+      "observability": { "enabled": true, "redact_query_string": true, "logs": { "enabled": true, "invocation_logs": false } },
+      "ratelimits": [{ "name": "RPC_LIMIT", "namespace_id": "1003", "simple": { "limit": 600, "period": 60 } }],
+      "vars": {
+        "RPC_URL": "https://bsc-rpc.publicnode.com",
+        "CHAIN_ID": 56,
+        "ARENA": "0xaC90EcF08C1429A00D4661C290d64b52c7f79536",
+        "SEASON_BOOK": "0x4Fd093cBfF62c11d12292B3F6C9a8ce9ac6f823C",
+        "SEASONS": { "1": { "plan": 12, "certificate": "0xc743d4Da2166B73c94B8aE6694c13F753E87023d" } },
+        "RING": "red",
+        "RINGS": { "red": "https://ibiti-agent-arena.drainshieldguard.workers.dev", "green": "https://ibiti-agent-arena-street.drainshieldguard.workers.dev" },
+        "DECOYS": {
+          "13": "0xe4C49F5aDC9285baFF54876e9063f6f09Fa81F79",
+          "15": "0x3Bb2d763d6171b355F8110b7ad695773d9d1de92",
+          "18": "0x5a72c8590BE049378bfb9ca1048D535DdF33004C",
+          "21": "0xaea7910d15C460D7FA98b8dAce6a0B5B6a248fbd",
+          "22": "0xd76A02232d5dACC3961696Ab771a6885f8AB9710",
+          "23": "0x2c61103b135068305A4FbEDeC150a73dBE2E1Be1",
+          "24": "0x8D40F7E56167201e97080936dA5172e40245250D",
+          "26": "0x508074d96Bc6350C5464615F5F6FAf167268BbAF",
+          "27": "0x7768F7eC4AB77fa59b74Fb3F1FF3ACB5F5fC1cFa"
+        },
+        "DEPLOY_BLOCK": 135473574,
+        // blocks come every 0.45 s on mainnet too (measured 2026-11-24: 20000 blocks in 9003 s)
+        "BLOCKS_PER_WEEK": 1343552,
+        "ROUND_TIME": 60
+      }
+    },
+    // the Street Ring on mainnet (the green ring): a ranking and no award, challenges open, the
+    // workshop deck. Its own arena, judge and secret.
+    "mainnet-street": {
+      "name": "ibiti-agent-arena-street",
+      "triggers": { "crons": ["* * * * *"] },
+      "observability": { "enabled": true, "redact_query_string": true, "logs": { "enabled": true, "invocation_logs": false } },
+      "ratelimits": [{ "name": "RPC_LIMIT", "namespace_id": "1004", "simple": { "limit": 600, "period": 60 } }],
+      "vars": {
+        "RPC_URL": "https://bsc-rpc.publicnode.com",
+        "CHAIN_ID": 56,
+        "ARENA": "0x3271fd3aBFbC24FCa71bC9E9019114F06d4b222E",
+        "SEASON_BOOK": "0xc318F6135bE6d1efBa878203E5e70a3EB830d0b1",
+        "SEASONS": { "1": { "plan": 12, "certificate": "0xE5C211DC07A1881Fdd1e18c7132C99735f2C7639" } },
+        "RING": "green",
+        "RINGS": { "red": "https://ibiti-agent-arena.drainshieldguard.workers.dev", "green": "https://ibiti-agent-arena-street.drainshieldguard.workers.dev" },
+        "DECK": "workshop",
+        "CHALLENGES": "open",
+        "DECOYS": {
+          "13": "0x6183FDE2C9Ce2787c9a07fcFF6C2c12e1929e6CA",
+          "15": "0x01109635579e3EfB62114E917bbF14920BcA709A",
+          "18": "0x80ca261f80f42de665f11dC993659F962e40d132",
+          "21": "0x90Df74D55d67D16AB36AfB1A5e48cAa976B88065",
+          "22": "0x016765309C4A9EFb6FC233b049959F891511ec78",
+          "23": "0x0DeEAf3e3faf5Af64CD5170B4C28fb3c994AA5e1",
+          "24": "0xEafbC1C1F1551CC191062F964BAB722387dA256C",
+          "26": "0xb84e86c78736A2fae2181fb3D661354607aCc937",
+          "27": "0x50151FE5c86ac70Ec3a99728EFb1b67EA1bab130"
+        },
+        "DEPLOY_BLOCK": 135473888,
+        // blocks come every 0.45 s on mainnet too (measured 2026-11-24: 20000 blocks in 9003 s)
+        "BLOCKS_PER_WEEK": 1343552,
+        "ROUND_TIME": 60
+      }
     }
   }
 }
