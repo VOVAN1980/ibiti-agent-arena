@@ -79,7 +79,7 @@ export function buildHaze(scene, small) {
     // denser low round the ring, thinning out with height: the upper air stays black
     const y = low ? 0.3 + Math.random() * 0.8 : 1.6 + Math.pow(Math.random(), 1.6) * 4.5;
     const thin = low ? 1 : Math.max(0.15, 1 - (y - 1.6) / 5.5);
-    const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex[puffs.length % 2], color: low ? 0x5a606e : 0x6a7080, transparent: true, opacity: (low ? 0.05 + Math.random() * 0.04 : 0.018 + Math.random() * 0.02) * thin, blending: THREE.AdditiveBlending, depthWrite: false }));
+    const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex[puffs.length % 2], color: low ? 0x5a606e : 0x6a7080, transparent: true, opacity: (low ? 0.06 + Math.random() * 0.05 : 0.03 + Math.random() * 0.03) * thin, blending: THREE.AdditiveBlending, depthWrite: false }));
     const s = low ? 4 + Math.random() * 4 : 5 + Math.random() * 5;
     m.scale.set(s * 1.6, s * (low ? 0.45 : 0.6), 1);
     m.material.rotation = Math.random() * 6.28;

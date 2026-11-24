@@ -1,31 +1,40 @@
-// The hall around the fight, built to look like the arena on the home page: a dark room in haze, a
-// hexagon ring with padded corner posts and satin ropes on a printed canvas, an apron of dark LED
-// panels where the corners' red and green drift slowly, a steel box truss with moving heads above,
-// a wet black floor that mirrors the lights, and stands of dark silhouettes with phone lights, rimmed
-// red on the left and green on the right. The photo of the upper stands goes on three backdrop
-// panels behind them (see STANDS below). The fighters, their desks, the referee and the scoreboard
-// are scene3d.js's; this module only builds and runs the room.
+// The hall around the fight: a dark arena in haze, a hexagon ring of dark steel (six thick posts with
+// an LED strip set into their faces, braided steel ropes, a canvas of embossed hex plates with the
+// gold emblem in the middle, an apron of riveted steel panels with backlit mesh grilles and steps up
+// the near side), a wet black floor that mirrors it all, ringed by a dashed light track, a circular
+// box truss with moving heads and LED blocks above, and the stands: a few rows of fans in 3D and the
+// owner's photos of the upper stands behind them. Red is the left half of the hall, green the right.
+// The fighters, their desks, the referee and the scoreboard are scene3d.js's; this module only builds
+// and runs the room.
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 export const MIRROR = 1; // the layer of what the wet floor mirrors
 export const TIME = { value: 0 }; // shared by the shaders that move
-export const TRUSS = { y: 10.2, r: 10 }; // the lighting truss over the ring
-export const STANDS_R = 11; // the first row of the stands
-export const BOARD_R = STANDS_R - 0.5; // the LED boards in front of the stands
+const MIRROR_PASS = { value: 0 }; // 1 while the floor's mirror is drawn
+export const TRUSS = { y: 11.0, r: 9.0, yIn: 8.4, rIn: 4.7 }; // the two rings of the lighting truss
+export const STANDS_R = 11.2; // the first row of the stands
+export const BOARD_R = STANDS_R - 0.45; // the LED boards along the barrier in front of the stands
+export const ROPES = [0.35, 0.72, 1.08, 1.45]; // the ropes' heights over the canvas
 
 // The photos of the upper stands, made for this room: the red side (left), the green side (right) and
-// the far end, as site/assets/arena/stands_red.png, stands_green.png and stands_far.png. Each goes
-// on one panel of the raked band behind the front rows, its bottom on the fascia. Until they are
-// there the panels show a drawn dark crowd. To use them: put the three files there and set this to
-// true (or set ARENA_CONFIG.standsPhotos in config.js).
-const STANDS = { photos: false, dir: new URL('./arena/', import.meta.url).href };
-const STANDS_GAIN = 2.4; // the haze and the distance dim them; this brings them back to a dark crowd
+// the far end, in site/assets/arena/. Each goes on one panel of the raked band behind the front rows,
+// cropped to the part of the picture whose people suit the distance (`crop`: u0, u1, v0, v1 of the
+// photo), mirrored where its near end must face the camera.
+const STANDS = {
+  photos: true,
+  dir: new URL('./arena/', import.meta.url).href,
+  red: { file: 'stands_red.webp', crop: [0.42, 1.0, 0.04, 0.86], flip: true },
+  green: { file: 'stands_green.webp', crop: [0.42, 1.0, 0.03, 0.8], flip: false },
+  far: { file: 'stands_far.webp', crop: [0.0, 1.0, 0.36, 0.86], flip: true, gain: 0.75 }, // behind the ring: kept darker
+};
+const STANDS_GAIN = 1.6; // the haze and the distance dim them; this brings them back
 
-const RED = new THREE.Color(0xff2a2a);
-const GREEN = new THREE.Color(0x16e070);
+const RED = new THREE.Color().setRGB(1, 0.012, 0.012); // linear: a pure, deep red
+const GREEN = new THREE.Color().setRGB(0.02, 1, 0.07); // and a pure green
 const WARM = new THREE.Color(0xfff1dc);
+const sideColor = (x) => (x < 0 ? RED : GREEN);
 
 // ------------------------------------------------------------------ noise and drawn textures
 
@@ -97,49 +106,16 @@ export function softSpot(size = 128, k = 2.2) {
   return tex(c, { srgb: false });
 }
 
-/** The IBITI emblem, as printed ink: a hexagon in a double hairline with three thin bars, `size`
- *  across. */
-function printEmblem(g, cx, cy, size, fill) {
-  const k = size / 32;
-  const hex = (s) => {
-    g.beginPath();
-    for (const [x, y] of [[0, -16], [14, -8], [14, 8], [0, 16], [-14, 8], [-14, -8]]) g.lineTo(x * k * s, y * k * s);
-    g.closePath();
-  };
-  g.save();
-  g.translate(cx, cy);
-  g.fillStyle = fill;
-  g.strokeStyle = fill;
-  g.lineJoin = 'miter';
-  g.lineWidth = 0.9 * k;
-  hex(0.97);
-  g.stroke();
-  g.lineWidth = 0.42 * k;
-  hex(0.86);
-  g.stroke();
-  for (const y of [-4.6, 0, 4.6]) g.fillRect(-5.2 * k, (y - 0.55) * k, 10.4 * k, 1.1 * k);
-  g.restore();
-}
 
-/** A fine basket weave, as a tiling normal map (`cells` threads across). */
-function weaveNormal(size = 128, cells = 16) {
-  const h = new Float32Array(size * size);
-  const cw = size / cells;
-  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-    const i = Math.floor(x / cw);
-    const j = Math.floor(y / cw);
-    const fx = (x % cw) / cw;
-    const fy = (y % cw) / cw;
-    const along = (i + j) % 2 ? Math.sin(Math.PI * fy) : Math.sin(Math.PI * fx);
-    h[y * size + x] = along * (0.85 + Math.random() * 0.15);
-  }
+/** A normal map from a height field `h` (size × size, tiling), `k` the bumps' strength. */
+function normalFrom(h, size, k, repeat = null) {
   const c = canvas(size);
   const g = c.getContext('2d');
   const img = g.createImageData(size, size);
   const at = (x, y) => h[((y + size) % size) * size + ((x + size) % size)];
   for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-    const dx = (at(x + 1, y) - at(x - 1, y)) * 1.4;
-    const dy = (at(x, y + 1) - at(x, y - 1)) * 1.4;
+    const dx = (at(x + 1, y) - at(x - 1, y)) * k;
+    const dy = (at(x, y + 1) - at(x, y - 1)) * k;
     const l = Math.hypot(dx, dy, 1);
     const i = (y * size + x) * 4;
     img.data[i] = (-dx / l * 0.5 + 0.5) * 255;
@@ -148,101 +124,289 @@ function weaveNormal(size = 128, cells = 16) {
     img.data[i + 3] = 255;
   }
   g.putImageData(img, 0, 0);
-  return tex(c, { srgb: false, repeat: [52, 52] });
+  return tex(c, { srgb: false, repeat });
 }
 
-/** The ring's canvas: near-black woven cloth, scuffed where the fighters walk, a thin border, and the
- *  emblem printed in the middle in dark antique gold, its ink worn away in patches. Returns the colour,
- *  roughness (green) / metalness (blue) and weave maps. */
-function canvasMaps(size, ring) {
-  const green = ring === 'green';
-  const c = canvas(size);
-  const g = c.getContext('2d');
-  const img = g.createImageData(size, size);
-  const n = fbm(256, 6, 4, green ? 7 : 3);
-  const base = green ? [27, 30, 29] : [31, 29, 31];
-  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-    const i = (y * size + x) * 4;
-    const big = (n[((y >> 3) & 255) * 256 + ((x >> 3) & 255)] - 0.5) * 9;
-    const v = big + (Math.random() - 0.5) * 3;
-    img.data[i] = base[0] + v;
-    img.data[i + 1] = base[1] + v;
-    img.data[i + 2] = base[2] + v;
-    img.data[i + 3] = 255;
-  }
-  g.putImageData(img, 0, 0);
-  const s = size / 1024;
-  const hex = (r) => {
-    g.beginPath();
-    for (let k = 0; k < 6; k++) g.lineTo(size / 2 + r * Math.cos((k * Math.PI) / 3), size / 2 + r * Math.sin((k * Math.PI) / 3));
+/** The heights a canvas holds, as 0..1 from its red channel. */
+function heightsOf(c) {
+  const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+  const h = new Float32Array(c.width * c.height);
+  for (let i = 0; i < h.length; i++) h[i] = d[i * 4] / 255;
+  return h;
+}
+
+/** The IBITI emblem as the ring shows it: a hexagon outline with its points to the sides and three
+ *  bars across, `r` the hexagon's corner radius. */
+function emblemPath(g, cx, cy, r, fill) {
+  g.save();
+  g.translate(cx, cy);
+  g.fillStyle = fill;
+  const hex = (rr) => {
+    for (let k = 0; k < 6; k++) g[k ? 'lineTo' : 'moveTo'](rr * Math.cos((k * Math.PI) / 3), rr * Math.sin((k * Math.PI) / 3));
     g.closePath();
   };
-  // scuffed in the middle, where the fighters walk; soft blots, no lines
-  const wear = g.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size * 0.32);
-  wear.addColorStop(0, 'rgba(255,255,255,.03)');
-  wear.addColorStop(1, 'rgba(255,255,255,0)');
-  g.fillStyle = wear;
+  g.beginPath();
+  hex(r);
+  hex(r * 0.8); // the hole
+  g.fill('evenodd');
+  const bw = r * 0.86;
+  const bh = r * 0.155;
+  for (const y of [-1, 0, 1]) g.fillRect(-bw / 2, y * r * 0.255 - bh / 2, bw, bh);
+  g.restore();
+}
+
+/** The ring's canvas: plates of near-black steel in a hexagon pattern, each a touch different, with
+ *  bevelled edges and dark seams, and the emblem inlaid in gold in the middle. `R` the canvas's corner
+ *  radius in metres. Returns colour, roughness (green) / metalness (blue), normal and emissive maps. */
+function plateMaps(size, R, ring) {
+  const ppm = size / (2 * R); // pixels per metre
+  const tile = 0.46 * ppm; // a plate's corner radius
+  const col = canvas(size);
+  const g = col.getContext('2d');
+  const hc = canvas(size);
+  const hg = hc.getContext('2d');
+  const rc = canvas(size);
+  const rg = rc.getContext('2d');
+  g.fillStyle = '#060607';
   g.fillRect(0, 0, size, size);
-  for (let i = 0; i < 70; i++) {
+  hg.fillStyle = '#000';
+  hg.fillRect(0, 0, size, size);
+  rg.fillStyle = 'rgb(0,110,150)';
+  rg.fillRect(0, 0, size, size);
+  const hexAt = (cg, x, y, r) => {
+    cg.beginPath();
+    for (let k = 0; k < 6; k++) cg.lineTo(x + r * Math.cos((k * Math.PI) / 3), y + r * Math.sin((k * Math.PI) / 3));
+    cg.closePath();
+  };
+  const tint = ring === 'green' ? [0, 2, 1] : [1, 0, 1];
+  const dx = tile * 1.5;
+  const dy = tile * Math.sqrt(3);
+  for (let i = -1; i * dx < size + tile; i++) for (let j = -1; j * dy < size + tile; j++) {
+    const x = i * dx;
+    const y = j * dy + (i % 2 ? dy / 2 : 0);
+    const v = 36 + Math.random() * 14;
+    // the plate, a little lighter at its upper left, darker at its lower right: it stands proud
+    const grad = g.createLinearGradient(x - tile, y - tile, x + tile, y + tile);
+    grad.addColorStop(0, `rgb(${v + 8 + tint[0]},${v + 8 + tint[1]},${v + 11 + tint[2]})`);
+    grad.addColorStop(1, `rgb(${v - 8},${v - 8},${v - 6})`);
+    g.fillStyle = grad;
+    hexAt(g, x, y, tile - 2.2 * (size / 2048));
+    g.fill();
+    // a bevel: a light line just inside the edge
+    g.strokeStyle = `rgba(150,155,165,${0.1 + Math.random() * 0.08})`;
+    g.lineWidth = 1.6 * (size / 2048);
+    hexAt(g, x, y, tile - 4.5 * (size / 2048));
+    g.stroke();
+    // heights: the plate up, its edge sloping down to the seam
+    for (let s = 0; s < 4; s++) {
+      const k = s / 3;
+      hg.fillStyle = `rgb(${90 + k * 140},0,0)`;
+      hexAt(hg, x, y, tile - (1.5 + (1 - k) * 0 + s * 2.2) * (size / 2048));
+      hg.fill();
+    }
+    // roughness: each plate its own polish
+    const rough = 70 + Math.random() * 40;
+    rg.fillStyle = `rgb(0,${rough},${130 + Math.random() * 40})`;
+    hexAt(rg, x, y, tile - 2 * (size / 2048));
+    rg.fill();
+  }
+  // grime and wear: soft blots, a scuff where the fighters walk
+  for (let i = 0; i < 90; i++) {
     const x = Math.random() * size;
     const y = Math.random() * size;
-    const r = (20 + Math.random() * 110) * s;
+    const r = (0.2 + Math.random() * 0.9) * ppm;
     const blot = g.createRadialGradient(x, y, 0, x, y, r);
-    blot.addColorStop(0, Math.random() < 0.55 ? 'rgba(0,0,0,.1)' : 'rgba(255,255,255,.02)');
+    blot.addColorStop(0, Math.random() < 0.6 ? 'rgba(0,0,0,.16)' : 'rgba(255,255,255,.03)');
     blot.addColorStop(1, 'rgba(0,0,0,0)');
     g.fillStyle = blot;
     g.fillRect(x - r, y - r, r * 2, r * 2);
   }
-  // the border: a thin worn line inside the edge, the edge itself darker where the cloth turns down
-  g.strokeStyle = 'rgba(150,125,80,.16)';
-  g.lineWidth = 3 * s;
-  hex(size * 0.468);
-  g.stroke();
-  g.strokeStyle = 'rgba(0,0,0,.5)';
-  g.lineWidth = 16 * s;
-  hex(size * 0.5 - 8 * s);
-  g.stroke();
-  // the emblem, printed: drawn alone, its ink eaten by a scuffed-print mask, then laid on the cloth
-  const es = Math.round(size * 0.3);
-  const em = canvas(es);
-  const eg = em.getContext('2d');
-  const ink = eg.createLinearGradient(0, 0, es, es);
-  ink.addColorStop(0, '#7e6026');
-  ink.addColorStop(0.55, '#6c511d');
-  ink.addColorStop(1, '#5e4618');
-  printEmblem(eg, es / 2, es / 2, es * 0.96, ink);
-  {
-    const wearN = fbm(128, 5, 4, green ? 13 : 17);
-    const d = eg.getImageData(0, 0, es, es);
-    for (let y = 0; y < es; y++) for (let x = 0; x < es; x++) {
-      const i = (y * es + x) * 4;
-      if (!d.data[i + 3]) continue;
-      const v = wearN[(Math.floor((y / es) * 128) * 128) + Math.floor((x / es) * 128)];
-      const keep = Math.min(1, Math.max(0, (v - 0.3) / 0.12)) * (0.75 + Math.random() * 0.25);
-      d.data[i + 3] *= keep;
-    }
-    eg.putImageData(d, 0, 0);
-  }
-  g.globalAlpha = 0.8;
-  g.drawImage(em, (size - es) / 2, (size - es) / 2);
-  g.globalAlpha = 1;
-  // roughness in green, metalness in blue: the cloth is matte, the ink a worn metallic print
-  const rs = size / 2;
-  const rc = canvas(rs);
-  const rg = rc.getContext('2d');
-  rg.fillStyle = 'rgb(0,236,0)';
-  rg.fillRect(0, 0, rs, rs);
-  const rem = canvas(es);
-  const rcg = rem.getContext('2d');
-  rcg.drawImage(em, 0, 0);
-  rcg.globalCompositeOperation = 'source-in';
-  rcg.fillStyle = 'rgb(0,120,80)'; // rough 0.47, metal 0.31: a dull gold that only gleams in the key
-  rcg.fillRect(0, 0, es, es);
-  rg.drawImage(rem, (rs - es / 2) / 2, (rs - es / 2) / 2, es / 2, es / 2);
-  return { map: tex(c, { aniso: 12 }), rough: tex(rc, { srgb: false }), weave: weaveNormal(128, 16) };
+  // the emblem, inlaid in gold, raised a little
+  const er = 1.95 * ppm;
+  const c0 = size / 2;
+  const gold = g.createLinearGradient(c0 - er, c0 - er, c0 + er, c0 + er);
+  gold.addColorStop(0, '#d9a843');
+  gold.addColorStop(0.45, '#b97e1f');
+  gold.addColorStop(0.7, '#cc9634');
+  gold.addColorStop(1, '#a66d17');
+  emblemPath(g, c0, c0, er, gold);
+  emblemPath(hg, c0, c0, er, '#ffffff');
+  emblemPath(rg, c0, c0, er, 'rgb(0,125,170)'); // satin gold: rough 0.49, metal 0.67
+  // the light it gives back even in shadow (so it always reads as gold)
+  const ec = canvas(size / 4);
+  const eg = ec.getContext('2d');
+  eg.fillStyle = '#000';
+  eg.fillRect(0, 0, size / 4, size / 4);
+  emblemPath(eg, size / 8, size / 8, er / 4, '#ffb238');
+  const hs = size / 2;
+  const small = canvas(hs);
+  small.getContext('2d').drawImage(hc, 0, 0, hs, hs);
+  return {
+    map: tex(col, { aniso: 12 }),
+    rough: tex(rc, { srgb: false }),
+    normal: normalFrom(heightsOf(small), hs, 2.2),
+    emissive: tex(ec),
+  };
 }
 
-/** Polished dark concrete, slab seams every two metres, wet in patches: colour and roughness. */
+/** Dark brushed steel with a little grime, `w` × `h`, tiling. */
+function steelTex(w, h, base = 46) {
+  const c = canvas(w, h);
+  const g = c.getContext('2d');
+  const img = g.createImageData(w, h);
+  const n = fbm(128, 4, 4, 23);
+  for (let y = 0; y < h; y++) {
+    let streak = 0;
+    for (let x = 0; x < w; x++) {
+      if (x % 7 === 0) streak = (Math.random() - 0.5) * 9;
+      const v = base + streak + (n[((y * 128 / h) | 0) * 128 + ((x * 128 / w) | 0)] - 0.5) * 22;
+      const i = (y * w + x) * 4;
+      img.data[i] = v;
+      img.data[i + 1] = v + 1;
+      img.data[i + 2] = v + 4;
+      img.data[i + 3] = 255;
+    }
+  }
+  g.putImageData(img, 0, 0);
+  return c;
+}
+
+/** Rivets along the edges of a rectangle (x, y, w, h) every `step` pixels. */
+function rivets(g, x, y, w, h, step, r) {
+  const dot = (px, py) => {
+    const gr = g.createRadialGradient(px - r * 0.3, py - r * 0.3, 0, px, py, r);
+    gr.addColorStop(0, 'rgba(200,205,215,.9)');
+    gr.addColorStop(0.6, 'rgba(90,94,102,.9)');
+    gr.addColorStop(1, 'rgba(10,10,12,.9)');
+    g.fillStyle = gr;
+    g.beginPath();
+    g.arc(px, py, r, 0, Math.PI * 2);
+    g.fill();
+  };
+  for (let px = x; px <= x + w + 0.1; px += step) {
+    dot(px, y);
+    dot(px, y + h);
+  }
+  for (let py = y + step; py < y + h - 0.1; py += step) {
+    dot(x, py);
+    dot(x + w, py);
+  }
+}
+
+/** One panel of the apron's slanted skirt: a riveted steel frame round a diamond-mesh grille that is
+ *  lit from behind, an LED line along the grille's foot. Colour map and emissive map (white where the
+ *  light comes through; the material gives it the side's colour). */
+function skirtMaps() {
+  const W = 1024;
+  const H = 256;
+  const c = steelTex(W, H, 40);
+  const g = c.getContext('2d');
+  const e = canvas(W, H);
+  const eg = e.getContext('2d');
+  eg.fillStyle = '#000';
+  eg.fillRect(0, 0, W, H);
+  // the frame's bevels
+  g.strokeStyle = 'rgba(160,165,175,.35)';
+  g.lineWidth = 3;
+  g.strokeRect(6, 6, W - 12, H - 12);
+  g.strokeStyle = 'rgba(0,0,0,.6)';
+  g.lineWidth = 4;
+  g.strokeRect(12, 12, W - 24, H - 24);
+  rivets(g, 26, 22, W - 52, H - 44, 48, 4.2);
+  // the grille's opening, sunk into the frame
+  const gx = 70;
+  const gy = 50;
+  const gw = W - 140;
+  const gh = H - 100;
+  g.fillStyle = '#050506';
+  g.fillRect(gx - 6, gy - 6, gw + 12, gh + 12);
+  g.strokeStyle = 'rgba(170,175,185,.4)';
+  g.lineWidth = 3;
+  g.strokeRect(gx - 8, gy - 8, gw + 16, gh + 16);
+  // the light behind it: strongest at the foot, as a strip there throws it up
+  const glow = eg.createLinearGradient(0, gy, 0, gy + gh);
+  glow.addColorStop(0, 'rgba(255,255,255,.45)');
+  glow.addColorStop(0.7, 'rgba(255,255,255,.8)');
+  glow.addColorStop(1, 'rgba(255,255,255,1)');
+  eg.fillStyle = glow;
+  eg.fillRect(gx, gy, gw, gh);
+  // the mesh: diagonal wires both ways, dark on the colour map and on the light
+  const s = 30;
+  for (const cg of [g, eg]) {
+    cg.save();
+    cg.beginPath();
+    cg.rect(gx, gy, gw, gh);
+    cg.clip();
+    cg.strokeStyle = cg === g ? '#2a2c31' : '#000';
+    cg.lineWidth = 6;
+    for (let x = gx - gh; x < gx + gw + gh; x += s) {
+      cg.beginPath();
+      cg.moveTo(x, gy);
+      cg.lineTo(x + gh, gy + gh);
+      cg.stroke();
+      cg.beginPath();
+      cg.moveTo(x + gh, gy);
+      cg.lineTo(x, gy + gh);
+      cg.stroke();
+    }
+    cg.restore();
+  }
+  // the LED line at the grille's foot
+  eg.fillStyle = '#fff';
+  eg.fillRect(gx, gy + gh + 10, gw, 7);
+  g.fillStyle = '#ddd';
+  g.fillRect(gx, gy + gh + 10, gw, 7);
+  return { map: tex(c, { aniso: 8 }), emissive: tex(e, { aniso: 8 }) };
+}
+
+/** The flat steel lip round the ring's top and the corner brackets: riveted plates. */
+function plateTex(W = 512, H = 128) {
+  const c = steelTex(W, H, 50);
+  const g = c.getContext('2d');
+  g.strokeStyle = 'rgba(0,0,0,.55)';
+  g.lineWidth = 3;
+  for (let x = 0; x <= W; x += W / 4) {
+    g.beginPath();
+    g.moveTo(x, 0);
+    g.lineTo(x, H);
+    g.stroke();
+  }
+  g.strokeStyle = 'rgba(170,175,185,.25)';
+  g.lineWidth = 2;
+  g.strokeRect(3, 3, W - 6, H - 6);
+  rivets(g, 14, 14, W - 28, H - 28, 30, 3.4);
+  return tex(c, { repeat: [1, 1] });
+}
+
+/** Diamond plate, for the treads of the steps: colour and normal. */
+function treadMaps() {
+  const S = 128;
+  const c = steelTex(S, S, 58);
+  const h = new Float32Array(S * S);
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    // raised lozenges, alternating in direction
+    const cx = (x % 32) - 16;
+    const cy = (y % 32) - 16;
+    const flip = ((x >> 5) + (y >> 5)) % 2 ? 1 : -1;
+    const u = (cx + flip * cy) / 1.414;
+    const v = (cx - flip * cy) / 1.414;
+    h[y * S + x] = Math.max(0, 1 - Math.hypot(u / 11, v / 2.6));
+  }
+  return { map: tex(c, { repeat: [10, 2] }), normal: normalFrom(h, S, 3, [10, 2]) };
+}
+
+/** Braided steel: strands winding round the rope, as a tiling normal map (u along the rope). */
+function braidNormal() {
+  const S = 64;
+  const h = new Float32Array(S * S);
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const a = (x / S + (y / S) * 2) % 1; // two strands per turn
+    h[y * S + x] = Math.pow(Math.sin(Math.PI * ((a * 3) % 1)), 0.6);
+  }
+  return normalFrom(h, S, 2.6);
+}
+
+/** Polished dark concrete, wet: colour and roughness, slab seams every two metres. */
 function floorMaps(size) {
   const n = fbm(size, 4, 6, 11);
   const p = fbm(size, 3, 4, 5);
@@ -255,15 +419,15 @@ function floorMaps(size) {
   for (let i = 0; i < size * size; i++) {
     const x = i % size;
     const y = (i / size) | 0;
-    const seam = x % (size / 2) < 2 || y % (size / 2) < 2 ? -6 : 0;
-    const v = 15 + (n[i] - 0.5) * 14 + seam + (Math.random() - 0.5) * 3;
+    const seam = x % (size / 2) < 2 || y % (size / 2) < 2 ? -5 : 0;
+    const v = 26 + (n[i] - 0.5) * 16 + seam + (Math.random() - 0.5) * 3;
     img.data[i * 4] = v;
     img.data[i * 4 + 1] = v + 0.5;
     img.data[i * 4 + 2] = v + 2;
     img.data[i * 4 + 3] = 255;
-    // puddles: low roughness; the dry floor still a little polished
-    const wet = Math.min(1, Math.max(0, (p[i] - 0.42) / 0.14));
-    const rough = 0.62 - wet * 0.5 + (n[i] - 0.5) * 0.12 + (seam ? 0.15 : 0);
+    // wet nearly everywhere; a few drier, duller patches
+    const wet = Math.min(1, Math.max(0, (p[i] - 0.3) / 0.14));
+    const rough = 0.42 - wet * 0.34 + (n[i] - 0.5) * 0.08 + (seam ? 0.15 : 0);
     rimg.data[i * 4] = rimg.data[i * 4 + 1] = rimg.data[i * 4 + 2] = Math.max(0, Math.min(255, rough * 255));
     rimg.data[i * 4 + 3] = 255;
   }
@@ -272,8 +436,34 @@ function floorMaps(size) {
   return { map: tex(c, { repeat: [5, 5] }), rough: tex(r, { srgb: false, repeat: [5, 5] }) };
 }
 
-/** Until the photos of the stands are there: a dark crowd in `tiers` rows, faces and shoulders as dim
- *  warm and grey specks on black, the rows' edges faint, fading into the dark further up. */
+/** The emblem on a dark steel plate, for the desks' fronts and the scoreboard's sides. */
+export function emblemPlate(w = 512, h = 512) {
+  const c = steelTex(w, h, 30);
+  const g = c.getContext('2d');
+  const r = Math.min(w, h) * 0.34;
+  g.save();
+  g.translate(w / 2, h / 2);
+  g.rotate(Math.PI / 2); // on an upright face the emblem stands on a point, as on the scoreboard
+  const gold = g.createLinearGradient(-r, -r, r, r);
+  gold.addColorStop(0, '#ffd774');
+  gold.addColorStop(0.5, '#e2a634');
+  gold.addColorStop(1, '#f3c252');
+  g.shadowColor = 'rgba(255,180,60,.55)';
+  g.shadowBlur = r * 0.18;
+  g.beginPath();
+  for (let k = 0; k < 6; k++) g[k ? 'lineTo' : 'moveTo'](r * Math.cos((k * Math.PI) / 3), r * Math.sin((k * Math.PI) / 3));
+  g.closePath();
+  for (let k = 0; k < 6; k++) g[k ? 'lineTo' : 'moveTo'](r * 0.8 * Math.cos((-k * Math.PI) / 3), r * 0.8 * Math.sin((-k * Math.PI) / 3));
+  g.closePath();
+  g.fillStyle = gold;
+  g.fill();
+  g.rotate(-Math.PI / 2);
+  for (const y of [-1, 0, 1]) g.fillRect(-r * 0.38, y * r * 0.27 - r * 0.075, r * 0.76, r * 0.15);
+  g.restore();
+  return tex(c, { aniso: 8 });
+}
+
+/** Until the photos of the stands are there: a dark crowd in `tiers` rows. */
 function crowdTex(w, h, tiers) {
   const c = canvas(w, h);
   const g = c.getContext('2d');
@@ -282,51 +472,28 @@ function crowdTex(w, h, tiers) {
   const th = h / tiers;
   for (let t = 0; t < tiers; t++) {
     const y0 = h - (t + 1) * th;
-    const far = t / tiers;
-    g.fillStyle = 'rgba(255,255,255,.02)';
-    g.fillRect(0, y0 + th * 0.93, w, Math.max(1, th * 0.03));
     let x = Math.random() * th * 0.3;
     while (x < w) {
       x += th * (0.34 + Math.random() * 0.2);
       if (Math.random() < 0.08) continue;
-      if (((x / w) * 12) % 1 < 0.025) continue; // the aisles
-      const dim = (1 - far * 0.6) * (0.6 + Math.random() * 0.4);
-      const sx = x + (Math.random() - 0.5) * th * 0.08;
-      const sy = y0 + th * (0.5 + (Math.random() - 0.5) * 0.12);
-      const grey = 22 + Math.random() * 30;
-      g.fillStyle = `rgba(${grey},${grey},${grey + 3},${0.9 * dim})`;
+      const sy = y0 + th * 0.5;
+      const r = 70 + Math.random() * 60;
+      g.fillStyle = `rgba(${r},${r * 0.8},${r * 0.7},.5)`;
       g.beginPath();
-      g.ellipse(sx, sy + th * 0.3, th * 0.17, th * 0.2, 0, Math.PI, 0);
+      g.ellipse(x, sy, th * 0.085, th * 0.1, 0, 0, Math.PI * 2);
       g.fill();
-      const lit = Math.random() < 0.04 ? 1.8 : 1;
-      const r = (95 + Math.random() * 70) * lit;
-      g.fillStyle = `rgba(${r},${r * 0.74},${r * 0.6},${(0.35 + Math.random() * 0.4) * dim})`;
-      g.beginPath();
-      g.ellipse(sx, sy, th * 0.085, th * 0.1, 0, 0, Math.PI * 2);
-      g.fill();
-      if (Math.random() < 0.03) {
-        g.fillStyle = `rgba(150,150,155,${0.35 * dim})`;
-        g.fillRect(sx - th * 0.1, sy + th * 0.16, th * 0.2, th * 0.12);
-      }
     }
   }
-  // further up, the dark and the haze take them
-  const fade = g.createLinearGradient(0, 0, 0, h);
-  fade.addColorStop(0, 'rgba(3,3,4,.9)');
-  fade.addColorStop(0.5, 'rgba(3,3,4,.3)');
-  fade.addColorStop(1, 'rgba(3,3,4,0)');
-  g.fillStyle = fade;
-  g.fillRect(0, 0, w, h);
-  return tex(c, { repeat: [1, 1], aniso: 4 });
+  return tex(c, { aniso: 4 });
 }
 
 // ------------------------------------------------------------------ the environment light
 
-/** What the metal reflects: a black hall, rows of white lamps above, the red side to the left and
- *  the green to the right. */
+/** What the metal reflects: a dark hall, rings of white lamps above, the red side to the left and the
+ *  green to the right, the stands' haze a dim warm grey. */
 export function hallEnvironment(renderer) {
   const env = new THREE.Scene();
-  const room = new THREE.Mesh(new THREE.BoxGeometry(40, 20, 40), new THREE.MeshBasicMaterial({ color: 0x050608, side: THREE.BackSide }));
+  const room = new THREE.Mesh(new THREE.BoxGeometry(40, 20, 40), new THREE.MeshBasicMaterial({ color: 0x0b0c10, side: THREE.BackSide }));
   env.add(room);
   const lamp = (w, h, color, k, at, rotX = Math.PI / 2, rotY = 0) => {
     const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(k), side: THREE.DoubleSide }));
@@ -334,10 +501,17 @@ export function hallEnvironment(renderer) {
     m.rotation.set(rotX, rotY, 0);
     env.add(m);
   };
-  for (let i = -2; i <= 2; i++) for (const z of [-5, 5]) lamp(0.5, 0.3, 0xffffff, 14, [i * 4, 9.5, z]);
-  lamp(30, 0.5, 0xff2a2a, 1.2, [-19.5, 3, 0], 0, Math.PI / 2);
-  lamp(30, 0.5, 0x16e070, 1.2, [19.5, 3, 0], 0, Math.PI / 2);
-  lamp(40, 3, 0x0c0d10, 1, [0, 0, -19.5], 0, 0);
+  for (let i = 0; i < 24; i++) {
+    const a = (i / 24) * Math.PI * 2;
+    lamp(0.7, 0.7, 0xffffff, 22, [Math.cos(a) * 9, 10, Math.sin(a) * 9]);
+    if (i % 2) lamp(0.6, 0.6, 0xffffff, 18, [Math.cos(a) * 4.7, 7.5, Math.sin(a) * 4.7]);
+  }
+  lamp(14, 14, 0x202226, 1, [0, 12, 0]);
+  // the sides: broad red and green glows low down (the apron, the floor's light track, the stands)
+  lamp(40, 5, 0xff2020, 0.9, [-19.5, 2, 0], 0, Math.PI / 2);
+  lamp(40, 5, 0x10f060, 0.45, [19.5, 2, 0], 0, Math.PI / 2);
+  lamp(40, 8, 0x3a3634, 1, [0, 5, -19.5], 0, 0);
+  lamp(40, 8, 0x2a2826, 1, [0, 5, 19.5], 0, 0);
   const pm = new THREE.PMREMGenerator(renderer);
   const t = pm.fromScene(env, 0.035).texture;
   pm.dispose();
@@ -454,13 +628,52 @@ export function volumeMaterial(color, opacity, reach = 0.66) {
 
 // ------------------------------------------------------------------ the room
 
+/** Quads into one geometry: each [p0, p1, p2, p3] (counter-clockwise seen from `out`), uv 0..1 over it
+ *  (or `uv` [u0, u1, v0, v1]). */
+function quadGeo(list) {
+  const pos = [];
+  const uv = [];
+  const e1 = new THREE.Vector3();
+  const e2 = new THREE.Vector3();
+  for (const { p, out, uvr = [0, 1, 0, 1] } of list) {
+    let q = p;
+    e1.subVectors(p[1], p[0]);
+    e2.subVectors(p[3], p[0]);
+    const flip = out && e1.cross(e2).dot(out) < 0;
+    const [u0, u1, v0, v1] = uvr;
+    let t = [[u0, v0], [u1, v0], [u1, v1], [u0, v1]];
+    if (flip) {
+      q = [p[0], p[3], p[2], p[1]];
+      t = [t[0], t[3], t[2], t[1]];
+    }
+    for (const i of [0, 1, 2, 0, 2, 3]) {
+      pos.push(q[i].x, q[i].y, q[i].z);
+      uv.push(...t[i]);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.computeVertexNormals();
+  return g;
+}
+
 /**
  * Builds the hall into `scene`. `opts`: { R (the ring's radius), FLOOR (the canvas's height), small,
  * ring ('red' | 'green'), ticker: [outer texture, inner texture] }.
  */
 export function buildRoom(scene, renderer, { R, FLOOR, small, ring, ticker }) {
   const heavy = !small;
+  const COS30 = Math.cos(Math.PI / 6);
+  const APO = R * COS30; // the ring's apothem: from the centre to the middle of a side
   const corner = (k, r = R) => new THREE.Vector3(r * Math.cos((k * Math.PI) / 3), FLOOR, r * Math.sin((k * Math.PI) / 3));
+  /** A point d metres out from side k's line (k to k + 1), s of the way along it, at height y. */
+  const onSide = (k, s, d, y) => {
+    const r = (APO + d) / COS30;
+    const a = corner(k, r);
+    const b = corner((k + 1) % 6, r);
+    return a.lerp(b, s).setY(y);
+  };
   const reflect = (o) => {
     o.traverse((x) => x.layers.enable(MIRROR));
     return o;
@@ -477,188 +690,215 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring, ticker }) {
     return o;
   };
   const std = (o) => new THREE.MeshStandardMaterial(o);
-  const glow = (color, k) => new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(k), toneMapped: true });
-  const steel = std({ color: 0x8d939e, metalness: 0.92, roughness: 0.3 });
-  const darkSteel = std({ color: 0x3a3f48, metalness: 0.88, roughness: 0.38 });
+  const glow = (color, k) => new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(k) });
+  const brushed = tex(steelTex(256, 256, 70), { repeat: [2, 2] });
+  const steel = std({ color: 0x9ea4ae, map: brushed, metalness: 0.9, roughness: 0.32, envMapIntensity: 1.3 });
+  const darkSteel = std({ color: 0x6a6f78, map: brushed, metalness: 0.88, roughness: 0.36, envMapIntensity: 1.2 });
   const rubber = std({ color: 0x0b0c0e, metalness: 0, roughness: 0.7 });
-  const cornerOf = (k) => (k === 3 ? 'red' : k === 0 ? 'green' : null);
+  const led = { red: glow(RED, 1.75), green: glow(GREEN, 1.25) };
+    const sideOf = (x) => (x < 0 ? 'red' : 'green');
 
-  // ---- the canvas
-  const cm = canvasMaps(small ? 1024 : 2048, ring);
-  const canvasTop = new THREE.Mesh(new THREE.CircleGeometry(R + 0.05, 6).rotateX(-Math.PI / 2), std({ map: cm.map, roughnessMap: cm.rough, metalnessMap: cm.rough, normalMap: cm.weave, normalScale: new THREE.Vector2(0.45, 0.45), roughness: 1, metalness: 1, envMapIntensity: 0.5 }));
+  // ---- the canvas: hex plates of dark steel, the emblem inlaid in gold
+  const pm = plateMaps(small ? 1024 : 2048, R + 0.05, ring);
+  const canvasTop = new THREE.Mesh(new THREE.CircleGeometry(R + 0.05, 6).rotateX(-Math.PI / 2), std({
+    map: pm.map, roughnessMap: pm.rough, metalnessMap: pm.rough, normalMap: pm.normal, normalScale: new THREE.Vector2(0.9, 0.9),
+    emissive: 0xffffff, emissiveMap: pm.emissive, emissiveIntensity: 0.24, roughness: 1, metalness: 1, envMapIntensity: 1.15,
+  }));
   canvasTop.position.y = FLOOR;
   add(canvasTop, { receive: true, mirror: true });
-  // the platform under it, and a rubber lip along the edge
-  const deck = new THREE.Mesh(new THREE.CylinderGeometry(R, R, FLOOR - 0.02, 6, 1, false, Math.PI / 6), rubber);
+  const deck = new THREE.Mesh(new THREE.CylinderGeometry(R + 0.04, R + 0.04, FLOOR - 0.02, 6, 1, false, Math.PI / 6), rubber);
   deck.position.y = (FLOOR - 0.02) / 2;
   add(deck);
-  for (let k = 0; k < 6; k++) {
-    const a = corner(k, R + 0.06);
-    const b = corner((k + 1) % 6, R + 0.06);
-    const d = new THREE.Vector3().subVectors(b, a);
-    const lip = new THREE.Mesh(new THREE.CapsuleGeometry(0.045, d.length(), 2, 8), rubber);
-    lip.position.copy(a).addScaledVector(d, 0.5);
-    lip.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize());
-    add(lip, { mirror: true });
-  }
 
-  // ---- the apron: dark cloth on top, a band of LED panels, a black kick plate; the corners' colours
-  // drift along the band, red from the left, green from the right
+  // ---- the apron: a flat riveted lip round the canvas, then a skirt slanting out to the floor, each
+  // half side a steel frame round a mesh grille lit from behind; LED lines along the canvas's edge and
+  // the lip's front; chunky steel brackets at the corners. Each half of a side takes its half's colour.
+  const LIP = [0.03, 0.44]; // the lip, out from the side line
+  const LIP_Y = FLOOR - 0.05;
+  const SKIRT = [0.44, 0.78]; // the skirt runs from the lip's front, low, out to the floor
+  const SKIRT_Y = [FLOOR - 0.13, 0.02];
   {
-    const pos = [];
-    const uv = [];
-    let run = 0;
-    for (let k = 0; k < 6; k++) {
-      const a = corner(k, R + 0.07);
-      const b = corner((k + 1) % 6, R + 0.07);
-      const len = a.distanceTo(b);
-      const quad = [[a, 0, run], [b, 0, run + len], [b, 1, run + len], [a, 1, run]];
-      for (const i of [0, 1, 2, 0, 2, 3]) {
-        const [p, top, u] = quad[i];
-        pos.push(p.x, top ? FLOOR + 0.01 : 0, p.z);
-        uv.push(u, top);
-      }
-      run += len;
+    const lip = [];
+    const skirt = { red: [], green: [] };
+    const lines = { red: [], green: [] };
+    const soft = { red: [], green: [] };
+    const fronts = [];
+    const up = new THREE.Vector3(0, 1, 0);
+    for (let k = 0; k < 6; k++) for (const [s0, s1] of [[0, 0.5], [0.5, 1]]) {
+      const mid = onSide(k, (s0 + s1) / 2, 0, 0);
+      const side = sideOf(mid.x);
+      const out = mid.clone().setY(0).normalize();
+      const P = (s, d, y) => onSide(k, s, d, y);
+      lip.push({ p: [P(s0, LIP[0], LIP_Y), P(s1, LIP[0], LIP_Y), P(s1, LIP[1], LIP_Y), P(s0, LIP[1], LIP_Y)], out: up, uvr: [0, 1, 0, 1] });
+      // the lip's front, and the canvas's edge: thin faces carrying the LED lines
+      fronts.push({ p: [P(s0, LIP[1], SKIRT_Y[0]), P(s1, LIP[1], SKIRT_Y[0]), P(s1, LIP[1], LIP_Y), P(s0, LIP[1], LIP_Y)], out });
+      lines[side].push({ p: [P(s0, LIP[1] + 0.004, LIP_Y - 0.065), P(s1, LIP[1] + 0.004, LIP_Y - 0.065), P(s1, LIP[1] + 0.004, LIP_Y - 0.03), P(s0, LIP[1] + 0.004, LIP_Y - 0.03)], out });
+      lines[side].push({ p: [P(s0, LIP[0] + 0.012, LIP_Y + 0.005), P(s1, LIP[0] + 0.012, LIP_Y + 0.005), P(s1, LIP[0] + 0.012, FLOOR - 0.012), P(s0, LIP[0] + 0.012, FLOOR - 0.012)], out });
+      soft[side].push({ p: [P(s0, LIP[0] + 0.01, LIP_Y + 0.002), P(s1, LIP[0] + 0.01, LIP_Y + 0.002), P(s1, LIP[0] + 0.1, LIP_Y + 0.002), P(s0, LIP[0] + 0.1, LIP_Y + 0.002)], out: up });
+      skirt[side].push({ p: [P(s0, SKIRT[1], SKIRT_Y[1]), P(s1, SKIRT[1], SKIRT_Y[1]), P(s1, SKIRT[0], SKIRT_Y[0]), P(s0, SKIRT[0], SKIRT_Y[0])], out: out.clone().add(up) });
     }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-    const mat = new THREE.ShaderMaterial({
-      uniforms: { time: TIME, red: { value: RED }, green: { value: GREEN } },
-      vertexShader: `varying vec2 vUv; varying vec3 vW;
-        void main() { vUv = uv; vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
-      fragmentShader: `uniform float time; uniform vec3 red; uniform vec3 green; varying vec2 vUv; varying vec3 vW;
-        void main() {
-          float v = vUv.y;
-          vec3 col = vec3(0.006, 0.006, 0.008);                       // the kick plate
-          col = mix(col, vec3(0.012, 0.012, 0.014), step(0.8, v));       // the cloth skirt
-          float trim = smoothstep(0.012, 0.0, abs(v - 0.79)) + smoothstep(0.012, 0.0, abs(v - 0.2));
-          col += vec3(0.16, 0.12, 0.05) * trim;                          // brushed gold trims
-          float band = step(0.22, v) * step(v, 0.77);
-          vec2 cell = fract(vec2(vUv.x * 24.0, (v - 0.22) / 0.55 * 9.0));
-          float dotl = smoothstep(0.48, 0.18, length(cell - 0.5));
-          float side = smoothstep(-3.0, 3.0, vW.x);
-          vec3 hue = mix(red, green, side);
-          float drift = 0.5 + 0.5 * sin(vUv.x * 0.42 - time * 0.45 + side * 3.14159);
-          float pulse = pow(drift, 3.0) * 0.85 + 0.12;
-          float rows = 0.75 + 0.25 * sin((v - 0.22) * 40.0 + time * 0.8 - vUv.x * 0.3);
-          col += hue * band * (dotl * pulse * rows * 1.05 + 0.012);
-          gl_FragColor = vec4(col, 1.0);
-        }`,
-      side: THREE.DoubleSide,
-    });
-    add(new THREE.Mesh(geo, mat), { mirror: true, receive: false });
+    const lipTex = plateTex();
+    lipTex.wrapS = lipTex.wrapT = THREE.RepeatWrapping;
+    lipTex.repeat.set(2, 1);
+    add(new THREE.Mesh(quadGeo(lip), std({ color: 0x8a9099, map: lipTex, metalness: 0.85, roughness: 0.38, envMapIntensity: 1.2 })), { mirror: true });
+    add(new THREE.Mesh(quadGeo(fronts), darkSteel), { mirror: true });
+    const sk = skirtMaps();
+    for (const side of ['red', 'green']) {
+      const mat = std({ color: 0xb4b9c2, map: sk.map, metalness: 0.8, roughness: 0.4, envMapIntensity: 1.1, emissive: (side === 'red' ? RED : GREEN).clone(), emissiveMap: sk.emissive, emissiveIntensity: side === 'red' ? 1.25 : 0.8 });
+      add(new THREE.Mesh(quadGeo(skirt[side]), mat), { mirror: true, receive: false });
+      add(new THREE.Mesh(quadGeo(lines[side]), led[side]), { mirror: true, receive: false });
+      add(new THREE.Mesh(quadGeo(soft[side]), new THREE.MeshBasicMaterial({ color: (side === 'red' ? RED : GREEN).clone().multiplyScalar(0.5), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false })), { receive: false });
+    }
+    // the corner brackets: chunky riveted steel, the full height of the apron
+    const bracketTex = plateTex(256, 256);
+    const bracketMat = std({ color: 0x9aa0aa, map: bracketTex, metalness: 0.88, roughness: 0.34, envMapIntensity: 1.3 });
+    const parts = [];
+    for (let k = 0; k < 6; k++) {
+      const dir = corner(k, 1).setY(0).normalize();
+      const r0 = (APO + 0.1) / COS30;
+      const r1 = (APO + SKIRT[1] + 0.04) / COS30;
+      const b = new RoundedBoxGeometry(0.5, FLOOR + 0.02, r1 - r0, 1, 0.06);
+      b.rotateY(Math.atan2(dir.x, dir.z));
+      b.translate(dir.x * (r0 + r1) / 2, (FLOOR + 0.02) / 2, dir.z * (r0 + r1) / 2);
+      parts.push(b);
+      // a heavy foot plate
+      const f = new RoundedBoxGeometry(0.66, 0.09, 0.5, 1, 0.03);
+      f.rotateY(Math.atan2(dir.x, dir.z));
+      f.translate(dir.x * (r1 - 0.12), 0.045, dir.z * (r1 - 0.12));
+      parts.push(f);
+    }
+    add(new THREE.Mesh(mergeGeometries(parts), bracketMat), { mirror: true, cast: false });
   }
 
-  // ---- the posts: steel, a padded cover in the corner's colour, an LED strip on the corners
-  const padMat = {
-    red: new THREE.MeshPhysicalMaterial({ color: 0x5e0a10, roughness: 0.42, metalness: 0, clearcoat: 0.6, clearcoatRoughness: 0.35 }),
-    green: new THREE.MeshPhysicalMaterial({ color: 0x07391d, roughness: 0.42, metalness: 0, clearcoat: 0.6, clearcoatRoughness: 0.35 }),
-    none: new THREE.MeshPhysicalMaterial({ color: 0x15161a, roughness: 0.45, metalness: 0, clearcoat: 0.5, clearcoatRoughness: 0.4 }),
-  };
-  const strip = { red: glow(0xff2020, 5), green: glow(0x10ff6a, 4.2), none: glow(0xdfe6f2, 0.32) };
-  const padGeo = new RoundedBoxGeometry(0.3, 1.28, 0.3, 3, 0.07);
-  const stripGeo = new THREE.BoxGeometry(0.05, 1.02, 0.012);
+  // ---- the steps up the near side, in its middle: diamond-plate treads, steel stringers with a line of
+  // light down each, red on the left and green on the right
+  {
+    const g = new THREE.Group();
+    const mid = onSide(1, 0.5, 0, 0);
+    g.position.set(mid.x, 0, mid.z);
+    g.rotation.y = Math.atan2(mid.x, mid.z); // +z away from the ring
+    const tm = treadMaps();
+    const tread = std({ color: 0xa8aeb8, map: tm.map, normalMap: tm.normal, metalness: 0.85, roughness: 0.34, envMapIntensity: 1.2 });
+    const n = 6;
+    const W = 1.7;
+    const D = 0.3;
+    for (let i = 0; i < n; i++) {
+      const top = LIP_Y - (LIP_Y / (n + 0.4)) * (i + 1);
+      const box = new THREE.Mesh(new THREE.BoxGeometry(W, top, D), [darkSteel, darkSteel, tread, darkSteel, darkSteel, darkSteel]);
+      box.position.set(0, top / 2, LIP[1] + D * (i + 0.5));
+      g.add(box);
+      const nose = new THREE.Mesh(new THREE.BoxGeometry(W - 0.04, 0.02, 0.025), steel);
+      nose.position.set(0, top, LIP[1] + D * (i + 1) - 0.012);
+      g.add(nose);
+    }
+    // the landing on the lip, and the stringers
+    const land = new THREE.Mesh(new THREE.BoxGeometry(W, 0.03, LIP[1] - LIP[0]), tread);
+    land.position.set(0, LIP_Y + 0.012, (LIP[0] + LIP[1]) / 2);
+    g.add(land);
+    const run = D * n;
+    const shape = new THREE.Shape([new THREE.Vector2(LIP[0], FLOOR + 0.03), new THREE.Vector2(LIP[0], 0), new THREE.Vector2(LIP[1] + run + 0.1, 0), new THREE.Vector2(LIP[1] + run + 0.1, 0.12)]);
+    const sg = new THREE.ExtrudeGeometry(shape, { depth: 0.16, bevelEnabled: false }).rotateY(-Math.PI / 2); // the shape's x along +z, extruded towards -x
+    for (const s of [-1, 1]) {
+      const st = new THREE.Mesh(sg, darkSteel);
+      st.position.x = s > 0 ? W / 2 + 0.16 : -W / 2;
+      g.add(st);
+      // the line of light along its top, down the slope
+      const a = new THREE.Vector3(s * (W / 2 + 0.08), FLOOR + 0.04, LIP[0] + 0.02);
+      const b = new THREE.Vector3(s * (W / 2 + 0.08), 0.13, LIP[1] + run + 0.09);
+      const d = new THREE.Vector3().subVectors(b, a);
+      const line = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.02, d.length()), led[s < 0 ? 'red' : 'green']);
+      line.position.copy(a).addScaledVector(d, 0.5);
+      line.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), d.clone().normalize());
+      g.add(line);
+      const front = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.12, 0.02), led[s < 0 ? 'red' : 'green']);
+      front.position.set(s * (W / 2 + 0.08), 0.065, LIP[1] + run + 0.1);
+      g.add(front);
+    }
+    add(g, { mirror: true });
+  }
+
+  // ---- the posts: thick dark steel, chamfered, an LED strip set into every face, a lamp on the cap
+  const postGeo = new RoundedBoxGeometry(0.5, FLOOR + 1.55, 0.5, 1, 0.09);
+  const capGeo = new THREE.CylinderGeometry(0.2, 0.33, 0.18, 4, 1).rotateY(Math.PI / 4);
+  const stripGeo = new THREE.BoxGeometry(0.085, 1.25, 0.02);
+  const slotGeo = new THREE.BoxGeometry(0.16, 1.36, 0.012);
+  const postMat = std({ color: 0x5a5f68, map: brushed, metalness: 0.9, roughness: 0.3, envMapIntensity: 1.6 });
+  const slotMat = std({ color: 0x050506, metalness: 0.5, roughness: 0.5 });
   const postTops = [];
   for (let k = 0; k < 6; k++) {
-    const side = cornerOf(k) ?? 'none';
     const p = corner(k, R - 0.08);
+    const side = sideOf(p.x);
     const g = new THREE.Group();
     g.position.set(p.x, 0, p.z);
     g.rotation.y = Math.atan2(-p.x, -p.z); // +z towards the ring's centre
-    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.075, FLOOR + 1.72, 16), steel);
-    post.position.y = (FLOOR + 1.72) / 2;
+    const post = new THREE.Mesh(postGeo, postMat);
+    post.position.y = (FLOOR + 1.55) / 2 + 0.1;
     g.add(post);
-    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.06, 16), darkSteel);
+    const cap = new THREE.Mesh(capGeo, postMat);
     cap.position.y = FLOOR + 1.74;
     g.add(cap);
-    const pad = new THREE.Mesh(padGeo, padMat[side]);
-    pad.position.set(0, FLOOR + 0.95, 0.04);
-    g.add(pad);
-    for (const z of [0.196, -0.116]) {
-      const s = new THREE.Mesh(stripGeo, strip[side]);
-      s.position.set(0, FLOOR + 0.95, z);
+    const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.03, 0.12), glow(sideColor(p.x), p.x < 0 ? 1.8 : 1.3));
+    lamp.position.y = FLOOR + 1.84;
+    g.add(lamp);
+    // the strips: on the face out to the hall and the face in to the ring; the two side posts also on
+    // the face that looks towards the near stand (the wide camera's), which their outer face does not
+    const rot = g.rotation.y;
+    const faces = [Math.PI, 0];
+    if (Math.abs(p.z) < 1) faces.push(-Math.sin(rot) > 0 ? Math.PI / 2 : -Math.PI / 2); // the world z of local +x is -sin(rot)
+    for (const a of faces) {
+      const slot = new THREE.Mesh(slotGeo, slotMat);
+      slot.position.set(Math.sin(a) * 0.247, FLOOR + 0.85, Math.cos(a) * 0.247);
+      slot.rotation.y = a;
+      g.add(slot);
+      const s = new THREE.Mesh(stripGeo, led[side]);
+      s.position.set(Math.sin(a) * 0.245, FLOOR + 0.85, Math.cos(a) * 0.245);
+      s.rotation.y = a;
       g.add(s);
     }
-    // the rope ends: steel eyes into the pad
-    for (const h of [0.55, 1.0, 1.45]) {
-      const eye = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.014, 6, 12), steel);
-      eye.position.set(0, FLOOR + h, 0.2);
+    // the rope ends: steel rings on the inner face
+    for (const h of ROPES) {
+      const eye = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.016, 6, 12), steel);
+      eye.position.set(0, FLOOR + h, 0.26);
       g.add(eye);
     }
     add(g, { cast: true, mirror: true });
     postTops.push(corner(k, R * 0.97).setY(FLOOR + 1.9));
   }
 
-  // ---- the ropes: satin, a little sag, the colour of the corner on its two sides
-  const ropeMats = {
-    red: new THREE.MeshPhysicalMaterial({ color: 0x7a0e14, roughness: 0.34, sheen: 1, sheenColor: new THREE.Color(0xff6a6a), sheenRoughness: 0.25, clearcoat: 0.7, clearcoatRoughness: 0.2, envMapIntensity: 2 }),
-    green: new THREE.MeshPhysicalMaterial({ color: 0x0c5a2c, roughness: 0.34, sheen: 1, sheenColor: new THREE.Color(0x6affb0), sheenRoughness: 0.25, clearcoat: 0.7, clearcoatRoughness: 0.2, envMapIntensity: 2 }),
-    none: new THREE.MeshPhysicalMaterial({ color: 0xb4b8c2, roughness: 0.32, sheen: 1, sheenColor: new THREE.Color(0xffffff), sheenRoughness: 0.3, clearcoat: 0.7, clearcoatRoughness: 0.2, envMapIntensity: 2 }),
-  };
-  const ropeGeos = { red: [], green: [], none: [] };
-  const strapGeos = [];
-  for (let k = 0; k < 6; k++) {
-    const side = k === 2 || k === 3 ? 'red' : k === 5 || k === 0 ? 'green' : 'none';
-    const a = corner(k, R - 0.08);
-    const b = corner((k + 1) % 6, R - 0.08);
-    const d = new THREE.Vector3().subVectors(b, a).normalize();
-    const a2 = a.clone().addScaledVector(d, 0.2);
-    const b2 = b.clone().addScaledVector(d, -0.2);
-    for (const h of [0.55, 1.0, 1.45]) {
-      const p0 = a2.clone().setY(FLOOR + h);
-      const p2 = b2.clone().setY(FLOOR + h);
-      const p1 = p0.clone().lerp(p2, 0.5).setY(FLOOR + h - 0.05);
-      ropeGeos[side].push(new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(p0, p1, p2), 28, 0.032, 8));
+  // ---- the ropes: braided steel, a little sag, black sleeves where they meet the posts
+  {
+    const ropeMat = std({ color: 0xb9bec7, metalness: 0.92, roughness: 0.26, normalMap: braidNormal(), normalScale: new THREE.Vector2(1.1, 1.1), envMapIntensity: 1.8 });
+    ropeMat.normalMap.wrapS = ropeMat.normalMap.wrapT = THREE.RepeatWrapping;
+    ropeMat.normalMap.repeat.set(140, 1);
+    const ropes = [];
+    const sleeves = [];
+    for (let k = 0; k < 6; k++) {
+      const a = corner(k, R - 0.08);
+      const b = corner((k + 1) % 6, R - 0.08);
+      const d = new THREE.Vector3().subVectors(b, a).normalize();
+      const a2 = a.clone().addScaledVector(d, 0.2);
+      const b2 = b.clone().addScaledVector(d, -0.2);
+      for (const h of ROPES) {
+        const p0 = a2.clone().setY(FLOOR + h);
+        const p2 = b2.clone().setY(FLOOR + h);
+        const p1 = p0.clone().lerp(p2, 0.5).setY(FLOOR + h - 0.04);
+        ropes.push(new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(p0, p1, p2), 32, 0.034, 8));
+        for (const [from, s] of [[p0, 1], [p2, -1]]) {
+          const c = new THREE.CylinderGeometry(0.047, 0.047, 0.32, 10);
+          c.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d));
+          const at = from.clone().addScaledVector(d, 0.16 * s);
+          c.translate(at.x, at.y, at.z);
+          sleeves.push(c);
+        }
+      }
     }
-    // the strap that ties the three ropes in the middle of the side
-    const mid = a.clone().lerp(b, 0.5);
-    const strapG = new THREE.BoxGeometry(0.07, 1.0, 0.075);
-    strapG.translate(0, FLOOR + 1.0 - 0.05, 0);
-    strapG.rotateY(Math.atan2(d.x, d.z));
-    strapG.translate(mid.x, 0, mid.z);
-    strapGeos.push(strapG);
-  }
-  for (const [side, list] of Object.entries(ropeGeos)) add(new THREE.Mesh(mergeGeometries(list), ropeMats[side]), { cast: true, mirror: true });
-  add(new THREE.Mesh(mergeGeometries(strapGeos), rubber), { cast: true, mirror: true });
-
-  // ---- the steps up to the red and the green corners
-  for (const k of [3, 0]) {
-    const out = corner(k).setY(0).normalize();
-    const g = new THREE.Group();
-    g.position.copy(out).multiplyScalar(R + 0.1);
-    g.rotation.y = Math.atan2(out.x, out.z); // +z away from the ring
-    const tread = std({ color: 0x15171b, metalness: 0.6, roughness: 0.45 });
-    for (let i = 0; i < 3; i++) {
-      const y = FLOOR - 0.2 * (i + 1) + 0.2;
-      const box = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.05, 0.34), tread);
-      box.position.set(0, y - 0.025, 0.17 + i * 0.32);
-      g.add(box);
-      const riser = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.2, 0.02), rubber);
-      riser.position.set(0, y - 0.12, 0.33 + i * 0.32);
-      g.add(riser);
-      const nose = new THREE.Mesh(new THREE.BoxGeometry(1.06, 0.012, 0.02), glow(k === 3 ? 0xff3030 : 0x20ff80, 1.6));
-      nose.position.set(0, y + 0.002, 0.33 + i * 0.32);
-      g.add(nose);
-    }
-    for (const s of [-1, 1]) {
-      const side = new THREE.Mesh(new THREE.BoxGeometry(0.04, FLOOR, 1.0), darkSteel);
-      side.position.set(0.57 * s, FLOOR / 2, 0.5);
-      g.add(side);
-      const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 1.25, 10), steel);
-      rail.position.set(0.57 * s, FLOOR + 0.62, 0.45);
-      rail.rotation.x = 0.85;
-      g.add(rail);
-      const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.0, 8), steel);
-      stand.position.set(0.57 * s, 0.6, 0.92);
-      g.add(stand);
-    }
-    add(g, { cast: true, mirror: true });
+    add(new THREE.Mesh(mergeGeometries(ropes), ropeMat), { cast: true, mirror: true });
+    add(new THREE.Mesh(mergeGeometries(sleeves), rubber), { mirror: true });
   }
 
-  // ---- the floor: black polished concrete, wet in patches, mirroring the ring and the lights
+  // ---- the floor: black polished concrete, wet, mirroring the ring and the lights
   const fm = floorMaps(small ? 256 : 512);
-  const floorMat = std({ color: 0xffffff, map: fm.map, roughnessMap: fm.rough, roughness: 1, metalness: 0.1, envMapIntensity: 0.6 });
+  const floorMat = std({ color: 0xffffff, map: fm.map, roughnessMap: fm.rough, roughness: 1, metalness: 0.2, envMapIntensity: 0.75 });
   const mirror = heavy ? makeMirror(renderer, scene) : null;
   const floorU = { tMirror: { value: mirror?.texture ?? null }, mirrorMatrix: { value: mirror?.matrix ?? new THREE.Matrix4() }, mirrorK: { value: mirror ? 1 : 0 } };
   floorMat.onBeforeCompile = (sh) => {
@@ -668,26 +908,25 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring, ticker }) {
       .replace('#include <fog_vertex>', '#include <fog_vertex>\nvMirror = mirrorMatrix * modelMatrix * vec4(transformed, 1.0);');
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', '#include <common>\nuniform sampler2D tMirror;\nuniform float mirrorK;\nvarying vec4 vMirror;')
-      // the lamps' own glints in the puddles would burn out: the wet look is the mirror's
-      .replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\nreflectedLight.directSpecular *= 0.25;')
+      .replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\nreflectedLight.directSpecular *= 0.4;')
       .replace('#include <opaque_fragment>', `
         if (mirrorK > 0.0) {
           vec2 muv = vMirror.xy / vMirror.w;
-          float wet = 1.0 - smoothstep(0.12, 0.55, roughnessFactor);
-          float lod = mix(4.0, 1.0, wet);
+          float wet = 1.0 - smoothstep(0.08, 0.5, roughnessFactor);
+          float lod = mix(3.2, 0.6, wet);
           // wet floors stretch what they mirror into streaks towards the viewer
           vec3 refl = vec3(0.0);
           float wsum = 0.0;
           for (int i = 0; i < 7; i++) {
             float f = float(i) / 6.0;
-            float w = 1.0 - f * 0.8;
-            refl += textureLod(tMirror, muv + vec2(0.0, (f - 0.25) * 0.05 * (1.2 - wet)), lod + f * 1.5).rgb * w;
+            float w = 1.0 - f * 0.75;
+            refl += textureLod(tMirror, muv + vec2(0.0, (f - 0.15) * 0.075 * (1.4 - wet)), lod + f * 1.6).rgb * w;
             wsum += w;
           }
-          refl = min(refl / wsum, vec3(1.6));
+          refl = min(refl / wsum, vec3(3.0));
           vec3 V = normalize(vViewPosition);
-          float fres = 0.22 + 0.78 * pow(1.0 - clamp(dot(normalize(normal), V), 0.0, 1.0), 2.0);
-          outgoingLight += refl * fres * mix(0.25, 1.1, wet) * mirrorK;
+          float fres = 0.32 + 0.68 * pow(1.0 - clamp(dot(normalize(normal), V), 0.0, 1.0), 2.0);
+          outgoingLight += refl * fres * mix(0.55, 1.6, wet) * mirrorK;
         }
         #include <opaque_fragment>`);
   };
@@ -695,101 +934,161 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring, ticker }) {
   floor.receiveShadow = true;
   scene.add(floor);
 
-  // the light the apron spills on the floor, and pools under the lamps
+  // the light the apron spills on the floor
   const spot = softSpot(128, 1.6);
   {
-    const geo = new THREE.RingGeometry(R + 0.07, R + 2.2, 6, 6).rotateX(-Math.PI / 2);
+    const geo = new THREE.RingGeometry(APO + 0.9, R + 3.4, 6, 8).rotateX(-Math.PI / 2);
     const p = geo.attributes.position;
     const col = new Float32Array(p.count * 3);
     const c = new THREE.Color();
     for (let i = 0; i < p.count; i++) {
       const x = p.getX(i);
       const r = Math.hypot(x, p.getZ(i));
-      const fall = Math.pow(Math.max(0, 1 - (r - R * 0.93) / 1.8), 2.6);
-      c.copy(RED).lerp(GREEN, THREE.MathUtils.smoothstep(x, -3, 3)).multiplyScalar(fall * 0.07);
+      const fall = Math.pow(Math.max(0, 1 - (r - R * 1.0) / 2.6), 2.2);
+      c.copy(sideColor(x)).multiplyScalar(fall * 0.16 * THREE.MathUtils.smoothstep(Math.abs(x), 0, 2.5));
       col.set([c.r, c.g, c.b], i * 3);
     }
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
     const spill = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
     spill.position.y = 0.006;
-    spill.rotation.y = 0; // RingGeometry's six corners already sit at the ring's corners
+    spill.rotation.y = Math.PI / 6;
     scene.add(spill);
   }
-  const pools = [];
-  const pool = (x, z, size, color, k, y = 0.008) => {
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(size, size).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: spot, color: new THREE.Color(color).multiplyScalar(k), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
-    m.position.set(x, y, z);
-    scene.add(m);
-    pools.push(m);
-    return m;
-  };
-  for (let i = 0; i < 12; i++) {
-    const a = (i / 12) * Math.PI * 2 + Math.PI / 12;
-    const x = Math.cos(a) * (R + 3.0);
-    const z = Math.sin(a) * (R + 3.0);
-    pool(x, z, 2.6, WARM, 0.05);
+
+  // ---- the light track: a big circle of dashed LED round the ring, red on the left, green on the right
+  const TRACK_R = R + 2.75;
+  {
+    const core = [];
+    const halo = [];
+    const N = 46;
+    for (let i = 0; i < N; i++) {
+      const a0 = ((i + 0.18) / N) * Math.PI * 2;
+      const a1 = ((i + 0.82) / N) * Math.PI * 2;
+      const am = (a0 + a1) / 2;
+      const x = Math.cos(am);
+      if (Math.abs(x) < 0.05) continue; // where red meets green, a gap
+      for (const [list, w] of [[core, 0.04], [halo, 0.24]]) {
+        const ring = new THREE.RingGeometry(TRACK_R - w, TRACK_R + w, 1, 1, -a1, a1 - a0);
+        const n = ring.attributes.position.count;
+        const col = new Float32Array(n * 3);
+        const c = sideColor(x);
+        const uvs = ring.attributes.uv;
+        for (let j = 0; j < n; j++) col.set([c.r, c.g, c.b], j * 3);
+        ring.setAttribute('color', new THREE.BufferAttribute(col, 3));
+        // across the band: 0 at its inner edge, 1 at its outer (for the halo's falloff)
+        for (let j = 0; j < n; j++) {
+          const px = ring.attributes.position.getX(j);
+          const py = ring.attributes.position.getY(j);
+          uvs.setXY(j, (Math.hypot(px, py) - (TRACK_R - w)) / (2 * w), 0.5);
+        }
+        list.push(ring);
+      }
+    }
+    const coreGeo = mergeGeometries(core).rotateX(-Math.PI / 2);
+    const haloGeo = mergeGeometries(halo).rotateX(-Math.PI / 2);
+    const coreM = new THREE.Mesh(coreGeo, new THREE.MeshBasicMaterial({ vertexColors: true, color: new THREE.Color(1.7, 1.25, 1.7) }));
+    coreM.position.y = 0.012;
+    scene.add(coreM);
+    const band = canvas(64, 4);
+    {
+      const bg = band.getContext('2d');
+      const gr = bg.createLinearGradient(0, 0, 64, 0);
+      gr.addColorStop(0, 'rgba(0,0,0,1)');
+      gr.addColorStop(0.5, 'rgba(255,255,255,1)');
+      gr.addColorStop(1, 'rgba(0,0,0,1)');
+      bg.fillStyle = gr;
+      bg.fillRect(0, 0, 64, 4);
+    }
+    const haloM = new THREE.Mesh(haloGeo, new THREE.MeshBasicMaterial({ vertexColors: true, map: tex(band, { srgb: false }), color: new THREE.Color(0.3, 0.3, 0.3), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
+    haloM.position.y = 0.01;
+    scene.add(haloM);
+    // a thin groove just inside it
+    const groove = new THREE.Mesh(new THREE.RingGeometry(TRACK_R - 0.42, TRACK_R - 0.39, 128).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x1c1e22 }));
+    groove.position.y = 0.008;
+    scene.add(groove);
   }
 
-  // ---- the LED boards in front of the stands, the arena's words running on them
+  // ---- the LED boards along the barrier in front of the stands, the arena's words running on them,
+  // and the barrier's steel rail
   const boards = new THREE.Group();
   {
     const geo = new THREE.CylinderGeometry(BOARD_R, BOARD_R, 0.6, 128, 1, true);
     for (const [map, side] of [[ticker[0], THREE.FrontSide], [ticker[1], THREE.BackSide]]) {
-      const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map, side, color: new THREE.Color(0.26, 0.26, 0.26) }));
-      m.position.y = 0.5;
+      const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map, side, color: new THREE.Color(0.36, 0.36, 0.36) }));
+      m.position.y = 0.42;
       boards.add(m);
     }
-    for (const y of [0.19, 0.81]) {
+    for (const y of [0.11, 0.73]) {
       const rail = new THREE.Mesh(new THREE.TorusGeometry(BOARD_R, 0.035, 6, 160), darkSteel);
       rail.rotation.x = Math.PI / 2;
       rail.position.y = y;
       boards.add(rail);
     }
+    const top = new THREE.Mesh(new THREE.TorusGeometry(BOARD_R + 0.25, 0.028, 6, 160), steel);
+    top.rotation.x = Math.PI / 2;
+    top.position.y = 1.1;
+    boards.add(top);
     add(boards, { receive: false });
   }
 
-  // ---- the truss: a hexagon of box truss over the ring, hung from the roof on chain motors
-  const trussMat = std({ color: 0x6d727c, metalness: 0.9, roughness: 0.42, envMapIntensity: 4 });
+  // ---- the truss: two concentric rings of box truss over the ring, joined by six spokes, hung from the
+  // roof on chain motors
+  const trussMat = std({ color: 0x8c929c, metalness: 0.92, roughness: 0.36, envMapIntensity: 2.2 });
+  const H = 0.24; // half the truss's section
   {
     const parts = [];
     const bar = (a, b, r) => {
       const d = new THREE.Vector3().subVectors(b, a);
-      const g = new THREE.CylinderGeometry(r, r, d.length(), 6, 1, true);
+      const g = new THREE.CylinderGeometry(r, r, d.length(), 5, 1, true);
       g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.clone().normalize()));
       g.translate(a.x + d.x / 2, a.y + d.y / 2, a.z + d.z / 2);
       parts.push(g);
     };
-    const h = 0.23;
     const up = new THREE.Vector3(0, 1, 0);
-    for (let k = 0; k < 6; k++) {
-      const a = corner(k, TRUSS.r).setY(TRUSS.y);
-      const b = corner((k + 1) % 6, TRUSS.r).setY(TRUSS.y);
+    const cs = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
+    /** A straight run of box truss from a to b (its section square, `n` the side direction). */
+    const run = (a, b, n, chordR = 0.03) => {
       const d = new THREE.Vector3().subVectors(b, a);
       const len = d.length();
-      d.normalize();
-      const n = new THREE.Vector3().crossVectors(d, up).normalize();
-      const chord = (s, cn, cu) => a.clone().addScaledVector(d, s).addScaledVector(n, cn * h).addScaledVector(up, cu * h);
-      const cs = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
-      for (const [cn, cu] of cs) bar(chord(0, cn, cu), chord(len, cn, cu), 0.026);
-      const panels = Math.round(len / 0.5);
+      const at = (s, cn, cu) => a.clone().addScaledVector(d, s / len).addScaledVector(n, cn * H).addScaledVector(up, cu * H);
+      for (const [cn, cu] of cs) bar(at(0, cn, cu), at(len, cn, cu), chordR);
+      const panels = Math.max(1, Math.round(len / 0.55));
       for (let i = 0; i < panels; i++) {
         const s0 = (i / panels) * len;
         const s1 = ((i + 1) / panels) * len;
         for (let f = 0; f < 4; f++) {
           const [n0, u0] = cs[f];
           const [n1, u1] = cs[(f + 1) % 4];
-          if (i % 2) bar(chord(s0, n0, u0), chord(s1, n1, u1), 0.011);
-          else bar(chord(s0, n1, u1), chord(s1, n0, u0), 0.011);
+          if (i % 2) bar(at(s0, n0, u0), at(s1, n1, u1), 0.012);
+          else bar(at(s0, n1, u1), at(s1, n0, u0), 0.012);
         }
       }
-      // the chain up to the roof, and its motor
-      bar(a.clone().setY(TRUSS.y + h), a.clone().setY(TRUSS.y + 7), 0.012);
-      const motor = new THREE.BoxGeometry(0.22, 0.34, 0.22);
-      motor.translate(a.x, TRUSS.y + 1.6, a.z);
-      parts.push(motor);
-      const block = new THREE.BoxGeometry(0.56, 0.56, 0.56);
-      block.translate(a.x, TRUSS.y, a.z);
-      parts.push(block);
+    };
+    const circle = (r, y, segs) => {
+      for (let i = 0; i < segs; i++) {
+        const a0 = (i / segs) * Math.PI * 2;
+        const a1 = ((i + 1) / segs) * Math.PI * 2;
+        const a = new THREE.Vector3(Math.cos(a0) * r, y, Math.sin(a0) * r);
+        const b = new THREE.Vector3(Math.cos(a1) * r, y, Math.sin(a1) * r);
+        const n = new THREE.Vector3(Math.cos((a0 + a1) / 2), 0, Math.sin((a0 + a1) / 2));
+        run(a, b, n);
+      }
+    };
+    circle(TRUSS.r, TRUSS.y, small ? 36 : 56);
+    circle(TRUSS.rIn, TRUSS.yIn, small ? 24 : 36);
+    for (let k = 0; k < 6; k++) {
+      const a = (k * Math.PI) / 3 + Math.PI / 6;
+      const dir = new THREE.Vector3(Math.cos(a), 0, Math.sin(a));
+      const n = new THREE.Vector3(-dir.z, 0, dir.x);
+      run(dir.clone().multiplyScalar(TRUSS.rIn + H).setY(TRUSS.yIn), dir.clone().multiplyScalar(TRUSS.r - H).setY(TRUSS.y), n);
+      // chains to the roof and their motors
+      for (const [r, y] of [[TRUSS.r, TRUSS.y], [TRUSS.rIn, TRUSS.yIn]]) {
+        const p = dir.clone().multiplyScalar(r);
+        bar(p.clone().setY(y + H), p.clone().setY(y + 9), 0.014);
+        const motor = new THREE.BoxGeometry(0.24, 0.36, 0.24);
+        motor.translate(p.x, y + 1.4, p.z);
+        parts.push(motor);
+      }
     }
     const truss = new THREE.Mesh(mergeGeometries(parts.map((g) => (g.index ? g.toNonIndexed() : g)).map((g) => {
       g.deleteAttribute('uv');
@@ -798,40 +1097,73 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring, ticker }) {
     add(truss, { receive: false, mirror: true });
   }
 
-  // ---- moving heads under the truss: each a yoke, a head and a lens; some throw a beam
+  // ---- LED blocks along the truss: rows of four on each ring, red over the left half, green over the
+  // right, facing into the hall
+  {
+    const blocks = { red: [], green: [] };
+    const place = (r, y, a, outward) => {
+      const dir = new THREE.Vector3(Math.cos(a), 0, Math.sin(a));
+      const side = sideOf(dir.x);
+      if (Math.abs(dir.x) < 0.25) return;
+      const face = outward ? dir.clone() : dir.clone().negate();
+      const t = new THREE.Vector3(-dir.z, 0, dir.x);
+      for (let i = 0; i < 4; i++) {
+        const g = new THREE.BoxGeometry(0.34, 0.15, 0.03);
+        g.lookAt(face);
+        const p = dir.clone().multiplyScalar(r + (outward ? H + 0.03 : -H - 0.03)).addScaledVector(t, (i - 1.5) * 0.42).setY(y - 0.02);
+        g.translate(p.x, p.y, p.z);
+        blocks[side].push(g);
+      }
+    };
+    for (let i = 0; i < 16; i++) place(TRUSS.r, TRUSS.y, ((i + 0.5) / 16) * Math.PI * 2, false);
+    for (let i = 0; i < 10; i++) place(TRUSS.rIn, TRUSS.yIn, ((i + 0.5) / 10) * Math.PI * 2, true);
+    for (const side of ['red', 'green']) add(new THREE.Mesh(mergeGeometries(blocks[side]), glow(side === 'red' ? RED : GREEN, side === 'red' ? 1.8 : 1.3)), { receive: false, mirror: true });
+  }
+
+  // ---- moving heads under the truss: each a yoke, a head and a lens; some throw a beam. heads[0..17]
+  // are the outer ring's at the sides' places (headAt), the rest fill both rings
   const heads = [];
   for (let k = 0; k < 6; k++) for (const f of [0.22, 0.5, 0.78]) {
-    const a = corner(k, TRUSS.r);
-    const b = corner((k + 1) % 6, TRUSS.r);
-    const p = a.lerp(b, f).setY(TRUSS.y - 0.42);
-    heads.push({ side: k, f, at: p, dir: new THREE.Vector3(0, -1, 0), color: new THREE.Color(1, 1, 1), k: 1.2 });
+    const a = ((k + f) * Math.PI) / 3;
+    heads.push({ side: k, f, at: new THREE.Vector3(Math.cos(a) * TRUSS.r, TRUSS.y - 0.5, Math.sin(a) * TRUSS.r), dir: new THREE.Vector3(0, -1, 0), color: new THREE.Color(1, 1, 1), k: 3 });
   }
+  const extra = [];
+  for (let i = 0; i < 18; i++) {
+    const a = ((i + 0.5) / 18) * Math.PI * 2 + 0.07;
+    extra.push({ side: -1, f: -1, at: new THREE.Vector3(Math.cos(a) * TRUSS.r, TRUSS.y - 0.5, Math.sin(a) * TRUSS.r), dir: new THREE.Vector3(0, -1, 0), color: new THREE.Color(1, 1, 1), k: 2 });
+  }
+  for (let i = 0; i < 12; i++) {
+    const a = ((i + 0.5) / 12) * Math.PI * 2;
+    extra.push({ side: -1, f: -1, at: new THREE.Vector3(Math.cos(a) * TRUSS.rIn, TRUSS.yIn - 0.5, Math.sin(a) * TRUSS.rIn), dir: new THREE.Vector3(0, -1, 0), color: new THREE.Color(1, 1, 1), k: 2 });
+  }
+  heads.push(...extra);
   const yokeGeo = mergeGeometries([
-    new THREE.BoxGeometry(0.26, 0.05, 0.11).translate(0, 0.26, 0),
-    new THREE.BoxGeometry(0.03, 0.23, 0.08).translate(0.13, 0.15, 0),
-    new THREE.BoxGeometry(0.03, 0.23, 0.08).translate(-0.13, 0.15, 0),
+    new THREE.BoxGeometry(0.3, 0.05, 0.12).translate(0, 0.28, 0),
+    new THREE.BoxGeometry(0.035, 0.25, 0.09).translate(0.15, 0.16, 0),
+    new THREE.BoxGeometry(0.035, 0.25, 0.09).translate(-0.15, 0.16, 0),
   ]);
-  const headGeo = new THREE.CylinderGeometry(0.08, 0.105, 0.26, 14);
-  const lensGeo = new THREE.CircleGeometry(0.07, 18).rotateX(Math.PI / 2).translate(0, -0.132, 0);
+  const headGeo = new THREE.CylinderGeometry(0.09, 0.12, 0.28, 14);
+  const lensGeo = new THREE.CircleGeometry(0.085, 18).rotateX(Math.PI / 2).translate(0, -0.142, 0);
   const yokes = new THREE.InstancedMesh(yokeGeo, darkSteel, heads.length);
-  const bodies = new THREE.InstancedMesh(headGeo, std({ color: 0x141518, metalness: 0.6, roughness: 0.4 }), heads.length);
+  const bodies = new THREE.InstancedMesh(headGeo, std({ color: 0x1c1d21, metalness: 0.7, roughness: 0.35, envMapIntensity: 1.5 }), heads.length);
   const lenses = new THREE.InstancedMesh(lensGeo, new THREE.MeshBasicMaterial({ color: 0xffffff }), heads.length);
   const m4 = new THREE.Matrix4();
   const q = new THREE.Quaternion();
   const DOWN = new THREE.Vector3(0, -1, 0);
+  const Y = new THREE.Vector3(0, 1, 0);
   const one = new THREE.Vector3(1, 1, 1);
+  const lensCol = new THREE.Color();
   const placeHeads = () => {
     heads.forEach((h, i) => {
       // the yoke turns about the vertical, the head tilts in it
-      const yaw = Math.atan2(h.dir.x, h.dir.z);
-      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+      q.setFromAxisAngle(Y, Math.atan2(h.dir.x, h.dir.z));
       m4.compose(h.at, q, one);
       yokes.setMatrixAt(i, m4);
       q.setFromUnitVectors(DOWN, h.dir);
       m4.compose(h.at, q, one);
       bodies.setMatrixAt(i, m4);
       lenses.setMatrixAt(i, m4);
-      lenses.setColorAt(i, new THREE.Color().copy(h.color).multiplyScalar(h.k));
+      lenses.setColorAt(i, lensCol.copy(h.color).multiplyScalar(h.k));
     });
     yokes.instanceMatrix.needsUpdate = true;
     bodies.instanceMatrix.needsUpdate = true;
@@ -839,228 +1171,163 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring, ticker }) {
     if (lenses.instanceColor) lenses.instanceColor.needsUpdate = true;
   };
   // the idle heads look down at the ring, a little apart
-  for (const h of heads) h.dir.set(-h.at.x * 0.25, -TRUSS.y, -h.at.z * 0.25).normalize();
-  placeHeads();
+  for (const h of heads) h.dir.set(-h.at.x * 0.3, -TRUSS.y, -h.at.z * 0.3).normalize();
   for (const m of [yokes, bodies]) add(m, { receive: false, mirror: true });
-  add(lenses, { receive: false }); // a lens in the wet floor would be a blinding blot
+  add(lenses, { receive: false });
   /** The head at side k (0..5, the side from corner k to corner k+1), place f (0.22, 0.5 or 0.78). */
   const headAt = (k, f) => heads.find((h) => h.side === k && Math.abs(h.f - f) < 0.01);
-  // blinders along the truss, facing the stands: the rows of lamps one sees over an arena
-  {
-    const at = [];
-    for (let k = 0; k < 6; k++) {
-      const a = corner(k, TRUSS.r + 0.24);
-      const b = corner((k + 1) % 6, TRUSS.r + 0.24);
-      for (let i = 1; i < 14; i++) if (i % 3) at.push({ p: a.clone().lerp(b, i / 14).setY(TRUSS.y - 0.1), out: a.clone().lerp(b, i / 14).setY(0).normalize() });
-    }
-    const lamp = new THREE.InstancedMesh(new THREE.CircleGeometry(0.035, 10), new THREE.MeshBasicMaterial({ color: new THREE.Color(0xfff0d8).multiplyScalar(1.9), side: THREE.DoubleSide }), at.length);
-    const rim = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.06, 0.06, 0.12, 12, 1, true).rotateX(Math.PI / 2).translate(0, 0, -0.06), darkSteel, at.length);
-    at.forEach(({ p, out }, i) => {
-      m4.compose(p, q.setFromUnitVectors(new THREE.Vector3(0, 0, 1), out.clone().setY(-0.35).normalize()), one);
-      lamp.setMatrixAt(i, m4);
-      rim.setMatrixAt(i, m4);
-    });
-    add(lamp, { receive: false, mirror: true });
-    add(rim, { receive: false, mirror: true });
-  }
 
-  // ---- the stands: a few raked concrete rows round the floor with dark silhouettes in them, a
-  // fascia with a band of LED over them, and behind it the upper stands as one raked backdrop (a
-  // picture, see STANDS)
-  const FRONT = small ? 3 : 4;
-  const STEP_R = 0.92;
-  const STEP_Y = 0.52;
-  const lastY = 0.1 + (FRONT - 1) * STEP_Y;
-  const fasciaR = STANDS_R + FRONT * STEP_R - 0.2;
-  const fasciaY = lastY + 1.35;
-  {
-    const prof = [new THREE.Vector2(STANDS_R - 0.2, -0.05)];
-    for (let k = 0; k < FRONT; k++) {
-      const r = STANDS_R + k * STEP_R;
-      const y = 0.1 + k * STEP_Y;
-      prof.push(new THREE.Vector2(r - 0.2, y), new THREE.Vector2(r + STEP_R - 0.2, y));
-    }
-    prof.push(new THREE.Vector2(fasciaR, fasciaY), new THREE.Vector2(fasciaR + 0.6, fasciaY));
-    const geo = new THREE.LatheGeometry(prof, 120);
-    add(new THREE.Mesh(geo, std({ color: 0x0c0d10, roughness: 0.9, metalness: 0.05, envMapIntensity: 0.3, side: THREE.DoubleSide })), { receive: true });
-    // aisle lights on the steps, warm and low
-    const aisle = [];
-    for (let s = 0; s < 18; s++) {
-      const a = (s / 18) * Math.PI * 2 + 0.09;
-      for (let k = 1; k < FRONT; k++) {
-        const r = STANDS_R + k * STEP_R - 0.21;
-        aisle.push(new THREE.Vector3(Math.cos(a) * r, 0.1 + k * STEP_Y - 0.14, Math.sin(a) * r));
-      }
-    }
-    const dots = new THREE.InstancedMesh(new THREE.BoxGeometry(0.08, 0.025, 0.02), glow(0xffa84a, 1.6), aisle.length);
-    aisle.forEach((p, i) => {
-      m4.compose(p, q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(p.x, p.z)), one);
-      dots.setMatrixAt(i, m4);
-    });
-    scene.add(dots);
-  }
-
-  /** A continuous band of LED round the hall at radius r: red on the left, green on the right, a dim
-   *  warm white at the far end, through dark in between (red never runs into green). */
-  const ribbon = (r, y, hgt, k, rTop = r) => {
-    const geo = new THREE.CylinderGeometry(rTop, r, hgt, 192, 1, true);
-    const p = geo.attributes.position;
-    const col = new Float32Array(p.count * 3);
-    const c = new THREE.Color();
-    const w = new THREE.Color();
-    for (let i = 0; i < p.count; i++) {
-      const x = p.getX(i) / r;
-      const z = p.getZ(i) / r;
-      const sideK = THREE.MathUtils.smoothstep(Math.abs(x), 0.45, 0.85);
-      const far = THREE.MathUtils.smoothstep(-z, 0.75, 0.98);
-      c.copy(x < 0 ? RED : GREEN).multiplyScalar(sideK).add(w.copy(WARM).multiplyScalar(far * 0.35));
-      c.multiplyScalar(k);
-      col.set([c.r, c.g, c.b], i * 3);
-    }
-    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide }));
-    m.position.y = y;
-    scene.add(m);
-    return m;
-  };
-  ribbon(fasciaR - 0.02, fasciaY - 0.16, 0.12, 1.1);
-
-  // the upper stands: a raked band of three panels behind the fascia (the red side, the far end, the
-  // green side), a drawn dark crowd on them until the photos are there
-  const backdrop = {};
-  const RAKE = 0.62; // rise per metre back
-  const bdR0 = fasciaR + 0.6;
-  const bdH = 15;
-  const bdR1 = bdR0 + bdH / RAKE;
-  {
-    const slant = Math.hypot(bdH, bdR1 - bdR0);
-    const crowdMap = crowdTex(small ? 1024 : 2048, small ? 512 : 1024, 24);
-    const panels = { far: [Math.PI * 0.75, Math.PI * 0.5, 0xe4e4ea], red: [Math.PI * 1.25, Math.PI * 0.62, 0xffd2cc], green: [Math.PI * 0.13, Math.PI * 0.62, 0xd0ffe0] };
-    for (const [name, [start, len, tint]] of Object.entries(panels)) {
-      const geo = new THREE.CylinderGeometry(bdR1, bdR0, bdH, 64, 1, true, start, len);
-      const map = crowdMap.clone();
-      // seen from inside the circle a picture reads backwards: mirror it; and keep the people round
-      const arc = (len * (bdR0 + bdR1)) / 2;
-      map.repeat.set(-Math.max(1, Math.round((arc * crowdMap.image.height) / (crowdMap.image.width * slant))), 1);
-      const mat = new THREE.MeshBasicMaterial({ map, side: THREE.BackSide, fog: true, color: new THREE.Color(tint).multiplyScalar(STANDS_GAIN) });
-      const m = new THREE.Mesh(geo, mat);
-      m.position.y = fasciaY + bdH / 2;
+  // ---- the hall's own beams: white ones fanning down from the outer ring onto the floor and the
+  // stands, a few red ones on the left and green ones on the right, swaying slowly in the haze
+  const fan = [];
+  if (heavy) {
+    const pick = [0, 2, 4, 5, 7, 9, 11, 13, 14, 16, 1, 3, 6, 8, 10, 12, 15, 17];
+    pick.forEach((idx, n) => {
+      const h = extra[idx];
+      if (h.at.z > 2.5) return; // over the camera's own stand a beam would cross the whole picture
+      const x = h.at.x;
+      const coloured = n >= 12 && Math.abs(x) > 3;
+      const color = coloured ? sideColor(x).clone().lerp(new THREE.Color(1, 1, 1), 0.15) : new THREE.Color(0xf3f1ec);
+      const m = new THREE.Mesh(new THREE.ConeGeometry(0.65, 1, 24, 1, true), volumeMaterial(color, coloured ? 0.11 : 0.09, 0.88));
       scene.add(m);
-      backdrop[name] = m;
-    }
-    if (STANDS.photos || window.ARENA_CONFIG?.standsPhotos) {
-      const loader = new THREE.TextureLoader();
-      for (const name of ['red', 'green', 'far']) {
-        loader.load(`${STANDS.dir}stands_${name}.png`, (t) => {
+      h.color.copy(color);
+      h.k = 5;
+      // where it lands: the floor between the ring and the stands, or the stands themselves
+      const a = Math.atan2(h.at.z, h.at.x) + (n % 2 ? 0.25 : -0.25);
+      const r = n % 3 === 0 ? 4.5 : n % 3 === 1 ? 8.5 : 12.5;
+      fan.push({ m, h, a, r, y: r > 12 ? 2.2 : 0, ph: n * 1.7, to: new THREE.Vector3() });
+    });
+  }
+  const aimFan = (b, t) => {
+    const a = b.a + Math.sin(t * 0.17 + b.ph) * 0.22;
+    const r = b.r + Math.sin(t * 0.13 + b.ph * 2) * 1.2;
+    b.to.set(Math.cos(a) * r, b.y, Math.sin(a) * r);
+    const d = new THREE.Vector3().subVectors(b.h.at, b.to);
+    const len = d.length();
+    b.m.scale.set(1, len, 1);
+    b.m.position.copy(b.to).addScaledVector(d, 0.5);
+    b.m.quaternion.setFromUnitVectors(Y, d.normalize());
+    b.h.dir.subVectors(b.to, b.h.at).normalize();
+  };
+  fan.forEach((b) => aimFan(b, 0));
+  placeHeads();
+  // each lamp's glow in the haze, seen from any side (a lens only shows from below)
+  const flareGeo = new THREE.BufferGeometry();
+  const flarePos = new Float32Array(heads.length * 3);
+  const flareCol = new Float32Array(heads.length * 3);
+  heads.forEach((h, i) => flarePos.set([h.at.x, h.at.y - 0.18, h.at.z], i * 3));
+  flareGeo.setAttribute('position', new THREE.BufferAttribute(flarePos, 3));
+  flareGeo.setAttribute('color', new THREE.BufferAttribute(flareCol, 3));
+  const flares = new THREE.Points(flareGeo, new THREE.PointsMaterial({ size: 0.9, sizeAttenuation: true, map: softSpot(64, 2.6), vertexColors: true, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
+  scene.add(flares);
+  const lightFlares = () => {
+    heads.forEach((h, i) => {
+      const k = Math.min(2.2, 0.6 + h.k * 0.3);
+      flareCol.set([h.color.r * k, h.color.g * k, h.color.b * k], i * 3);
+    });
+    flareGeo.attributes.color.needsUpdate = true;
+  };
+  lightFlares();
+
+  // ---- the stands: right behind the barrier the photos of the stands rise as one raked band of three
+  // panels (the red side, the far end, the green side), each cropped, faded into the dark at its edges
+  // and its top; dark pillars stand where two panels meet. Phone lights twinkle over them.
+  const RAKE = 0.74; // rise per metre back
+  const bdR0 = STANDS_R + 0.15;
+  const bdY0 = -0.1;
+  const bdH = 17;
+  const bdR1 = bdR0 + bdH / RAKE;
+  const PANELS = { far: [Math.PI * 0.74, Math.PI * 0.52], red: [Math.PI * 1.26, Math.PI * 0.58], green: [Math.PI * 0.16, Math.PI * 0.58] };
+  {
+    const fallback = crowdTex(1024, 512, 24);
+    const loader = new THREE.TextureLoader();
+    for (const [name, [start, len]] of Object.entries(PANELS)) {
+      const geo = new THREE.CylinderGeometry(bdR1, bdR0, bdH, 64, 1, true, start, len);
+      const cfg = STANDS[name];
+      const mat = new THREE.ShaderMaterial({
+        uniforms: { map: { value: fallback }, crop: { value: new THREE.Vector4(0, 1, 0, 1) }, flip: { value: 0 }, gain: { value: STANDS_GAIN }, fogColor: { value: new THREE.Color(0x07080b) }, red: { value: RED }, green: { value: GREEN }, mirrorPass: MIRROR_PASS },
+        vertexShader: `varying vec2 vUv; varying float vD; varying float vX;
+          void main() { vUv = uv; vX = (modelMatrix * vec4(position, 1.0)).x; vec4 mv = modelViewMatrix * vec4(position, 1.0); vD = -mv.z; gl_Position = projectionMatrix * mv; }`,
+        // two tiers, the photo once across the lower and twice across the wider upper one, a stair aisle
+        // where a picture meets itself, a balcony between the tiers with LED blocks in its side's colour
+        fragmentShader: `uniform sampler2D map; uniform vec4 crop; uniform float flip; uniform float gain; uniform vec3 fogColor;
+          uniform vec3 red; uniform vec3 green; uniform float mirrorPass;
+          varying vec2 vUv; varying float vD; varying float vX;
+          void main() {
+            float u = flip > 0.5 ? 1.0 - vUv.x : vUv.x;
+            float v = vUv.y;
+            bool low = v < 0.46;
+            float tv = low ? v / 0.46 : (v - 0.53) / 0.47;
+            float uu = fract(u * (low ? 1.0 : 2.0) + (low ? 0.0 : 0.31));
+            float top = mix(crop.z, crop.w, 1.0 - tv);                // from the photo's top
+            vec3 c = texture2D(map, vec2(mix(crop.x, crop.y, uu), 1.0 - top)).rgb * gain;
+            c *= smoothstep(0.0, 0.025, uu) * smoothstep(1.0, 0.975, uu); // the aisles
+            float edge = smoothstep(0.0, 0.05, vUv.x) * smoothstep(1.0, 0.95, vUv.x);
+            c *= edge * smoothstep(1.0, 0.72, v);
+            // the balcony: a dark band, LED blocks along its face
+            float band = smoothstep(0.455, 0.462, v) * smoothstep(0.535, 0.528, v);
+            float dash = step(0.35, fract(vUv.x * 46.0)) * smoothstep(0.47, 0.475, v) * smoothstep(0.495, 0.49, v);
+            vec3 led = (vX < 0.0 ? red * 1.7 : green * 1.25) * dash * edge;
+            c = mix(c, vec3(0.008), band) + led;
+            // the haze between: a little grey over the far rows
+            float h = 1.0 - exp(-vD * 0.02);
+            c = mix(c, fogColor, h * 0.4);
+            c *= 1.0 - mirrorPass * 0.6; // in the wet floor: a dim smear, the ring's lights stay on top
+            gl_FragColor = vec4(c, 1.0);
+          }`,
+        side: THREE.BackSide,
+      });
+      const m = new THREE.Mesh(geo, mat);
+      m.position.y = bdY0 + bdH / 2;
+      m.layers.enable(MIRROR); // the wet floor mirrors the stands' colours
+      scene.add(m);
+      if (STANDS.photos || window.ARENA_CONFIG?.standsPhotos) {
+        loader.load(`${STANDS.dir}${cfg.file}`, (t) => {
           t.colorSpace = THREE.SRGBColorSpace;
-          t.anisotropy = 4;
-          t.wrapS = THREE.RepeatWrapping;
-          t.repeat.x = -1;
-          const mat = backdrop[name].material;
-          mat.map = t;
-          mat.color.setScalar(STANDS_GAIN);
-          mat.needsUpdate = true;
+          t.anisotropy = 8;
+          mat.uniforms.map.value = t;
+          mat.uniforms.crop.value.set(...cfg.crop);
+          mat.uniforms.flip.value = cfg.flip ? 1 : 0;
+          mat.uniforms.gain.value = STANDS_GAIN * (cfg.gain ?? 1);
         }, undefined, () => {});
       }
     }
-    // a second band of LED along a balcony part way up
-    const t = 0.42;
-    const rAt = (u) => bdR0 + (bdR1 - bdR0) * u - 0.05;
-    ribbon(rAt(t), fasciaY + bdH * t, 0.1, 0.55, rAt(t + 0.1 / bdH));
-  }
-
-  // the fans in the front rows: dark people with no colours of their own; their side's light only as a
-  // soft glow on what faces the ring, in the first rows
-  const bowl = [];
-  for (let k = 0; k < FRONT; k++) {
-    const r = STANDS_R + 0.3 + k * STEP_R;
-    const base = 0.1 + k * STEP_Y;
-    let a = Math.random() * 0.5;
-    while (a < Math.PI * 2 - 0.3 / r) {
-      a += (0.5 + Math.random() * 0.26) / r;
-      const rr = r + (Math.random() - 0.5) * 0.3;
-      const x = rr * Math.cos(a);
-      const z = rr * Math.sin(a);
-      if (z > 0 && Math.abs(Math.atan2(x, z)) < 0.85 && k > 1) continue; // behind the camera the stands stay open
-      if (Math.abs(Math.sin(a * 9 - 0.81)) < 0.06) continue; // the aisles
-      if (Math.random() < 0.1) continue; // an empty seat here and there
-      bowl.push({ x, z, base, k, side: x < -2 ? 'red' : x > 2 ? 'blue' : 'mid', ph: Math.random() * 6.28, sp: 0.7 + Math.random() * 0.6 });
+    // the pillars where the panels meet, and at the open end behind the camera
+    const pillars = [];
+    for (const a of [Math.PI * 0.74, Math.PI * 1.26]) {
+      const r = bdR0 + 2.2;
+      const g = new THREE.BoxGeometry(0.9, 3.2 + 2.2 * RAKE + bdH, 0.9);
+      g.translate(r * Math.sin(a), (3.2 + 2.2 * RAKE + bdH) / 2 - 3.2, r * Math.cos(a));
+      pillars.push(g);
     }
+    scene.add(new THREE.Mesh(mergeGeometries(pillars), std({ color: 0x0a0b0d, roughness: 0.7, metalness: 0.3 })));
   }
-  const bodyGeo = new THREE.CapsuleGeometry(0.2, 0.32, 3, 8).scale(1.25, 1, 0.7).translate(0, 0.46, 0);
-  const headGeo2 = new THREE.SphereGeometry(0.115, 10, 7).scale(0.92, 1.08, 1);
-  const fanMat = std({ color: 0x08090b, roughness: 0.85, metalness: 0, envMapIntensity: 0.15 });
-  fanMat.onBeforeCompile = (sh) => {
-    sh.fragmentShader = sh.fragmentShader
-      .replace('#include <color_fragment>', '')
-      .replace('#include <opaque_fragment>', `
-        #ifdef USE_COLOR
-          vec3 toRing = normalize((viewMatrix * vec4(0.0, 1.6, 0.0, 1.0)).xyz + vViewPosition);
-          outgoingLight += vColor * pow(max(dot(normal, toRing), 0.0), 1.8);
-        #endif
-        #include <opaque_fragment>`);
-  };
-  const crowd = new THREE.InstancedMesh(bodyGeo, fanMat, bowl.length);
-  const heads2 = new THREE.InstancedMesh(headGeo2, fanMat, bowl.length);
-  const armsGeo = mergeGeometries([-1, 1].map((s) => new THREE.CapsuleGeometry(0.055, 0.36, 2, 6).rotateZ(-0.32 * s).translate(0.3 * s, 0.98, 0)));
-  const armed = bowl.filter(() => Math.random() < 0.25);
-  const arms = new THREE.InstancedMesh(armsGeo, fanMat, Math.max(1, armed.length));
-  const c = new THREE.Color();
-  const pos = new THREE.Vector3();
-  const scl = new THREE.Vector3();
-  bowl.forEach((p, i) => {
-    p.h = 0.85 + Math.random() * 0.3;
-    p.q = new THREE.Quaternion().setFromEuler(new THREE.Euler((Math.random() - 0.5) * 0.2, Math.atan2(-p.x, -p.z) + (Math.random() - 0.5) * 0.8, (Math.random() - 0.5) * 0.2));
-    // the side's glow: only in the first rows, which the ring's light reaches
-    const rimK = p.k < 3 ? (0.045 - p.k * 0.014) * (0.4 + Math.random() * 0.6) : 0;
-    if (p.side === 'red') c.setRGB(1, 0.16, 0.12);
-    else if (p.side === 'blue') c.setRGB(0.14, 1, 0.45);
-    else c.setRGB(0.55, 0.58, 0.66);
-    c.multiplyScalar(rimK);
-    p.rim = c.clone();
-    p.w = 0.85 + Math.random() * 0.3;
-    m4.compose(pos.set(p.x, p.base, p.z), p.q, scl.set(p.w, p.h, p.w * (0.9 + Math.random() * 0.2)));
-    crowd.setMatrixAt(i, m4);
-    crowd.setColorAt(i, c);
-    p.head = new THREE.Vector3(0, 0.93 * p.h, 0).applyQuaternion(p.q);
-    m4.compose(pos.set(p.x + p.head.x, p.base + p.head.y, p.z + p.head.z), p.q, scl.setScalar(0.85 + Math.random() * 0.3));
-    heads2.setMatrixAt(i, m4);
-    heads2.setColorAt(i, c);
-  });
-  armed.forEach((p, i) => arms.setColorAt(i, p.rim));
-  for (const m of [crowd, heads2, arms]) m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  scene.add(crowd, heads2, arms);
 
-  // phone lights: small and white, a few held up steady (filming), more that flash now and then; in
-  // the front rows and up in the stands behind
-  const phoneN = small ? 70 : 170;
+  // phone lights over the stands: small and white, a few held up steady (filming), more that flash now
+  // and then
+  const phoneN = small ? 50 : 130;
   const phonePos = new Float32Array(phoneN * 3);
   const phoneCol = new Float32Array(phoneN * 3);
   const phoneOf = [];
-  const PANELS = [[Math.PI * 0.75, Math.PI * 0.5], [Math.PI * 1.25, Math.PI * 0.62], [Math.PI * 0.13, Math.PI * 0.62]];
+  const panelList = Object.values(PANELS);
   for (let i = 0; i < phoneN; i++) {
-    if (i % 3 === 0) {
-      const p = bowl[Math.floor(Math.random() * bowl.length)];
-      phoneOf.push(p);
-      phonePos.set([p.x * 0.985, p.base + 1.12 + Math.random() * 0.15, p.z * 0.985], i * 3);
-    } else {
-      const [start, len] = PANELS[Math.floor(Math.random() * 3)];
-      const th = start + Math.random() * len;
-      const t = 0.03 + Math.pow(Math.random(), 1.3) * 0.7;
-      const r = bdR0 + (bdR1 - bdR0) * t - 0.15;
-      phonePos.set([r * Math.sin(th), fasciaY + bdH * t + 0.1, r * Math.cos(th)], i * 3);
-      phoneOf.push({ side: Math.sin(th) < -0.3 ? 'red' : Math.sin(th) > 0.3 ? 'blue' : 'mid' });
-    }
+    const [start, len] = panelList[Math.floor(Math.random() * 3)];
+    const th = start + (0.08 + Math.random() * 0.84) * len;
+    const t = 0.02 + Math.pow(Math.random(), 1.4) * 0.55;
+    const r = bdR0 + (bdR1 - bdR0) * t - 0.25;
+    phonePos.set([r * Math.sin(th), bdY0 + bdH * t + 0.5, r * Math.cos(th)], i * 3);
+    phoneOf.push({ side: Math.sin(th) < -0.3 ? 'red' : Math.sin(th) > 0.3 ? 'blue' : 'mid' });
   }
   const steady = phoneOf.map(() => Math.random() < 0.3);
   const phoneGeo = new THREE.BufferGeometry();
   phoneGeo.setAttribute('position', new THREE.BufferAttribute(phonePos, 3));
   phoneGeo.setAttribute('color', new THREE.BufferAttribute(phoneCol, 3));
-  const phones = new THREE.Points(phoneGeo, new THREE.PointsMaterial({ size: 2.6 * renderer.getPixelRatio(), sizeAttenuation: false, map: softSpot(16, 1.2), vertexColors: true, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
+  const phones = new THREE.Points(phoneGeo, new THREE.PointsMaterial({ size: 2.4 * renderer.getPixelRatio(), sizeAttenuation: false, map: softSpot(16, 1.2), vertexColors: true, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
   scene.add(phones);
+  const bowl = [];
 
-  // ---- lights
-  const key = new THREE.SpotLight(0xfff3e2, 6, 0, 0.4, 0.3, 0);
+  // ---- lights: a white key on the canvas, a cool fill, and each half's colour low over the floor
+  const key = new THREE.SpotLight(0xfff3e2, 3.6, 0, 0.45, 0.6, 0);
   key.position.set(0, TRUSS.y + 0.6, 1.2);
   key.target.position.set(0, FLOOR, 0.2);
   key.castShadow = heavy;
@@ -1070,8 +1337,15 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring, ticker }) {
   key.shadow.camera.near = 5;
   key.shadow.camera.far = 16;
   scene.add(key, key.target);
-  const fill = new THREE.SpotLight(0xd8e0f0, 1.1, 0, 0.62, 0.9, 0);
-  fill.position.set(0, TRUSS.y + 1, -0.5);
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+    const w = new THREE.SpotLight(0xf4f2ee, 2.4, 0, 0.36, 0.8, 0);
+    w.position.set(Math.cos(a) * TRUSS.rIn, TRUSS.yIn - 0.4, Math.sin(a) * TRUSS.rIn);
+    w.target.position.set(Math.cos(a) * 3.2, FLOOR, Math.sin(a) * 3.2); // each a quarter of the canvas, none on the middle
+    scene.add(w, w.target);
+  }
+  const fill = new THREE.SpotLight(0xd8e0f0, 2.2, 0, 0.75, 0.9, 0);
+  fill.position.set(0, TRUSS.y + 1, 7);
   fill.target.position.set(0, FLOOR, 0);
   scene.add(fill, fill.target);
   // every light also lights the mirror's picture
@@ -1100,30 +1374,15 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring, ticker }) {
     },
     /** Before the hall is drawn: the floor's mirror, from this camera. */
     beforeRender(camera) {
-      if (mirrorOn) mirror.render(camera);
+      if (!mirrorOn) return;
+      MIRROR_PASS.value = 1;
+      mirror.render(camera);
+      MIRROR_PASS.value = 0;
     },
     update(t, dt, exc, reduced) {
       TIME.value = t;
-      // the fans move with their side's mood
-      const arr = crowd.instanceMatrix.array;
-      const harr = heads2.instanceMatrix.array;
-      for (let i = 0; i < bowl.length; i++) {
-        const p = bowl[i];
-        const e = exc[p.side === 'mid' ? (i % 2 ? 'red' : 'blue') : p.side];
-        p.y = p.base + (reduced ? 0 : Math.max(0, Math.sin(t * 3.1 * p.sp + p.ph)) * (0.015 + e * 0.13));
-        arr[i * 16 + 13] = p.y;
-        harr[i * 16 + 13] = p.y + p.head.y;
-      }
-      crowd.instanceMatrix.needsUpdate = true;
-      heads2.instanceMatrix.needsUpdate = true;
-      for (let i = 0; i < armed.length; i++) {
-        const p = armed[i];
-        const e = exc[p.side === 'mid' ? 'red' : p.side];
-        const up = !reduced && Math.sin(t * 1.7 * p.sp + p.ph * 3) > 1.35 - e * 0.9;
-        m4.compose(pos.set(p.x, p.y, p.z), p.q, up ? scl.set(p.w, p.h, p.w) : scl.set(0, 0, 0));
-        arms.setMatrixAt(i, m4);
-      }
-      arms.instanceMatrix.needsUpdate = true;
+      if (!reduced) fan.forEach((b) => aimFan(b, t));
+      lightFlares();
       for (let i = 0; i < phoneN; i++) {
         let v;
         if (steady[i]) v = 0.75 + 0.2 * Math.sin(t * 0.7 + i);
@@ -1141,23 +1400,23 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring, ticker }) {
 
 // ------------------------------------------------------------------ the picture's last touch
 
-/** After the tone mapping: deep blacks, a gentle curve, cool shadows and warm highlights, a vignette
- *  and a little film grain. */
+/** After the tone mapping: deep but open blacks, a gentle S, saturation kept, a vignette and a little
+ *  film grain. */
 export const GradeShader = {
-  uniforms: { tDiffuse: { value: null }, time: TIME, grain: { value: 0.022 }, aspect: { value: 1.6 } },
+  uniforms: { tDiffuse: { value: null }, time: TIME, grain: { value: 0.018 }, aspect: { value: 1.6 } },
   vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: `uniform sampler2D tDiffuse; uniform float time; uniform float grain; uniform float aspect; varying vec2 vUv;
     float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
     void main() {
       vec3 c = texture2D(tDiffuse, vUv).rgb;
-      c = max(c - 0.02, 0.0) / 0.98;                          // the blacks: black
-      c = mix(c * c / 0.14, c, smoothstep(0.0, 0.14, c));      // a steep toe: shadows sink
-      c = mix(c, c * c * (3.0 - 2.0 * c), 0.18);               // a gentle S
+      c = max(c - 0.008, 0.0) / 0.992;                         // the blacks: black
+      c = mix(c, c * c * (3.0 - 2.0 * c), 0.22);               // a gentle S
       float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
-      c = mix(vec3(l), c, 0.96);
-      c += vec3(-0.006, -0.002, 0.008) * (1.0 - l) * smoothstep(0.0, 0.25, l) + vec3(0.012, 0.004, -0.01) * l;
+      c = mix(vec3(l), c, 1.12);                               // the neon a touch richer
+      c = max(c, 0.0);
+      c += vec3(-0.004, -0.001, 0.006) * (1.0 - l) * smoothstep(0.0, 0.25, l) + vec3(0.01, 0.004, -0.008) * l;
       vec2 d = (vUv - 0.5) * vec2(aspect, 1.0) / max(aspect, 1.0);
-      c *= mix(1.0, 0.42, smoothstep(0.28, 0.85, length(d) * 1.25));
+      c *= mix(1.0, 0.68, smoothstep(0.4, 0.95, length(d) * 1.25));
       float n = hash(vUv * vec2(1931.0, 1171.0) + fract(time * 7.13)) - 0.5;
       c += n * grain * (1.0 - l * 0.7);
       gl_FragColor = vec4(c, 1.0);
