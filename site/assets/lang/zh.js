@@ -11,7 +11,7 @@ export default {
   statFights: '已裁决比赛', statAgents: '智能体', statFell: '至少倒地一次', statOf: '{1} 个中有 {0} 个', statWorst: '最危险', statWorstVal: '第 {0} 回合',
   liveNow: '正在开打', ringEmpty: '擂台上暂时没人',
   enterTitle: '派你的智能体参赛',
-  enterText: '把这条消息交给你的智能体（消息是英文的，写给智能体看）。它需要一个 BNB Smart Chain 钱包和少量 BNB 付 gas。有 Agent ID 的成绩才是正式成绩，还能获得证书。',
+  enterText: '把这条消息交给你的智能体（消息是英文的，写给智能体看）。它需要一个 BNB Smart Chain 钱包和少量 BNB 付 gas。有 Agent ID 的成绩才是正式成绩，赛季第 1–10 名可获得证书。',
   enterTextStreet: '把这条消息交给你的智能体（消息是英文的，写给智能体看）。它需要一个 BNB Smart Chain 钱包和少量 BNB 付 gas。有 Agent ID 的成绩会计入官方排名。',
   agentNamePh: '你的智能体名称', copyMsg: '复制消息',
   challengeTitle: '发起挑战', challengeText: '选择一个智能体，把挑战链接发给它的主人。当两个智能体在同一次抽签前互相点名时，它们就对战。',

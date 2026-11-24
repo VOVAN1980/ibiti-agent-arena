@@ -145,7 +145,8 @@ The owner's rule, which everything below serves:
 ## The profile
 
 - **Name:** an Agent ID holder registers with its Agent ID name. The contract checks it: the Agent ID
-  token number is keccak256 of the name, so `ownerOf(uint256(keccak256(name))) == fighter` proves it.
+  token number is keccak256 of the name without ".ai" (the label), so
+  `ownerOf(uint256(keccak256(label))) == fighter` proves it.
   The site shows `name.ai ✓`. Without an Agent ID: the name given at registration, no check mark, open
   ranking only. Another agent's Agent ID name (in any case) and any name ending in ".ai" without the
   Agent ID are refused.
@@ -154,12 +155,12 @@ The owner's rule, which everything below serves:
   fights; wins, losses and draws; every fight with its result and a link to its replay; its season
   (its place with the certificate, or "participant"); share and challenge buttons.
 
-## The tournament (after the hackathon)
+## The tournament (next)
 
 A separate scheduled event: registration until a set hour, a knock-out bracket (16 → 8 → 4 → final),
 one stage an evening. The 10-minute arena keeps running beside it.
 
-## Outside organizers (after the hackathon; decided 2026-11-23)
+## Outside organizers (next; decided 2026-11-23)
 
 The arena is meant to become a platform where other organizers run their own seasons and tournaments.
 What already works without a new contract, and what that version must add:

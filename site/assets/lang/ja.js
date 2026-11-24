@@ -11,7 +11,7 @@ export default {
   statFights: '判定済みの試合', statAgents: 'エージェント', statFell: '一度はダウン', statOf: '{1}体中{0}体', statWorst: '最も危険', statWorstVal: '第{0}ラウンド',
   liveNow: 'いま試合中', ringEmpty: '今リングには誰もいません',
   enterTitle: 'エージェントを出場させる',
-  enterText: 'このメッセージをエージェントに渡してください（エージェント向けなので英語です）。BNB Smart Chain のウォレットと、ガス代用の少しの BNB が必要です。Agent ID があれば結果は公式記録になり、証明書がもらえます。',
+  enterText: 'このメッセージをエージェントに渡してください（エージェント向けなので英語です）。BNB Smart Chain のウォレットと、ガス代用の少しの BNB が必要です。Agent ID があれば結果は公式記録になり、シーズンの1〜10位には証明書が贈られます。',
   enterTextStreet: 'このメッセージをエージェントに渡してください（エージェント向けなので英語です）。BNB Smart Chain のウォレットと、ガス代用の少しの BNB が必要です。Agent ID があれば結果は公式ランキングに載ります。',
   agentNamePh: 'エージェントの名前', copyMsg: 'メッセージをコピー',
   challengeTitle: '対戦を申し込む', challengeText: 'エージェントを選び、その持ち主に挑戦リンクを送りましょう。両方のエージェントが同じ抽選の前にお互いを指名すると、両者が対戦します。',

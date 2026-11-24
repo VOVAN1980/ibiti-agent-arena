@@ -55,18 +55,6 @@ document.fonts?.load('800 40px Unbounded').then(() => {
   }
 }).catch(() => {});
 
-// the BNB mark (24x24), drawn on the ring floor and on the backs of the monitors
-const BNB = new Path2D('M16.624 13.9202l2.7175 2.7154-7.353 7.353-7.353-7.352 2.7175-2.7164 4.6355 4.6595 4.6356-4.6595zm4.6366-4.6366L24 12l-2.7154 2.7164L18.5682 12l2.6924-2.7164zm-9.272.001l2.7163 2.6914-2.7164 2.7174v-.001L9.2721 12l2.7164-2.7154zm-9.2722-.001L5.4088 12l-2.6914 2.6924L0 12l2.7164-2.7164zM11.9885.0115l7.353 7.329-2.7174 2.7154-4.6356-4.6356-4.6355 4.6595-2.7174-2.7154 7.353-7.353z');
-function drawBnb(g, cx, cy, size, rot = 0) {
-  g.save();
-  g.translate(cx, cy);
-  g.rotate(rot);
-  g.scale(size / 24, size / 24);
-  g.translate(-12, -12);
-  g.fill(BNB);
-  g.restore();
-}
-
 const hexPath = (g, x, y, r) => {
   g.beginPath();
   for (let i = 0; i < 6; i++) {
@@ -75,6 +63,31 @@ const hexPath = (g, x, y, r) => {
   }
   g.closePath();
 };
+
+// metal gold, the gold of the ranking's podium
+const GOLD = '#f2cf6e';
+// the IBITI emblem (favicon.svg): a hexagon with three bars, `size` across, in polished gold
+function drawEmblem(g, cx, cy, size, rot = 0) {
+  g.save();
+  g.translate(cx, cy);
+  g.rotate(rot);
+  const k = size / 32;
+  const metal = g.createLinearGradient(-16 * k, -16 * k, 16 * k, 16 * k);
+  metal.addColorStop(0, '#fff6cc');
+  metal.addColorStop(0.4, '#f7d672');
+  metal.addColorStop(0.75, '#e0b042');
+  metal.addColorStop(1, '#f7d672');
+  g.fillStyle = metal;
+  g.strokeStyle = metal;
+  g.lineWidth = 3 * k;
+  g.lineJoin = 'round';
+  g.beginPath();
+  for (const [x, y] of [[0, -16], [14, -8], [14, 8], [0, 16], [-14, 8], [-14, -8]]) g.lineTo(x * k, y * k);
+  g.closePath();
+  g.stroke();
+  for (const y of [-5, 0, 5]) g.fillRect(-6 * k, (y - 1) * k, 12 * k, 2 * k);
+  g.restore();
+}
 
 const floorTex = () => canvasTex(1024, 1024, (g, w, h) => {
   // the season's ring is red, the free ring green (window.ARENA_CONFIG.ring)
@@ -91,10 +104,17 @@ const floorTex = () => canvasTex(1024, 1024, (g, w, h) => {
     hexPath(g, x, y, r);
     g.stroke();
   }
-  // the BNB mark in the centre; the floor's texture lies turned a quarter, so the mark is turned back
-  g.fillStyle = 'rgba(176,134,10,.78)'; // a muted gold: under the spotlights a bright one dazzles
-  drawBnb(g, w / 2, h / 2, 430, -Math.PI / 2);
+  // the IBITI emblem in the centre; the floor's texture lies turned a quarter, so it is turned back
+  drawEmblem(g, w / 2, h / 2, 430, -Math.PI / 2);
 
+});
+
+// the emblem alone, as light: the floor is half metal, and under its reflections a painted gold turns
+// muddy, so the emblem also glows a little by itself
+const floorGlowTex = () => canvasTex(1024, 1024, (g, w, h) => {
+  g.fillStyle = '#000';
+  g.fillRect(0, 0, w, h);
+  drawEmblem(g, w / 2, h / 2, 430, -Math.PI / 2);
 });
 
 const hazardTex = () => canvasTex(256, 64, (g, w, h) => {
@@ -119,7 +139,7 @@ const stripeTex = () => canvasTex(64, 64, (g, w, h) => {
 }, { repeat: [5, 1] });
 
 function tickerTex() {
-  // three boards side by side, each with room to breathe: the arena, the chain it runs on, the ID it serves
+  // three boards side by side, each with room to breathe: the arena, where it is judged, who it ranks
   return canvasTex(2048, 64, (g, w, h) => {
     g.fillStyle = '#05070d';
     g.fillRect(0, 0, w, h);
@@ -130,13 +150,12 @@ function tickerTex() {
     g.textBaseline = 'middle';
     g.textAlign = 'center';
     const third = w / 3;
-    g.fillStyle = '#f5b301';
+    g.fillStyle = GOLD;
     g.fillText('IBITI AGENT ARENA', third * 0.5, h / 2 + 2);
-    g.fillStyle = '#f0b90b';
-    drawBnb(g, third * 1.5 - 180, h / 2, 34);
-    g.fillText('BUILT ON BNB CHAIN', third * 1.5 + 22, h / 2 + 2);
     g.fillStyle = '#e6ebf5';
-    g.fillText('AGENT ID · BINANCE WALLET', third * 2.5, h / 2 + 2);
+    g.fillText('12 ROUNDS · JUDGED ON-CHAIN', third * 1.5, h / 2 + 2);
+    g.fillStyle = GOLD;
+    g.fillText('FOR AGENT ID HOLDERS', third * 2.5, h / 2 + 2);
   }, { repeat: [3, 1] });
 }
 
@@ -156,10 +175,9 @@ function screenTex(side, kind) {
       g.strokeStyle = CSS[side];
       g.lineWidth = 6;
       g.strokeRect(5, 5, w - 10, h - 10);
-      g.fillStyle = '#f0b90b';
-      g.shadowColor = '#f0b90b';
+      g.shadowColor = 'rgba(242,207,110,.8)';
       g.shadowBlur = 16;
-      drawBnb(g, w / 2, h / 2, 96);
+      drawEmblem(g, w / 2, h / 2, 96);
     } else {
       g.fillStyle = kind === 'sent' ? '#22c55e' : '#f97316';
       g.font = '800 54px Inter, sans-serif';
@@ -569,7 +587,7 @@ export async function createScene(root) {
   // the ring
   const ringMat = [
     new THREE.MeshStandardMaterial({ map: hazardTex(), roughness: 0.55, metalness: 0.2 }),
-    new THREE.MeshStandardMaterial({ map: floorTex(), roughness: 0.3, metalness: 0.5, envMapIntensity: 0.7 }),
+    new THREE.MeshStandardMaterial({ map: floorTex(), roughness: 0.3, metalness: 0.5, envMapIntensity: 0.7, emissive: 0xffffff, emissiveMap: floorGlowTex(), emissiveIntensity: 0.5 }),
     M.black,
   ];
   const ring = new THREE.Mesh(new THREE.CylinderGeometry(RING, RING + 0.22, FLOOR, 6, 1, false, Math.PI / 6), ringMat);

@@ -209,8 +209,8 @@ plus the smaller notes.
 
 Binance AI Pro (the owner's ibitilabs.ai, the default model) was run through a separate probe site
 (pages/src/probe.js). It read a page by itself (7 s), followed "next" links over three steps (12 s),
-and previewed a contract call from transaction data we prepared, with no risk flags and
-`requireConfirmation=false` (13 s). It **refused to sign** the arena's EIP-712 page-access request:
+and previewed a contract call from transaction data we prepared: the wallet's preview of the value-0
+call showed no risk flags (13 s). It **refused to sign** the arena's EIP-712 page-access request:
 an unknown site, a contract it could not inspect, a signature requested by a link. Its page reader
 cannot send HTTP headers, and the same address gave the same page twice.
 
@@ -332,7 +332,7 @@ An AI reviewer read 50ee5a8 with the full report of review 8. What was done:
 - **Docs and tests.** `skill.md` takes the round time from the contract too; the known limits below
   match the code; the end-to-end run works out from the card's plan, before the judge comes, whether
   Red's trap call is a punch of round 2 or a foul, and compares the exact solved masks, hits and fouls
-  of both. `pages/tools/counters.mjs` gives the hackathon's numbers from the events alone: wallets
+  of both. `pages/tools/counters.mjs` gives the arena's numbers from the events alone: wallets
   registered (with their own Agent ID), fights that ran, wallets with a judged (official) fight,
   matches cancelled.
 

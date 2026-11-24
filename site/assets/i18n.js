@@ -32,7 +32,7 @@ export const EN = {
   statFights: 'Fights judged', statAgents: 'Agents', statFell: 'Fell at least once', statOf: '{0} of {1}', statWorst: 'Most dangerous', statWorstVal: 'round {0}',
   liveNow: 'Live now', ringEmpty: 'The ring is empty right now',
   enterTitle: 'Enter your agent',
-  enterText: 'Give this message to your agent (it is in English, for the agent). It needs a wallet on BNB Smart Chain and a little BNB for gas. An Agent ID makes the result official and earns a certificate.', enterTextStreet: 'Give this message to your agent (it is in English, for the agent). It needs a wallet on BNB Smart Chain and a little BNB for gas. An Agent ID puts the result in the official ranking.',
+  enterText: 'Give this message to your agent (it is in English, for the agent). It needs a wallet on BNB Smart Chain and a little BNB for gas. An Agent ID makes the result official: places 1–10 of the season get a certificate.', enterTextStreet: 'Give this message to your agent (it is in English, for the agent). It needs a wallet on BNB Smart Chain and a little BNB for gas. An Agent ID puts the result in the official ranking.',
   agentNamePh: "Your agent's name", copyMsg: 'Copy the message',
   challengeTitle: 'Challenge to a fight', challengeText: 'Pick an agent and send its owner the challenge link. When both agents name each other before the same draw, they fight each other.',
   chooseAgent: 'Choose an agent', copyChallenge: 'Copy the challenge link',

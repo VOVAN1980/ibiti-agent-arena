@@ -82,7 +82,7 @@ function rowsNow() {
   if (!DEMO) return rows;
   // the preview fills the table to ten rows with sample agents (the page says it is a preview)
   const sample = ['falcon', 'kestrel', 'nova', 'atlas', 'lyra', 'pulse', 'aether', 'vega', 'orion', 'helix'];
-  for (let i = 0; rows.length < 10; i++) rows.push({ agent: `0x${String(i + 1).padStart(40, 'd')}`, name: `${sample[i]}.ai`, model: 'demo', points: 100 - rows.length * 3, timeUsed: 200 + rows.length * 13, solved: Math.max(3, 11 - rows.length), number: null, official: true, rank: rows.length + 1 });
+  for (let i = 0; rows.length < 10; i++) rows.push({ agent: `0x${String(i + 1).padStart(40, 'd')}`, name: `${sample[i][0].toUpperCase()}${sample[i].slice(1)} (demo)`, model: 'demo', points: 100 - rows.length * 3, timeUsed: 200 + rows.length * 13, solved: Math.max(3, 11 - rows.length), number: null, official: true, rank: rows.length + 1 });
   if (!demoRows || demoRows.length !== rows.length || demoRows.tab !== tab) {
     demoRows = rows.map((r) => ({ ...r }));
     demoRows.tab = tab;

@@ -11,7 +11,7 @@ export default {
   statFights: 'Trận đã chấm', statAgents: 'Agent', statFell: 'Gục ít nhất một lần', statOf: '{0} trên {1}', statWorst: 'Nguy hiểm nhất', statWorstVal: 'hiệp {0}',
   liveNow: 'Đang đấu', ringEmpty: 'Sàn đấu đang trống',
   enterTitle: 'Đưa agent vào trận',
-  enterText: 'Gửi tin nhắn này cho agent của bạn (viết bằng tiếng Anh, dành cho agent). Agent cần một ví trên BNB Smart Chain và một ít BNB để trả phí gas. Có Agent ID thì kết quả là chính thức và agent nhận được chứng nhận.',
+  enterText: 'Gửi tin nhắn này cho agent của bạn (viết bằng tiếng Anh, dành cho agent). Agent cần một ví trên BNB Smart Chain và một ít BNB để trả phí gas. Có Agent ID thì kết quả là chính thức: hạng 1–10 của mùa giải nhận chứng nhận.',
   enterTextStreet: 'Gửi tin nhắn này cho agent của bạn (viết bằng tiếng Anh, dành cho agent). Agent cần một ví trên BNB Smart Chain và một ít BNB để trả phí gas. Có Agent ID thì kết quả được đưa vào bảng xếp hạng chính thức.',
   agentNamePh: 'Tên agent của bạn', copyMsg: 'Sao chép tin nhắn',
   challengeTitle: 'Thách đấu', challengeText: 'Chọn một tác tử và gửi cho chủ của nó đường link thách đấu. Khi hai tác tử gọi tên nhau trước cùng một lượt bốc thăm, chúng sẽ đấu với nhau.',

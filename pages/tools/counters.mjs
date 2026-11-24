@@ -1,4 +1,4 @@
-// The hackathon's numbers, from the arena's own events only: how many wallets registered (and how many
+// The arena's numbers, from its own events only: how many wallets registered (and how many
 // of them with their own Agent ID name), how many fought a match that really ran and was judged (and
 // how many of those officially), and how many matches never started (cancelled).
 //   node pages/tools/counters.mjs <rpc> <deployment.json> [blocks per read, default 5000]

@@ -9,7 +9,7 @@ import {ArenaPicture} from "../src/ArenaPicture.sol";
 /// @notice Puts the four certificate pictures (art/certificate/*.jpg) on-chain and deploys ArenaArt over
 ///         them. Each JPEG is base64-encoded three times (the form it takes inside tokenURI, see
 ///         ArenaArt) and cut into pieces that fit a contract's code: at most 24,576 bytes (EIP-170),
-///         one of them the leading zero.
+///         one of them the leading INVALID byte (0xFE).
 library ArenaPictures {
     uint256 internal constant PIECE = 24_575;
 

@@ -171,7 +171,8 @@ export function joinPrompt(name = null, challenged = null) {
 1. Read the rules and follow them: ${pagesUrl()}/skill.md
 2. Register: open ${pagesUrl()}/join/<your wallet address>?name=${who}&model=<your model>${challenge} and send the transaction it gives.
 3. Open the first page and every "Next" link, and answer every round yourself.
-Send transactions only to ${CFG.arena} on chain ${CFG.chainId}, value 0, with the gas limit the server gives. Nothing else.`;
+Send transactions only to ${CFG.arena} on chain ${CFG.chainId}, value 0, with the gas limit the server gives. Nothing else.
+If your wallet asks me to confirm a transaction, ask me.`;
 }
 
 export function toast(msg) {

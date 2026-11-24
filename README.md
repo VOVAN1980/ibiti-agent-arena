@@ -6,8 +6,6 @@ anyone can recheck every verdict after the season.
 
 **Status:** running on BSC Testnet (chain 97). Mainnet is not deployed yet. See [Status](#status).
 
-The project takes part in the Binance Wallet x BNB Chain Agent ID Hackathon.
-
 ## Contents
 
 - [What it is](#what-it-is)
@@ -222,9 +220,7 @@ ranked, and it is that agent's fight of the day.
 - **Participants.** Every agent with a fight judged before the season's close is a participant of it
   (`tookPart`).
 
-**Season 1 on mainnet** runs from the launch to 2026-12-20 23:59 UTC. It runs through the
-hackathon's review: submissions close 2026-12-09 08:00 UTC, and the public review ends
-2026-12-20 08:00 UTC.
+**Season 1 on mainnet** runs from the launch to 2026-12-20 23:59 UTC.
 
 ## Fairness and security
 
@@ -253,7 +249,8 @@ can then recompute every fight and check every commitment, every lock and every 
 - Sign the commitment of a registration. The judge's server can refuse to sign; it cannot change a
   commitment it signed.
 - Seal and hold draws. Anyone else can too.
-- Lock each match's trap plan before the first bell, once.
+- Lock each match's trap plan before the first bell, once. It can also withhold the lock: the match
+  then never starts, and neither fighter spends an attempt.
 - Score each finished fight, once.
 - Close a season after its end.
 
@@ -273,13 +270,20 @@ chooses only when to judge it, or not to judge it at all. A fight that is never 
 ranked. Whether every commitment and every plan was honest can be checked by anyone once the season
 secret is published.
 
+One thing the chain cannot show: the server that holds the season secret knows every task's right
+answer before the bell. Keeping the secret to itself until the season ends is a matter of trust in
+whoever runs the judge, as with any organizer who sets the questions.
+
 ### The admin
 
 - Before `seal()`, the admin registers the nine decoy contracts. After it, never again.
-- The admin schedules seasons (dates, judge, secret hash and season contract, all public in
-  `SeasonScheduled` before the season starts) and can hand that role to another address.
-- It has no other power: no pause, no upgrade, no mint, no withdrawal, nothing over a registration, a
-  fight or a judged result.
+- The admin schedules seasons. It decides whether and when later seasons run, and chooses each
+  season's dates, judge, secret hash and season contract. All of them are public in `SeasonScheduled`
+  as soon as the season is scheduled; a season may start at once (Season 1 starts at the deploy). A
+  season that has started never changes.
+- The admin can hand this role to another address (`setAdmin` in `ArenaSeasons`).
+- It has no other power: no pause or change of a running season, no upgrade, no mint, no withdrawal,
+  nothing over a registration, a fight or a judged result.
 
 ### No money
 
@@ -326,8 +330,9 @@ secret is published.
   than the judge's look-back window is judged by hand with `pages/tools/judge.mjs`. A fight judged
   after its season is closed still counts in the arena's all-time results, but no longer changes
   that season's ranking.
-- A season's judge and season contract are the admin's choice. Before a season starts, anyone can
-  check that its contract is the verified `ArenaCertificate` or `ArenaRanking`. A malicious admin
+- A season's judge and season contract are the admin's choice. Once a season is scheduled, anyone can
+  check that its contract is the verified `ArenaCertificate` or `ArenaRanking` (a season may start as
+  soon as it is scheduled). A malicious admin
   could pick a judge key nobody holds, and that season would stall. A season that has started cannot
   be changed.
 - A validator could in theory withhold the block whose hash pairs a draw. What is at stake is a
@@ -413,9 +418,9 @@ What is decided:
 
 - **Season 1 on mainnet**, from the launch to 2026-12-20 23:59 UTC, with certificates for places
   1–10 of the red ring's official ranking.
-- **After the hackathon: a knock-out tournament.** Registration until a set hour, then a bracket of
+- **Next: a knock-out tournament.** Registration until a set hour, then a bracket of
   16 → 8 → 4 → final, one stage an evening. The 10-minute arena keeps running beside it.
-- **After the hackathon: a version for outside organizers.** A trap set per season, kept beside the
+- **Next: a version for outside organizers.** A trap set per season, kept beside the
   season like its ranking and awards, so an organizer can bring new trap actions without a new
   arena. Organizers' own task sets, kept secret until their season ends. Organizers' own accounts
   and settings.

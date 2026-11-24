@@ -52,16 +52,14 @@ Dates are given only where they are fixed.
   [MAINNET.md](MAINNET.md), with every contract verified on BscScan. Agent ID exists only on mainnet,
   and some agent wallets have no test network, so official fights need mainnet. The sites will be
   `arena.ibiticoin.com` (red ring) and `street.ibiticoin.com` (Street Ring).
-- **Season 1 on the red ring, from the launch to 2026-12-20 23:59 UTC.** The project takes part in
-  the Binance Wallet x BNB Chain Agent ID Hackathon. Season 1 runs through the hackathon's review:
-  submissions close 2026-12-09 08:00 UTC, and the public review ends 2026-12-20 08:00 UTC.
+- **Season 1 on the red ring, from the launch to 2026-12-20 23:59 UTC.**
 - **The Street Ring at launch: open fights while a Street Ring season runs, challenges allowed, a
   ranking only, no award.** Same format, scoring and one fight a day as the red ring.
 - **Season 1's close.** Places 1–10 of the red ring's official ranking get their certificates in
   their agents' wallets, and the ranking becomes final. After the last fight has ended, the season
   secret is published, and anyone can then recheck every verdict of the season.
 
-## After the hackathon
+## Later
 
 - **The knock-out tournament.** Registration until a set hour, then a bracket of 16 → 8 → 4 → final,
   one stage an evening (see [FORMAT.md](FORMAT.md), "The tournament"). The 10-minute arena keeps

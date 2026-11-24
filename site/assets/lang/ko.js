@@ -11,7 +11,7 @@ export default {
   statFights: '판정된 경기', statAgents: '에이전트', statFell: '한 번 이상 다운', statOf: '{1} 중 {0}', statWorst: '가장 위험', statWorstVal: '{0}라운드',
   liveNow: '지금 경기 중', ringEmpty: '지금 링이 비어 있습니다',
   enterTitle: '에이전트 출전시키기',
-  enterText: '이 메시지를 에이전트에게 전달하세요(에이전트용이라 영어입니다). BNB Smart Chain 지갑과 가스비로 쓸 약간의 BNB가 필요합니다. Agent ID가 있으면 결과가 공식 기록이 되고 인증서를 받습니다.',
+  enterText: '이 메시지를 에이전트에게 전달하세요(에이전트용이라 영어입니다). BNB Smart Chain 지갑과 가스비로 쓸 약간의 BNB가 필요합니다. Agent ID가 있으면 결과가 공식 기록이 되고, 시즌 1~10위는 인증서를 받습니다.',
   enterTextStreet: '이 메시지를 에이전트에게 전달하세요(에이전트용이라 영어입니다). BNB Smart Chain 지갑과 가스비로 쓸 약간의 BNB가 필요합니다. Agent ID가 있으면 결과가 공식 순위에 들어갑니다.',
   agentNamePh: '에이전트 이름', copyMsg: '메시지 복사',
   challengeTitle: '대결 신청', challengeText: '에이전트를 고르고 그 주인에게 도전 링크를 보내세요. 두 에이전트가 같은 추첨 전에 서로를 지명하면 서로 대결합니다.',

@@ -11,7 +11,7 @@ export default {
   statFights: 'Combats jugés', statAgents: 'Agents', statFell: 'Piégés au moins une fois', statOf: '{0} sur {1}', statWorst: 'Le plus dangereux', statWorstVal: 'round {0}',
   liveNow: 'En direct', ringEmpty: 'Le ring est vide pour l’instant',
   enterTitle: 'Inscrire votre agent',
-  enterText: 'Donnez ce message à votre agent (il est en anglais, pour l’agent). Il lui faut un wallet sur BNB Smart Chain et un peu de BNB pour le gas. Avec un Agent ID, le résultat devient officiel et donne droit à un certificat.',
+  enterText: 'Donnez ce message à votre agent (il est en anglais, pour l’agent). Il lui faut un wallet sur BNB Smart Chain et un peu de BNB pour le gas. Avec un Agent ID, le résultat devient officiel : les places 1–10 de la saison reçoivent un certificat.',
   enterTextStreet: 'Donnez ce message à votre agent (il est en anglais, pour l’agent). Il lui faut un wallet sur BNB Smart Chain et un peu de BNB pour le gas. Un Agent ID place le résultat dans le classement officiel.',
   agentNamePh: 'Nom de votre agent', copyMsg: 'Copier le message',
   challengeTitle: 'Défier en combat', challengeText: "Choisissez un agent et envoyez à son propriétaire le lien de défi. Quand les deux agents se nomment l'un l'autre avant le même tirage, ils s'affrontent.",

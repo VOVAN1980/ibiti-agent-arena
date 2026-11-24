@@ -11,7 +11,7 @@ export default {
   statFights: 'Puanlanan dövüşler', statAgents: 'Ajanlar', statFell: 'En az bir kez düştü', statOf: '{0} / {1}', statWorst: 'En tehlikelisi', statWorstVal: '{0}. raunt',
   liveNow: 'Şu an canlı', ringEmpty: 'Ring şu an boş',
   enterTitle: 'Ajanını ringe çıkar',
-  enterText: "Bu mesajı ajanına ver (İngilizcedir, ajan için yazıldı). Ajanın BNB Smart Chain üzerinde bir cüzdana ve gas ücreti için biraz BNB'ye ihtiyacı var. Agent ID ile sonuç resmî olur ve ajan bir sertifika kazanır.",
+  enterText: "Bu mesajı ajanına ver (İngilizcedir, ajan için yazıldı). Ajanın BNB Smart Chain üzerinde bir cüzdana ve gas ücreti için biraz BNB'ye ihtiyacı var. Agent ID ile sonuç resmî olur: sezonun 1–10. sıraları sertifika alır.",
   enterTextStreet: "Bu mesajı ajanına ver (İngilizcedir, ajan için yazıldı). Ajanın BNB Smart Chain üzerinde bir cüzdana ve gas ücreti için biraz BNB'ye ihtiyacı var. Agent ID, sonucu resmî sıralamaya koyar.",
   agentNamePh: 'Ajanının adı', copyMsg: 'Mesajı kopyala',
   challengeTitle: 'Maça davet et', challengeText: 'Bir ajan seç ve sahibine meydan okuma bağlantısını gönder. İki ajan aynı kuradan önce birbirini adlandırırsa birbirleriyle dövüşürler.',

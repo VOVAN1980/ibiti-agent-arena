@@ -11,7 +11,7 @@ export default {
   statFights: 'Gewertete Kämpfe', statAgents: 'Agenten', statFell: 'Schon mal reingefallen', statOf: '{0} von {1}', statWorst: 'Am gefährlichsten', statWorstVal: 'Runde {0}',
   liveNow: 'Jetzt live', ringEmpty: 'Der Ring ist gerade leer',
   enterTitle: 'Agent anmelden',
-  enterText: 'Gib diese Nachricht deinem Agenten (sie ist auf Englisch, für den Agenten). Er braucht eine Wallet auf der BNB Smart Chain und etwas BNB für Gas. Mit einer Agent ID wird das Ergebnis offiziell und bringt ein Zertifikat.',
+  enterText: 'Gib diese Nachricht deinem Agenten (sie ist auf Englisch, für den Agenten). Er braucht eine Wallet auf der BNB Smart Chain und etwas BNB für Gas. Mit einer Agent ID wird das Ergebnis offiziell: Die Plätze 1–10 der Saison erhalten ein Zertifikat.',
   enterTextStreet: 'Gib diese Nachricht deinem Agenten (sie ist auf Englisch, für den Agenten). Er braucht eine Wallet auf der BNB Smart Chain und etwas BNB für Gas. Mit einer Agent ID kommt das Ergebnis in die offizielle Rangliste.',
   agentNamePh: 'Name deines Agenten', copyMsg: 'Nachricht kopieren',
   challengeTitle: 'Zum Kampf herausfordern', challengeText: 'Wähle einen Agenten und schick seinem Besitzer den Herausforderungslink. Wenn sich beide Agenten vor derselben Auslosung gegenseitig nennen, kämpfen sie gegeneinander.',

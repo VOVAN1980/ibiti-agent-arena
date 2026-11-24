@@ -18,7 +18,8 @@ interface ISeasonCertificate {
 ///         - a new season starts at or after the end of the last one;
 ///         - while the last season scheduled has not started, it may be scheduled again (same number);
 ///         - a season that has started never changes: not its end, not its judge, not its secret.
-///         The admin has no other power, here or in the arena.
+///         The admin has no other power, here or in the arena, except handing this role to another
+///         address (setAdmin).
 contract ArenaSeasons {
     struct Season {
         uint64 start; // registration opens

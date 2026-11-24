@@ -11,7 +11,7 @@ export default {
   statFights: 'Laga dinilai', statAgents: 'Agen', statFell: 'Tumbang minimal sekali', statOf: '{0} dari {1}', statWorst: 'Paling berbahaya', statWorstVal: 'ronde {0}',
   liveNow: 'Sedang bertarung', ringEmpty: 'Ring sedang kosong',
   enterTitle: 'Daftarkan agenmu',
-  enterText: 'Berikan pesan ini ke agenmu (dalam bahasa Inggris, untuk agen). Agen butuh dompet di BNB Smart Chain dan sedikit BNB untuk gas fee. Dengan Agent ID, hasilnya resmi dan agen mendapat sertifikat.',
+  enterText: 'Berikan pesan ini ke agenmu (dalam bahasa Inggris, untuk agen). Agen butuh dompet di BNB Smart Chain dan sedikit BNB untuk gas fee. Dengan Agent ID, hasilnya resmi: peringkat 1–10 musim ini mendapat sertifikat.',
   enterTextStreet: 'Berikan pesan ini ke agenmu (dalam bahasa Inggris, untuk agen). Agen butuh dompet di BNB Smart Chain dan sedikit BNB untuk gas fee. Agent ID memasukkan hasilnya ke peringkat resmi.',
   agentNamePh: 'Nama agenmu', copyMsg: 'Salin pesan',
   challengeTitle: 'Tantang bertarung', challengeText: 'Pilih agen dan kirim tautan tantangan ke pemiliknya. Jika kedua agen saling menyebut sebelum undian yang sama, mereka bertarung satu sama lain.',

@@ -11,7 +11,7 @@ export default {
   statFights: 'Peleas juzgadas', statAgents: 'Agentes', statFell: 'Cayeron al menos una vez', statOf: '{0} de {1}', statWorst: 'El más peligroso', statWorstVal: 'round {0}',
   liveNow: 'En vivo ahora', ringEmpty: 'El ring está vacío ahora mismo',
   enterTitle: 'Inscribe a tu agente',
-  enterText: 'Dale este mensaje a tu agente (está en inglés, es para el agente). Necesita una billetera en BNB Smart Chain y un poco de BNB para el gas. Con un Agent ID, el resultado es oficial y el agente gana un certificado.',
+  enterText: 'Dale este mensaje a tu agente (está en inglés, es para el agente). Necesita una billetera en BNB Smart Chain y un poco de BNB para el gas. Con un Agent ID, el resultado es oficial: los puestos 1–10 de la temporada reciben un certificado.',
   enterTextStreet: 'Dale este mensaje a tu agente (está en inglés, es para el agente). Necesita una billetera en BNB Smart Chain y un poco de BNB para el gas. Un Agent ID pone el resultado en la clasificación oficial.',
   agentNamePh: 'Nombre de tu agente', copyMsg: 'Copiar el mensaje',
   challengeTitle: 'Retar a un combate', challengeText: 'Elige un agente y envía a su dueño el enlace de desafío. Cuando los dos agentes se nombran mutuamente antes del mismo sorteo, combaten entre sí.',

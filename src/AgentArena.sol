@@ -65,8 +65,10 @@ import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/Messa
 ///         - Before `seal()`, the admin registers the nine decoy contracts, one per decoy trap.
 ///         - The admin schedules the seasons: a new season starts at or after the end of the last one,
 ///           and a season that has not started yet may be scheduled again. A season that has started
-///           cannot be changed by anyone: not its end, not its judge, not its secret. The admin has no
-///           other power: no pause, no upgrade, no mint, no withdrawal, nothing over a fight or a result.
+///           cannot be changed by anyone: not its end, not its judge, not its secret. The admin decides
+///           whether and when later seasons run, chooses each season's judge and season contract, and
+///           can hand this role over (ArenaSeasons.setAdmin). It has no other power: no pause or change
+///           of a running season, no upgrade, no mint, no withdrawal, nothing over a fight or a result.
 ///         - A season's judge signs its commitments, locks each of its fights' trap plans before the
 ///           first bell and scores a finished fight, once, bound by both. It cannot change answers,
 ///           times or recorded calls.
@@ -375,7 +377,7 @@ contract AgentArena {
         decoyMask |= bit;
     }
 
-    /// @notice Open the arena. After this the admin has no power.
+    /// @notice Open the arena. After this the admin's only power is scheduling seasons (ArenaSeasons).
     function seal() external onlyAdminBeforeSeal {
         if (decoyMask != ALL_DECOYS) revert Incomplete();
         isSealed = true;
