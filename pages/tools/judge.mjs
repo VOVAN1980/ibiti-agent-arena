@@ -24,6 +24,9 @@ const env = {
   DEPLOY_BLOCK: dep.block ?? 0,
   BLOCKS_PER_WEEK: process.env.BLOCKS_PER_WEEK ?? 604800,
   LOOKBACK_BLOCKS: process.env.LOOKBACK_BLOCKS ?? 20000,
+  LOG_CHUNK: process.env.LOG_CHUNK ?? 5000,
+  // no Cloudflare subrequest cap on a computer: an outage's backlog is judged in one go
+  SUBREQ_BUDGET: process.env.SUBREQ_BUDGET ?? 100000,
   SECRET: readFileSync(secretPath, 'utf8').trim(),
   JUDGE_KEY: readFileSync(keyPath, 'utf8').trim(),
 };

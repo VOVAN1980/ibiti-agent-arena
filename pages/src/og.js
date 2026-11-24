@@ -3,74 +3,73 @@
 // tags into the page itself. A link to a fight gets the fight's own title, read from the chain:
 // "Night Owl 86 : 78 Iron Fox". Previews are in English: a crawler has no language.
 
-const TOPIC = {
-  started: '0x1f0a803b340f18c069591b04eca4f49892175c5fcb11f82bd92c7e01eef3498b', // Started(address,uint32,bytes32,bool,bytes32,bytes32,address,uint32)
-  judged: '0x72e2438d123b5dc0eb021a0e91584f9268b8dbc84049b95899e13a1697bb2f2f',
-  registered: '0xf2c78f5b308dd0ce240b8977e6c0ab5c62ba3ba48ba9972f695f3529ae589784', // Registered(address,bytes32,bytes32,bool,address)
-};
-const FIGHT_OF = '0x32799e5d';
-const ROUND_TIME = '0xee5f8c8f'; // roundTime()
+import { makeChain, BREAK } from './chain.js';
+
 const ARENA = 'IBITI Agent Arena';
 const TAGLINE = '12 rounds of real drainer scams, live 1 on 1, no hints, judged on-chain.';
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-const word = (n) => BigInt(n).toString(16).padStart(64, '0');
-const addrWord = (a) => a.toLowerCase().replace(/^0x/, '').padStart(64, '0');
-const words = (hex) => hex.replace(/^0x/, '').match(/.{64}/g) ?? [];
+/** A bytes32 word of text (a name) as a string. */
 function text32(w) {
-  const bytes = (w.match(/../g) ?? []).map((x) => parseInt(x, 16)).filter((b) => b !== 0);
+  const bytes = (String(w ?? '').replace(/^0x/, '').match(/../g) ?? []).map((x) => parseInt(x, 16)).filter((b) => b !== 0);
   return new TextDecoder().decode(new Uint8Array(bytes)).trim();
 }
 
-async function rpc(url, method, params) {
-  const j = await (await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) })).json();
-  if (j.error) throw new Error(`${method}: ${j.error.message}`);
-  return j.result;
+/**
+ * The points of a judged fight, as the arena gives them (AgentArena._roundPoints and _points): a
+ * solved round (its bit in `correct`) scores 4, plus 2 for each of its three traps not taken (bits
+ * 3(r-1)..3(r-1)+2 of `hits`); 2 off for each foul; never below 0. At most 120. A copy for previews
+ * only: the ranking reads the contract's own numbers.
+ */
+export function pointsOf({ correct, hits, fouls }) {
+  let points = 0;
+  for (let r = 0; r < 12; r++) {
+    if (((Number(correct) >> r) & 1) === 0) continue;
+    points += 4;
+    for (let i = 0; i < 3; i++) if (((BigInt(hits) >> BigInt(3 * r + i)) & 1n) === 0n) points += 2;
+  }
+  return Math.max(0, points - 2 * Number(fouls));
 }
 
-/** A fighter's name and judged points in one fight, from its Started and Judged events. */
-async function side(env, agent, number) {
-  const topics = (t0) => [t0, '0x' + addrWord(agent), '0x' + word(number)];
-  const from = '0x' + BigInt(env.deployBlock ?? 0).toString(16);
-  const [started, judged] = await Promise.all([TOPIC.started, TOPIC.judged].map((t0) => rpc(env.rpc, 'eth_getLogs', [{ address: env.arena, fromBlock: from, toBlock: 'latest', topics: topics(t0) }])));
-  let name = started.length ? text32(words(started[0].data)[2]) : '';
-  if (!name) {
-    // the first agent of a match gave its name when it joined the queue
-    const waited = await rpc(env.rpc, 'eth_getLogs', [{ address: env.arena, fromBlock: from, toBlock: started[0]?.blockNumber ?? 'latest', topics: [TOPIC.registered, '0x' + addrWord(agent)] }]);
-    if (waited.length) name = text32(words(waited[waited.length - 1].data)[0]);
-  }
-  const points = judged.length ? Number(BigInt('0x' + words(judged[0].data)[1])) : null;
-  return { name: name || `${agent.slice(0, 6)}…${agent.slice(-4)}`, points };
+// Everything is read with plain calls of the arena's views: no log reads. A preview's logs would have
+// to reach from the arena's first block to the latest one in one request, which no public node serves
+// a few hours after the deployment, and link-preview bots would spend log reads on every crawl.
+
+/** A fighter's name and points in one fight: its name from the fight itself (from its registration if
+ *  the fight has none), its points once it is judged, 0 for a fight that is over without an answer. */
+async function side(chain, clock, agent, number) {
+  const f = await chain.fightOf(agent, number);
+  const name = text32(f.name) || text32((await chain.entry(agent)).name);
+  let points = f.judged ? pointsOf(f) : null;
+  if (points == null && (await silentOver(f, clock))) points = 0;
+  return { name: name || `${agent.slice(0, 6)}…${agent.slice(-4)}`, points, f };
 }
 
 /** A fight that is over without a single answer: the judge never scores it, its result is 0. */
-async function silentOver(env, agent, number) {
-  const w = words(await rpc(env.rpc, 'eth_call', [{ to: env.arena, data: FIGHT_OF + addrWord(agent) + word(number) }, 'latest']));
-  const n = (i) => Number(BigInt('0x' + w[i]));
-  if (n(1) === 0 || n(6) > 1) return false; // no fight, or it answered something: the judge scores it
-  if (n(2) !== 0) return true; // finished
-  const now = parseInt((await rpc(env.rpc, 'eth_getBlockByNumber', ['latest', false])).timestamp, 16);
-  const roundTime = Number(BigInt(await rpc(env.rpc, 'eth_call', [{ to: env.arena, data: ROUND_TIME }, 'latest'])));
-  return now > n(9) + (12 - n(15)) * (roundTime + 10) + roundTime; // round 12 has closed
+async function silentOver(f, clock) {
+  if (f.startedAt === 0 || f.round > 1) return false; // no fight, or it answered something: the judge scores it
+  if (f.finishedAt !== 0) return true; // finished
+  const { now, roundTime } = await clock();
+  return now > f.clockAt + (12 - f.clockRound) * (roundTime + BREAK) + roundTime; // round 12 has closed
 }
 
 /** What a preview of this address says. */
 async function describe(url, env) {
   const page = url.pathname.replace(/^\//, '') || 'index.html';
   const a = (url.searchParams.get('a') || '').toLowerCase();
+  const chain = makeChain({ rpc: env.rpc, arena: env.arena, fetchFn: env.fetchFn });
+  let time = null; // the chain's clock and the round time, read once, only if a fight needs them
+  const clock = () => (time ??= Promise.all([chain.now(), chain.roundTime()]).then(([now, roundTime]) => ({ now, roundTime })));
   if (page === 'match.html' && /^0x[0-9a-f]{40}$/.test(a)) {
     const n = Number(url.searchParams.get('n') || 0);
-    const w = words(await rpc(env.rpc, 'eth_call', [{ to: env.arena, data: FIGHT_OF + addrWord(a) + word(n) }, 'latest']));
-    const opp = '0x' + w[14].slice(24);
-    const me = await side(env, a, n);
-    if (me.points == null && (await silentOver(env, a, n))) me.points = 0;
+    const me = await side(chain, clock, a, n);
+    const opp = me.f.opponent;
     if (/^0x0{40}$/.test(opp)) {
       return me.points == null
         ? { title: `${me.name} in the ring — ${ARENA}`, text: `A solo fight: ${TAGLINE}` }
         : { title: `${me.name} scored ${me.points}/120 — ${ARENA}`, text: `Watch the replay. ${TAGLINE}` };
     }
-    const you = await side(env, opp, Number(BigInt('0x' + w[16])));
-    if (you.points == null && (await silentOver(env, opp, Number(BigInt('0x' + w[16]))))) you.points = 0;
+    const you = await side(chain, clock, opp, me.f.opponentNumber);
     if (me.points == null || you.points == null) return { title: `${me.name} vs ${you.name} — ${ARENA}`, text: `A live fight: ${TAGLINE}` };
     const [win, lose] = me.points >= you.points ? [me, you] : [you, me];
     return {
@@ -79,13 +78,9 @@ async function describe(url, env) {
     };
   }
   if (page === 'agent.html' && /^0x[0-9a-f]{40}$/.test(a)) {
-    const from = '0x' + BigInt(env.deployBlock ?? 0).toString(16);
-    const named = [];
-    for (const t0 of [TOPIC.started, TOPIC.registered]) {
-      const logs = await rpc(env.rpc, 'eth_getLogs', [{ address: env.arena, fromBlock: from, toBlock: 'latest', topics: [t0, '0x' + addrWord(a)] }]);
-      for (const l of logs) named.push(text32(words(l.data)[t0 === TOPIC.started ? 2 : 0]));
-    }
-    const name = named.filter(Boolean).pop() ?? '';
+    // the name of its latest fight, else the one it registered under
+    const n = await chain.lastFight(a);
+    const name = (n > 0 ? text32((await chain.fightOf(a, n)).name) : '') || text32((await chain.entry(a)).name);
     if (name) return { title: `${name} — ${ARENA}`, text: `Can your AI agent beat ${name}? ${TAGLINE}` };
   }
   const titles = { 'rating.html': `Rating — ${ARENA}`, 'rules.html': `Rules — ${ARENA}` };
@@ -94,7 +89,8 @@ async function describe(url, env) {
 
 /**
  * The page's HTML with its preview tags.
- * env: { rpc, arena, deployBlock, site } — `site` is the public address of the site (no trailing slash).
+ * env: { rpc, fetchFn, arena, site } — `site` is the public address of the site (no trailing slash);
+ * `fetchFn` reads the chain (host.js gives the site's nodes through rpc.js; the default is fetch to `rpc`).
  */
 export async function withPreview(html, url, env) {
   let d;

@@ -109,6 +109,31 @@
       "ratelimits": [{ "name": "RPC_LIMIT", "namespace_id": "1003", "simple": { "limit": 600, "period": 60 } }],
       "vars": {
         "RPC_URL": "https://bsc-rpc.publicnode.com",
+        // the judge's and the fighters' nodes, in order (src/rpc.js): calls and sends start at the BNB
+        // dataseeds (they serve no logs at all), logs go to publicnode (50000 blocks a request), then
+        // 48.club (250 blocks; an MEV relay, so it never gets a transaction) and thirdweb (1000 blocks,
+        // an archive). Never list meowrpc (fake transaction hashes), drpc or blastapi. Before adding a
+        // log node, check that a range past its head is an error there, not silently cut short.
+        "RPC_URLS": [
+          { "url": "https://bsc-dataseed.bnbchain.org", "logs": 0, "send": true },
+          { "url": "https://bsc-dataseed2.defibit.io", "logs": 0, "send": true },
+          { "url": "https://bsc-rpc.publicnode.com", "logs": 50000, "send": true },
+          { "url": "https://rpc-bsc.48.club", "logs": 250, "send": false },
+          { "url": "https://56.rpc.thirdweb.com", "logs": 1000, "send": false }
+        ],
+        // the site's reads and link previews: other nodes first, so the audience spends no judge quota
+        "SITE_RPC_URLS": [
+          { "url": "https://bsc-rpc.publicnode.com", "logs": 50000 },
+          { "url": "https://rpc-bsc.48.club", "logs": 250 },
+          { "url": "https://bsc-dataseed1.ninicoin.io", "logs": 0 }
+        ],
+        // the judge's look-back window in requests of 5000 blocks: publicnode answers 5000 blocks of the
+        // arena in about 1.6 s, 20000 in 9-14 s (too close to a cron run's time, and only one node can
+        // serve that width)
+        "LOG_CHUNK": 5000,
+        // the judge's chain requests a run: Workers Free allows 50 subrequests an invocation (a few
+        // hundred is fine on Workers Paid)
+        "SUBREQ_BUDGET": 45,
         "CHAIN_ID": 56,
         "ARENA": "0xaC90EcF08C1429A00D4661C290d64b52c7f79536",
         "SEASON_BOOK": "0x4Fd093cBfF62c11d12292B3F6C9a8ce9ac6f823C",
@@ -141,6 +166,31 @@
       "ratelimits": [{ "name": "RPC_LIMIT", "namespace_id": "1004", "simple": { "limit": 600, "period": 60 } }],
       "vars": {
         "RPC_URL": "https://bsc-rpc.publicnode.com",
+        // the judge's and the fighters' nodes, in order (src/rpc.js): calls and sends start at the BNB
+        // dataseeds (they serve no logs at all), logs go to publicnode (50000 blocks a request), then
+        // 48.club (250 blocks; an MEV relay, so it never gets a transaction) and thirdweb (1000 blocks,
+        // an archive). Never list meowrpc (fake transaction hashes), drpc or blastapi. Before adding a
+        // log node, check that a range past its head is an error there, not silently cut short.
+        "RPC_URLS": [
+          { "url": "https://bsc-dataseed.bnbchain.org", "logs": 0, "send": true },
+          { "url": "https://bsc-dataseed2.defibit.io", "logs": 0, "send": true },
+          { "url": "https://bsc-rpc.publicnode.com", "logs": 50000, "send": true },
+          { "url": "https://rpc-bsc.48.club", "logs": 250, "send": false },
+          { "url": "https://56.rpc.thirdweb.com", "logs": 1000, "send": false }
+        ],
+        // the site's reads and link previews: other nodes first, so the audience spends no judge quota
+        "SITE_RPC_URLS": [
+          { "url": "https://bsc-rpc.publicnode.com", "logs": 50000 },
+          { "url": "https://rpc-bsc.48.club", "logs": 250 },
+          { "url": "https://bsc-dataseed1.ninicoin.io", "logs": 0 }
+        ],
+        // the judge's look-back window in requests of 5000 blocks: publicnode answers 5000 blocks of the
+        // arena in about 1.6 s, 20000 in 9-14 s (too close to a cron run's time, and only one node can
+        // serve that width)
+        "LOG_CHUNK": 5000,
+        // the judge's chain requests a run: Workers Free allows 50 subrequests an invocation (a few
+        // hundred is fine on Workers Paid)
+        "SUBREQ_BUDGET": 45,
         "CHAIN_ID": 56,
         "ARENA": "0x3271fd3aBFbC24FCa71bC9E9019114F06d4b222E",
         "SEASON_BOOK": "0xc318F6135bE6d1efBa878203E5e70a3EB830d0b1",

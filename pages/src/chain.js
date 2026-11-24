@@ -110,7 +110,7 @@ export function makeChain({ rpc, arena, fetchFn }) {
      *  challenge, pos, registeredAt, verified, active, pageKeyHash, season). */
     async entry(agent) {
       const w = words(await call(SEL.entries + word(agent)));
-      return { challenge: '0x' + w[3].slice(24), waited: Number(big(w[5])), registeredAt: Number(big(w[5])), verified: big(w[6]) !== 0n, active: big(w[7]) !== 0n, pageKeyHash: '0x' + (w[8] ?? '0'.repeat(64)), season: Number(big(w[9] ?? '0')) };
+      return { name: '0x' + w[0], challenge: '0x' + w[3].slice(24), waited: Number(big(w[5])), registeredAt: Number(big(w[5])), verified: big(w[6]) !== 0n, active: big(w[7]) !== 0n, pageKeyHash: '0x' + (w[8] ?? '0'.repeat(64)), season: Number(big(w[9] ?? '0')) };
     },
     /** When the next draw may be held (0 before the first registration). */
     /** The answer hashes of a fight, round 1 first (zero: not answered). */

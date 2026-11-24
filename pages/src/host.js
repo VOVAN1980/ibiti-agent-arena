@@ -9,15 +9,17 @@
 //
 // And every minute (a Cron Trigger) the judge scores the fights that are over (judge-cron.js).
 //
-// Settings (wrangler.jsonc vars): RPC_URL, ARENA, DECOYS, CHAIN_ID, DEPLOY_BLOCK, BLOCKS_PER_WEEK,
-// ROUND_TIME, and SITE_RPC_URL (optional: another node for the site's reads, so the audience never
-// spends the judge's quota). RPC_LIMIT (a rate-limit binding) caps each visitor's reads. The season secret and the judge's key are Worker secrets (`wrangler secret put SECRET`,
+// Settings (wrangler.jsonc vars): RPC_URL (and RPC_URLS: the judge's and the fighters' nodes in order,
+// see rpc.js), ARENA, DECOYS, CHAIN_ID, DEPLOY_BLOCK, BLOCKS_PER_WEEK, ROUND_TIME, and SITE_RPC_URLS or
+// SITE_RPC_URL (optional: other nodes for the site's reads and link previews, so the audience never
+// spends the judge's quota; without them the site reads through RPC_URLS / RPC_URL). RPC_LIMIT (a rate-limit binding) caps each visitor's reads. The season secret and the judge's key are Worker secrets (`wrangler secret put SECRET`,
 // `wrangler secret put JUDGE_KEY`), never vars. Static files are served straight from Cloudflare's
 // asset store; only the HTML pages and the routes above run this code (assets.run_worker_first).
 
 import { handleFight } from './worker.js';
 import { withPreview } from './og.js';
 import { judgeRun } from './judge-cron.js';
+import { rpcFetch, endpointsOf, COOLDOWNS } from './rpc.js';
 
 const PAGES = /^\/(home|index|match|rating|agent|rules)\.html$/;
 // only reading methods pass through to the node
@@ -146,13 +148,24 @@ export function siteConfig(env) {
   })};\n`;
 }
 
+/** The site's reads (the /rpc window, the calendar, link previews): over SITE_RPC_URLS (or SITE_RPC_URL),
+ *  else the judge's nodes, with short timeouts. A wide log range can go only to a node that serves it
+ *  in at most four pieces (publicnode for a 50000-block replay chunk; 48.club takes the small polls),
+ *  and it gets up to 25 s by its width: publicnode answers 50000 blocks of the arena in 10-19 s. */
+function siteFetch(env) {
+  const site = endpointsOf(env, 'SITE_RPC_URL');
+  return rpcFetch(site.length ? site : endpointsOf(env, 'RPC_URL'), { timeoutMs: 2500, logsTimeoutMs: 25000, tries: 3, maxPieces: 4, cooldowns: COOLDOWNS });
+}
+
 /** The arena's season calendar and the certificate contract of each of its seasons, read from the chain
- *  (kept a minute). An arena without a calendar (an earlier one) gives none. */
-let calendar = { at: 0, book: null, certs: [] };
+ *  (kept a minute). An arena without a calendar (an earlier one) gives none; after a failed read that
+ *  empty answer is kept 5 s only, so one rate-limited read does not refuse the season's views for a minute. */
+let calendar = { at: 0, ttl: 0, book: null, certs: [] };
 async function calendarOf(env) {
-  if (Date.now() - calendar.at < 60000) return calendar;
+  if (Date.now() - calendar.at < calendar.ttl) return calendar;
+  const fetchFn = siteFetch(env);
   const call = async (to, data) => {
-    const r = await (await fetch(env.SITE_RPC_URL ?? env.RPC_URL, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to, data }, 'latest'] }) })).json();
+    const r = await (await fetchFn('rpc', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to, data }, 'latest'] }) })).json();
     if (r.error || typeof r.result !== 'string' || r.result.length < 66) throw new Error('no answer');
     return r.result.slice(2);
   };
@@ -161,9 +174,9 @@ async function calendarOf(env) {
     const count = Math.min(parseInt(await call(book, '0x715f8fe8'), 16), 500); // seasonCount()
     const certs = [];
     for (let n = 1; n <= count; n++) certs.push('0x' + (await call(book, '0x6ebaeda9' + n.toString(16).padStart(64, '0'))).slice(64 * 4 + 24, 64 * 5)); // seasons(n).certificate
-    calendar = { at: Date.now(), book: book.toLowerCase(), certs: certs.map((x) => x.toLowerCase()) };
+    calendar = { at: Date.now(), ttl: 60000, book: book.toLowerCase(), certs: certs.map((x) => x.toLowerCase()) };
   } catch {
-    calendar = { at: Date.now(), book: null, certs: [] };
+    calendar = { at: Date.now(), ttl: 5000, book: null, certs: [] };
   }
   return calendar;
 }
@@ -223,7 +236,8 @@ async function rpc(request, env) {
     params = [{ address, fromBlock: '0x' + from.toString(16), toBlock: '0x' + to.toString(16), ...(Array.isArray(p0.topics) ? { topics: p0.topics } : {}) }];
   }
   if (q.method === 'eth_getBlockByNumber' && (Array.isArray(q.params) ? q.params[1] : false) !== false) return refuse('no full blocks');
-  const res = await fetch(env.SITE_RPC_URL ?? env.RPC_URL, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: q.id ?? 1, method: q.method, params }) });
+  // to the first site node that can serve it; on a rate limit or a lagging node, the next one
+  const res = await siteFetch(env)('rpc', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: q.id ?? 1, method: q.method, params }) });
   return new Response(await res.text(), { status: res.status, headers: { ...NO_STORE, 'content-type': 'application/json' } });
 }
 
@@ -238,7 +252,7 @@ export default {
         // the page, with the tags a chat app reads for its link preview
         const page = await env.ASSETS.fetch(new Request(new URL(path, url.origin)));
         if (!page.ok) return page;
-        const html = await withPreview(await page.text(), new URL(path + url.search, url.origin), { rpc: env.RPC_URL, arena: env.ARENA, deployBlock: Number(env.DEPLOY_BLOCK ?? 0), site: url.origin });
+        const html = await withPreview(await page.text(), new URL(path + url.search, url.origin), { rpc: env.RPC_URL, fetchFn: siteFetch(env), arena: env.ARENA, site: url.origin });
         return new Response(html, { headers: { ...NO_STORE, 'content-type': 'text/html; charset=utf-8' } });
       }
       return await handleFight(url, { ...env, SITE_URL: env.SITE_URL ?? url.origin }, { authorization: request.headers.get('authorization') });

@@ -59,7 +59,7 @@ createServer(async (req, res) => {
     } else if (/^\/(home|index|match|rating|agent|rules)\.html$/.test(path)) {
       // the page, with the tags a chat app reads for its link preview
       const site = `http://${req.headers.host ?? `127.0.0.1:${port}`}`;
-      const html = await withPreview(readFileSync(join(SITE, path), 'utf8'), new URL(path + url.search, site), { rpc: cfg.rpc, arena: dep.arena, deployBlock: 0, site });
+      const html = await withPreview(readFileSync(join(SITE, path), 'utf8'), new URL(path + url.search, site), { rpc: cfg.rpc, arena: dep.arena, site });
       r = new Response(html, { headers: { 'content-type': TYPES['.html'], 'cache-control': 'no-store' } });
     } else if (path.startsWith('/assets/')) {
       const file = normalize(join(SITE, path));

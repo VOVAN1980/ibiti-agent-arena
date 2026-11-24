@@ -22,7 +22,8 @@ const keys = arenaKeys(secret);
 const cast = (...a) => execFileSync('cast', a, { encoding: 'utf8' }).trim();
 const chainId = Number(cast('chain-id', '--rpc-url', rpc));
 const env = { RPC_URL: rpc, ARENA: dep.arena, DECOYS: dep.decoys, SECRET: secret, CHAIN_ID: chainId, JUDGE_KEY: judgeKey };
-const judgeEnv = { RPC_URL: rpc, ARENA: dep.arena, CHAIN_ID: chainId, DEPLOY_BLOCK: dep.block ?? 0, SECRET: secret, JUDGE_KEY: judgeKey };
+// a local node mines on demand: no head lag to keep clear of, and no Cloudflare subrequest cap
+const judgeEnv = { RPC_URL: rpc, ARENA: dep.arena, CHAIN_ID: chainId, DEPLOY_BLOCK: dep.block ?? 0, SECRET: secret, JUDGE_KEY: judgeKey, HEAD_MARGIN: 0, SUBREQ_BUDGET: 100000 };
 const chain = makeChain({ rpc, arena: dep.arena });
 const fighters = [keyA, keyB].map((key) => ({ key, agent: cast('wallet', 'address', '--private-key', key).toLowerCase() }));
 const send = (f, to, sig, ...args) => cast('send', '--rpc-url', rpc, '--private-key', f.key, to, sig, ...args);

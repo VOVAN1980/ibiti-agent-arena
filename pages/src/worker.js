@@ -29,7 +29,7 @@
 // refuses to give one, and rightly).
 //
 // Environment:
-//   RPC_URL   BNB Smart Chain JSON-RPC endpoint
+//   RPC_URL   BNB Smart Chain JSON-RPC endpoint (RPC_URLS, if set: several nodes in order, see rpc.js)
 //   ARENA     AgentArena address
 //   DECOYS    JSON { "13": "0x…", … } — the nine decoy contracts
 //   SECRET    the season secret (32 bytes of hex): every fight's plan, codes and PASS rounds are derived
@@ -42,6 +42,7 @@
 //             readable (their links name them); served only while this server's secret is theirs
 
 import { makeChain, clockOf, BREAK } from './chain.js';
+import { rpcFetch, endpointsOf, COOLDOWNS } from './rpc.js';
 import { renderRound } from './render.js';
 import { skillMd } from './skill.js';
 import { arenaKeys } from './keys.js';
@@ -248,12 +249,21 @@ function archived(env, address) {
   return (Array.isArray(list) ? list : []).find((x) => String(x?.arena).toLowerCase() === address) ?? null;
 }
 
+/** The chain reads of one request: over the nodes of RPC_URLS (or RPC_URL), with short timeouts. A
+ *  fighter's round lasts 60 s, so a page fails after six seconds at most rather than hang on one node;
+ *  one rate-limited node is not a 502. */
+function requestFetch(env) {
+  return rpcFetch(endpointsOf(env, 'RPC_URL'), { timeoutMs: 2500, tries: 3, deadline: Date.now() + 6000, cooldowns: COOLDOWNS });
+}
+
 /** deps: { chain } to read the arena through, { authorization } the request's Authorization header,
- *  { fetchFn } for the Agent ID registry read when `chain` has no agentIdHolder (tests). */
+ *  { fetchFn } instead of the nodes of RPC_URLS (tests): it reads the arena when `chain` is not given,
+ *  and the Agent ID registry when `chain` has no agentIdHolder. */
 export async function handleFight(url, env, deps = {}) {
+  deps = { ...deps, fetchFn: deps.fetchFn ?? requestFetch(env) };
   if (url.pathname === '/skill.md') {
     // the draw and the pause between fights as the arena itself has them (the defaults if unreadable)
-    const reader = deps.chain ?? makeChain({ rpc: env.RPC_URL, arena: env.ARENA });
+    const reader = deps.chain ?? makeChain({ rpc: env.RPC_URL, arena: env.ARENA, fetchFn: deps.fetchFn });
     const settings = reader.timings ? await reader.timings().catch(() => ({})) : {};
     const roundTime = await roundTimeOf(reader, env.ARENA).catch(() => Number(env.ROUND_TIME ?? 60));
     const body = skillMd({ arena: env.ARENA, chainId: env.CHAIN_ID ?? 56, site: env.SITE_URL ?? url.origin, roundTime, challenges: challengesOpen(env), awards: env.RING !== 'green', ...settings });
@@ -282,7 +292,7 @@ export async function handleFight(url, env, deps = {}) {
     return text(410, 'This arena ran an earlier task set and is closed to new fights on this server. A new season arena runs the current tasks.');
   }
 
-  const chain = deps.chain ?? makeChain({ rpc: env.RPC_URL, arena });
+  const chain = deps.chain ?? makeChain({ rpc: env.RPC_URL, arena, fetchFn: deps.fetchFn });
   // the deck it draws from: the red ring's season deck, or the green ring's workshop
   const deck = (old ? old.deck : env.DECK) ?? 'season';
   let keys;

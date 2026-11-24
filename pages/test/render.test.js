@@ -1146,7 +1146,8 @@ test('the Cloudflare judge keeps to 60 judgements an hour, counted on the chain'
   const fight = '0x' + [SEED, '1', '64', '0', '1', '0', '5', '0', '1', 'a', '0', '0', '0', KEYS.commitment(ARENA, A, 1), '0', '1', '0', '1', locked].map(word).join('');
   const run = async (judgedLastHour) => {
     const sent = [];
-    const logs = [{ topics: [STARTED, '0x' + word(A), '0x' + word('1')], blockNumber: '0x2328' }, ...Array.from({ length: judgedLastHour }, () => ({ topics: [JUDGED], blockNumber: '0x2700' }))];
+    // judged at block 9968: in the last hour, and more than HEAD_MARGIN (25) blocks behind the head (10000)
+    const logs = [{ topics: [STARTED, '0x' + word(A), '0x' + word('1')], blockNumber: '0x2328' }, ...Array.from({ length: judgedLastHour }, () => ({ topics: [JUDGED], blockNumber: '0x26f0' }))];
     const fetchFn = async (url, { body }) => {
       const q = JSON.parse(body);
       const ok = (result) => ({ json: async () => ({ jsonrpc: '2.0', id: q.id, result }) });
