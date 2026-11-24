@@ -131,8 +131,10 @@ export function buildScreens(scene, renderer, stations, small, M) {
   for (const side of ['red', 'blue']) {
     const s = side === 'red' ? -1 : 1;
     const g = new THREE.Group();
-    g.position.set(14.5 * s, 6.5, -4.5);
-    g.rotation.y = -0.62 * s;
+    // high over the far corners of the stands, above the wide shot's picture: a jumbotron, not a
+    // second ring in the frame
+    g.position.set(14 * s, 13.6, -12);
+    g.rotation.set(-0.12, -0.86 * s, 0, 'YXZ');
     scene.add(g);
     const frame = new THREE.Mesh(new THREE.BoxGeometry(6.48, 3.72, 0.2), M.black);
     g.add(frame);

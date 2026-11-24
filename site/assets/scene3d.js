@@ -23,6 +23,7 @@ import { loadXbot, makeXRobot } from './xbot.js';
 const COLOR = { red: 0xef4444, blue: 0x22c55e, ref: 0xe6ebf5, gold: 0xf5b301 };
 const CSS = { red: '#ef4444', blue: '#22c55e' };
 const FLOOR = 1.0; // the top of the ring
+const BOARD_Y = 7.2; // the scoreboard's middle, under the truss's inner ring
 const RING = 6; // the ring's radius (corner to centre)
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 // phones and small screens get the light hall: no mirror on the floor, no shadows, fewer fans and
@@ -89,27 +90,6 @@ const stripeTex = () => canvasTex(64, 64, (g, w, h) => {
   g.fillStyle = '#111318';
   g.fillRect(0, 0, w / 2, h);
 }, { repeat: [5, 1] });
-
-function tickerTex() {
-  // three boards side by side, each with room to breathe: the arena, where it is judged, who it ranks
-  return canvasTex(2048, 64, (g, w, h) => {
-    g.fillStyle = '#05070d';
-    g.fillRect(0, 0, w, h);
-    g.fillStyle = 'rgba(242,207,110,.3)';
-    g.fillRect(0, 4, w, 2);
-    g.fillRect(0, h - 6, w, 2);
-    g.font = '700 30px Unbounded, Inter, sans-serif';
-    g.textBaseline = 'middle';
-    g.textAlign = 'center';
-    const third = w / 3;
-    g.fillStyle = GOLD;
-    g.fillText('IBITI AGENT ARENA', third * 0.5, h / 2 + 2);
-    g.fillStyle = '#e6ebf5';
-    g.fillText('12 ROUNDS · JUDGED ON-CHAIN', third * 1.5, h / 2 + 2);
-    g.fillStyle = GOLD;
-    g.fillText('FOR AGENT ID HOLDERS', third * 2.5, h / 2 + 2);
-  }, { repeat: [3, 1] });
-}
 
 function screenTex(side, kind) {
   return canvasTex(256, 160, (g, w, h) => {
@@ -578,8 +558,8 @@ export async function createScene(root) {
 
   // lights: a dim fill, a cool wash from above (the key over the ring is the room's), each corner's
   // colour from the truss onto its fighter
-  scene.add(new THREE.HemisphereLight(0x8a96b8, 0x0a0608, 0.14));
-  const key = new THREE.DirectionalLight(0xdfe6ff, 0.08);
+  scene.add(new THREE.HemisphereLight(0x8a96b8, 0x0a0608, 0.5));
+  const key = new THREE.DirectionalLight(0xdfe6ff, 0.35);
   key.position.set(3, 12, 7);
   scene.add(key);
   const spots = {};
@@ -593,12 +573,9 @@ export async function createScene(root) {
   winSpot.position.set(0, TRUSS.y, 4);
   scene.add(winSpot, winSpot.target);
 
-  // the hall: the ring, its apron, posts and ropes, the truss, the floor, the LED boards with the
-  // arena's words, the stands and the fans (room.js)
-  const ticker = tickerTex();
-  const tickerIn = ticker.clone();
-  tickerIn.repeat.set(-3, 1); // seen from inside the circle, the text must not read backwards
-  const room = buildRoom(scene, renderer, { R: RING, FLOOR, small, ring: window.ARENA_CONFIG?.ring, ticker: [ticker, tickerIn] });
+  // the hall: the ring, its apron, posts and ropes, the truss, the floor, the railing, the stands
+  // (room.js)
+  const room = buildRoom(scene, renderer, { R: RING, FLOOR, small, ring: window.ARENA_CONFIG?.ring });
   const corner = (k) => new THREE.Vector3(RING * Math.cos((k * Math.PI) / 3), FLOOR, RING * Math.sin((k * Math.PI) / 3));
 
   // the scoreboard over the ring: an eight-sided box of black steel, the clock on its four wide faces,
@@ -606,7 +583,7 @@ export async function createScene(root) {
   // and of green under its right
   const board = boardTex();
   const cube = new THREE.Group();
-  cube.position.set(0, 6.75, 0);
+  cube.position.set(0, BOARD_Y, 0);
   scene.add(cube);
   {
     const BW = 3.1; // a wide face
@@ -667,7 +644,7 @@ export async function createScene(root) {
     // a lip of steel under it, and the chains up to the roof
     const lip = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, { depth: 0.08, bevelEnabled: false }).rotateX(Math.PI / 2).translate(0, -BH / 2 - 0.1, 0).scale(0.97, 1, 0.97), frameMat);
     cube.add(lip);
-    for (const x of [-1.2, 1.2]) for (const z of [-1.2, 1.2]) scene.add(bar(new THREE.Vector3(x, 6.75 + BH / 2, z), new THREE.Vector3(x * 0.3, 16, z * 0.3), 0.012, frameMat));
+    for (const x of [-1.2, 1.2]) for (const z of [-1.2, 1.2]) scene.add(bar(new THREE.Vector3(x, cube.position.y + BH / 2, z), new THREE.Vector3(x * 0.3, 16, z * 0.3), 0.012, frameMat));
   }
   room.reflect(cube);
 
@@ -816,6 +793,7 @@ export async function createScene(root) {
     camera.aspect = size.w / size.h;
     camera.fov = camera.aspect < 0.8 ? 58 : 44;
     camera.updateProjectionMatrix();
+    cam.shift = null; // the frame sets the lens again
   }
   resize();
   new ResizeObserver(resize).observe(root);
@@ -1267,19 +1245,18 @@ export async function createScene(root) {
     haze.update(t);
     pyro.update(t, dt);
     screens.update();
-    ticker.offset.x = reduced ? 0 : (t * 0.004) % 1; // a slow drift
-    tickerIn.offset.x = -ticker.offset.x;
 
     // the camera: the whole ring, both corners, the referee and the scoreboard cube, with a slow
     // broadcast drift; at the end a little closer to the winner
-    // the wide shot is a broadcast's: from high over the near stand on a long lens, the scoreboard and
-    // the truss's inner ring at the top, the ring's steps at the foot of the picture
+    // the wide shot: from over the near stand, a little under the truss's rings, looking down on the
+    // ring; the lens is shifted up (as an architect's camera) so the ring sits low in the picture with
+    // the scoreboard, the truss and its lamps above it, and the posts still stand upright
     const portrait = camera.aspect < 0.8;
-    const wideFov = portrait ? 58 : 36;
-    const half = portrait ? 4.4 : 9.2;
+    const wideFov = portrait ? 58 : 42;
+    const half = portrait ? 4.4 : 8.6;
     const hf = 2 * Math.atan(Math.tan((wideFov * Math.PI) / 360) * camera.aspect);
-    let dist = Math.max(portrait ? 12.5 : 20.8, half / Math.tan(hf / 2));
-    const aim = new THREE.Vector3(0, portrait ? 2.6 : 2.3, portrait ? 0.4 : 0);
+    let dist = Math.max(portrait ? 12.5 : 19.5, half / Math.tan(hf / 2));
+    const aim = new THREE.Vector3(0, portrait ? 2.6 : 1, portrait ? 0.4 : -0.3);
     if (state.lights === 'winner' && state.winner) {
       fighters[state.winner].bot.root.getWorldPosition(v3);
       aim.x += (v3.x - aim.x) * 0.3;
@@ -1308,13 +1285,19 @@ export async function createScene(root) {
       cam.shot = 'wide';
       cam.cut = true;
     }
-    const lensFov = (f) => {
-      if (camera.fov !== f) {
+    // the lens: its field of view and its shift (a share of half the picture's height; content moves up)
+    const lensFov = (f, shift = 0) => {
+      if (camera.fov !== f || cam.shift !== shift || cam.lensAspect !== camera.aspect) {
         camera.fov = f;
         camera.updateProjectionMatrix();
+        camera.projectionMatrix.elements[9] = -shift;
+        camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
+        cam.shift = shift;
+        cam.lensAspect = camera.aspect;
       }
     };
-    lensFov(cam.shot === 'wide' || cam.shot === 'peek' ? wideFov : portrait ? 58 : 44);
+    const wideShift = portrait ? 0 : -0.25;
+    lensFov(cam.shot === 'wide' || cam.shot === 'peek' ? wideFov : portrait ? 58 : 44, cam.shot === 'wide' ? wideShift : 0);
     const flier = !cam.fixed && !reduced && state.winner && fighters[state.winner].act?.kind === 'win' && fighters[state.winner].act.phase !== 'go' ? fighters[state.winner] : null;
     if (flier) {
       lensFov(portrait ? 58 : 44);
@@ -1403,7 +1386,6 @@ export async function createScene(root) {
   }
   requestAnimationFrame(frame);
   document.fonts?.ready.then(() => {
-    redraw(ticker, () => {});
     redraw(board, () => {});
   });
 
