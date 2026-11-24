@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.5.1
+
+      - name: Forge build
+        run: forge build
+
+      - name: Forge test (contracts)
+        run: forge test
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Page server, judge and site tests
+        working-directory: pages
+        run: |
+          npm ci
+          npm test
+
+      - name: Every site text in all 13 languages
+        run: node pages/tools/check-lang.mjs
