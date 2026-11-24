@@ -90,12 +90,16 @@ export function gear(active = '') {
 }
 
 const EXPLORERS = { 56: 'https://bscscan.com/address/', 97: 'https://testnet.bscscan.com/address/' };
+/** The open source code of the arena (Apache-2.0). */
+export const SOURCE = 'https://github.com/VOVAN1980/ibiti-agent-arena';
+
 export function footer() {
   const ex = EXPLORERS[CFG.chainId];
   const where = ex
     ? `<a href="${ex}${CFG.arena}" target="_blank" rel="noopener">${esc(t('contractOn', 'BscScan'))}</a>`
     : `${esc(t('localChain'))} · <span translate="no" title="${esc(CFG.arena)}">${short(CFG.arena)}</span>`;
-  return `<footer>${esc(t('footer'))} · ${where}</footer>`;
+  const source = `<a href="${SOURCE}" target="_blank" rel="noopener">${esc(t('sourceOn', 'GitHub'))}</a>`;
+  return `<footer>${esc(t('footer'))} · ${where} · ${source}</footer>`;
 }
 export const explorerUrl = () => (EXPLORERS[CFG.chainId] ? EXPLORERS[CFG.chainId] + CFG.arena : null);
 

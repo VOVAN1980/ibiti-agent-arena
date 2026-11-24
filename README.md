@@ -469,6 +469,8 @@ What is done, what is decided next, and the directions under consideration:
 ### Build and test
 
 ```
+git clone https://github.com/VOVAN1980/ibiti-agent-arena
+cd ibiti-agent-arena
 forge build
 forge test
 cd pages && npm install && npm test
