@@ -2047,6 +2047,14 @@ contract AgentArenaTest is Test {
         assertFalse(ok, "certificate accepted BNB");
         (ok,) = address(art).call{value: 1}("");
         assertFalse(ok, "art accepted BNB");
+        // the picture contracts: raw data behind an INVALID byte, so a call (with BNB or not) reverts
+        for (uint8 p; p < 4; ++p) {
+            address[] memory pieces = art.piecesOf(p);
+            for (uint256 j; j < pieces.length; ++j) {
+                (ok,) = pieces[j].call{value: 1, gas: 30000}(""); // INVALID uses up the gas it is given
+                assertFalse(ok, "a picture contract accepted BNB");
+            }
+        }
         for (uint8 t = 1; t <= 50; ++t) {
             if (lens.isDecoyTrap(t)) continue;
             (ok,) = address(arena).call{value: 1}(_trapCall(t));
