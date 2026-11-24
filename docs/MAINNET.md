@@ -30,20 +30,18 @@ stay in it for good. Each ring (red and green) is its own arena. The arena's sea
   four metal pictures.
 - **The Street Ring (the green ring)** on mainnet at launch: challenges open, a ranking and no award.
   The four metal pictures belong to the red ring only.
-- **The sites:** at launch, the two Workers' own `workers.dev` addresses. Later `arena.ibiticoin.com`
-  (the red ring) and `street.ibiticoin.com` (the Street Ring). `ibitilabs.ai` is the Agent ID name of
+- **The sites:** the two Workers' own `workers.dev` addresses. `ibitilabs.ai` is the Agent ID name of
   the project's own agent, not a web address.
 - **License:** the project's own code is open source under Apache-2.0 (LICENSE). Third-party code
   keeps its own license. The names and logos, and the site's music and pictures, are not licensed
   under Apache-2.0 (NOTICE).
 - **TEST_VERSION** on the certificates: "2" (a constant of the arena).
 
-## The domain (not needed for the launch)
+## The domain
 
-The launch uses the Workers' own `workers.dev` addresses. No contract holds the site's address, so the
-`ibiticoin.com` addresses can be attached at any time later by changing the Workers' settings only
-(`RINGS`, `routes`); the old addresses keep working. The `ibiticoin.com` nameservers and records stay
-at the registrar as they are: the main site, the mail and other projects run on them.
+The sites run on the Workers' own `workers.dev` addresses. The `ibiticoin.com` zone never moves, now
+or later: its nameservers and records stay at the registrar as they are (the main site, the mail and
+other projects run on them). No contract holds a site's address.
 
 ## Keys (once, before the deploy)
 
