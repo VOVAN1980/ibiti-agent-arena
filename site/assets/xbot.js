@@ -1,22 +1,18 @@
 // The fighters and the referee as humanoid robots. Our own robots (built in Blender for the arena,
 // baked PBR maps): the fighters are heavy boxer robots (layered plates in the corner's colour, chipped
 // down to the steel, with rivets, bolts, panel lines and vents over a dark mechanical frame, exposed
-// servos, one narrow visor slit, leather gloves, cloth shorts), the referee an athletic android in
-// glossy black titanium with gold piping, a face of black glass in a gold frame, glowing gold rings at
-// its ears and a gold bow tie. Pistons at a
+// servos, one narrow visor slit, leather gloves, cloth shorts), the referee a broad android in black
+// titanium and gold, a glowing gold V visor over a faceplate, gold ear rings and a gold bow tie. Pistons at a
 // fighter's elbows and knees slide in and out as the joints bend (aimed here every frame), its visor
-// and back lights breathe a little. They ride the skeleton of the X
-// Bot model from Mixamo (Adobe; free to use in one's own projects, commercial ones included): the same
-// bones, rest pose and clips, so they walk and stand with its animations. If they cannot be loaded,
-// the X Bot itself stands in, with a visor face and glowing eyes added, the joints in the corner's
-// colour. Everything else (sitting at the desk, typing, arms up, the loser's rage, the referee's
-// signals) is posed here through the skeleton, from the same pose values the simple robots use, and
+// and back lights breathe a little. They ride the skeleton of the X Bot model from Mixamo (Adobe; free
+// to use in one's own projects, commercial ones included): the same bones, rest pose and clips, so they
+// walk and stand with its animations. Everything else (sitting at the desk, typing, arms up, the
+// loser's rage, the referee's verdict) is posed here through the skeleton, from the same pose values the simple robots use, and
 // the hands reach the keyboard or the head by solving the arm (two-bone IK).
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 
-const MODEL = new URL('./vendor/models/Xbot.glb', import.meta.url).href; // a copy kept with the site (see assets/vendor/README.md)
 const ROBOT = { red: 'robot-red', blue: 'robot-green', ref: 'robot-ref' }; // the green corner's key is "blue"
 const MOVES = new URL('./arena/models/robot-moves.glb', import.meta.url).href; // standing and walking, for all three
 const robotUrl = (name, lite) => new URL(`./arena/models/${name}${lite ? '-lite' : ''}.glb`, import.meta.url).href;
@@ -43,22 +39,20 @@ const _pb = new THREE.Vector3();
 const _pt = new THREE.Vector3();
 const SPREAD = 0.2; // a fighter's arms hang a little out from its bulk (radians, outwards), less as they rise
 
-function timed(p, what) {
-  return Promise.race([p, new Promise((_, reject) => setTimeout(() => reject(new Error(`${what} took too long`)), 15000))]);
-}
-
-/** The robots' models: our three armoured robots (the lighter set on phones), or, if any of them
- *  cannot be had, the X Bot for all three. */
+/** The robots' models: our three armoured robots (the lighter set on phones). However long they
+ *  take, the hall waits for them (a slow line, a busy computer); a failed load is tried again. */
 export async function loadXbot(lite = false) {
   const loader = new GLTFLoader();
-  try {
-    const kinds = ['red', 'blue', 'ref'];
-    const [moves, ...got] = await timed(Promise.all([loader.loadAsync(MOVES), ...kinds.map((k) => loader.loadAsync(robotUrl(ROBOT[k], lite)))]), 'the robot models');
-    for (const g of got) g.animations = moves.animations; // the X Bot's own clips, shared by the three
-    return { robots: Object.fromEntries(kinds.map((k, i) => [k, got[i]])) };
-  } catch (e) {
-    console.warn('armoured robots not available, using the X Bot:', e.message);
-    return timed(loader.loadAsync(MODEL), 'the robot model');
+  const kinds = ['red', 'blue', 'ref'];
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const [moves, ...got] = await Promise.all([loader.loadAsync(MOVES), ...kinds.map((k) => loader.loadAsync(robotUrl(ROBOT[k], lite)))]);
+      for (const g of got) g.animations = moves.animations; // the X Bot's own clips, shared by the three
+      return { robots: Object.fromEntries(kinds.map((k, i) => [k, got[i]])) };
+    } catch (e) {
+      if (attempt >= 5) throw e;
+      await new Promise((r) => setTimeout(r, 1500 * attempt));
+    }
   }
 }
 
@@ -100,12 +94,11 @@ function solveArm(shoulder, target, l1, l2, pole, upper, fore) {
   fore.subVectors(shoulder.clone().addScaledVector(u, dist), elbow).normalize();
 }
 
-export function makeXRobot(kind, models, colors) {
-  const armoured = models.robots?.[kind] ?? null;
-  const gltf = armoured ?? models;
+export function makeXRobot(kind, models) {
+  const gltf = models.robots[kind];
   const model = SkeletonUtils.clone(gltf.scene);
   model.scale.setScalar(SCALE);
-  const color = kind === 'ref' ? (armoured ? GLOW.ref : 0xf5b301) : armoured ? GLOW[kind] : colors[kind];
+  const color = GLOW[kind];
   const parts = {}; // a fighter's boxing gloves, and its bare armoured hands for typing at the desk
   let lights = null; // the small back lights (their glow breathes)
   model.traverse((o) => {
@@ -113,34 +106,15 @@ export function makeXRobot(kind, models, colors) {
     o.castShadow = true;
     o.receiveShadow = true;
     o.frustumCulled = false; // a posed skinned mesh can leave its bind-pose box
-    if (armoured) {
-      if (o.name === 'Gloves' || o.name === 'Hands') parts[o.name] = o;
-      if (o.name === 'Face') {
-        // the referee's face: one smooth panel of black glass, the hall's lights crisp in it
-        o.material = new THREE.MeshPhysicalMaterial({ color: 0x030405, metalness: 0.1, roughness: 0.05, clearcoat: 1, clearcoatRoughness: 0.02, envMapIntensity: 2.2, ior: 1.6, specularIntensity: 1 });
-        return;
-      }
-      // the baked plates as they are; the small lights (the back pack's) in the corner's colour
-      if (o.material.name === 'Glow') {
-        o.material = o.material.clone();
-        o.material.color.setHex(0x000000);
-        o.material.emissive.setHex(kind === 'ref' ? 0xffb83d : color); // the referee's ear rings: a warm, clean gold
-        o.material.emissiveIntensity = kind === 'ref' ? 1.7 : 2.4;
-        lights = o.material;
-      } else o.material.envMapIntensity = 0.9;
-      return;
-    }
-    const joints = /joint/i.test(o.material.name);
-    const m = o.material.clone();
-    if (kind === 'ref') m.color.setHex(joints ? 0xf2f4f8 : 0x2b303c);
-    else if (joints) {
-      m.color.setHex(colors[kind]);
-      m.emissive = new THREE.Color(colors[kind]).multiplyScalar(0.14);
-    } else m.color.setHex(0xc4cad5); // a satin grey-white: no mirror glare under the spotlights
-    m.metalness = joints ? 0.25 : 0.3;
-    m.roughness = joints ? 0.5 : 0.58;
-    m.envMapIntensity = 0.35;
-    o.material = m;
+    if (o.name === 'Gloves' || o.name === 'Hands') parts[o.name] = o;
+    // the baked plates as they are; the small lights (the back pack's) in the corner's colour
+    if (o.material.name === 'Glow') {
+      o.material = o.material.clone();
+      o.material.color.setHex(0x000000);
+      o.material.emissive.setHex(kind === 'ref' ? 0xffb83d : color); // the referee's visor and ear rings: a warm, clean gold
+      o.material.emissiveIntensity = kind === 'ref' ? 1.7 : 2.4;
+      lights = o.material;
+    } else o.material.envMapIntensity = 0.9;
   });
   const root = new THREE.Group(); // moved and turned by the scene
   const lift = new THREE.Group(); // up and down: sitting, jumping
@@ -162,10 +136,9 @@ export function makeXRobot(kind, models, colors) {
   const L1 = wp(B.LeftArm).distanceTo(wp(B.LeftForeArm));
   const L2 = wp(B.LeftForeArm).distanceTo(wp(B.LeftHand)) + 0.06;
 
-  const eyeMat = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: color, emissiveIntensity: armoured ? 0.9 : 3 });
-  let eyes;
-  if (armoured && kind === 'ref') eyes = []; // the referee's face is glass: no slits
-  else if (armoured) {
+  const eyeMat = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: color, emissiveIntensity: 0.9 });
+  let eyes = [];
+  if (kind !== 'ref') {
     // one narrow slit of light across the visor, in two halves that meet in a shallow V (the referee's in gold), on the head bone
     const hs = 1 / B.Head.getWorldScale(new THREE.Vector3()).x;
     const toHead = (v) => B.Head.worldToLocal(model.localToWorld(new THREE.Vector3(...v)));
@@ -183,31 +156,11 @@ export function makeXRobot(kind, models, colors) {
       B.Head.add(e);
       return e;
     });
-  } else {
-    // a face: a dark visor with two glowing eyes, on the head bone, facing where the robot faces
-    const headQ = B.Head.getWorldQuaternion(new THREE.Quaternion()).invert();
-    const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(headQ);
-    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(headQ);
-    const right = new THREE.Vector3().crossVectors(up, fwd);
-    const s = 1 / B.Head.getWorldScale(new THREE.Vector3()).x;
-    const face = new THREE.Group();
-    face.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(right, up, fwd));
-    face.position.copy(up).multiplyScalar(0.075 * s).addScaledVector(fwd, 0.128 * s); // on the front of the head, not inside it
-    face.scale.setScalar(s);
-    B.Head.add(face);
-    const visor = new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.085, 0.035), new THREE.MeshStandardMaterial({ color: 0x05070d, metalness: 1, roughness: 0.08 }));
-    face.add(visor);
-    eyes = [-1, 1].map((k) => {
-      const e = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.026, 0.012), eyeMat);
-      e.position.set(0.045 * k, 0.004, 0.02);
-      face.add(e);
-      return e;
-    });
   }
 
   // a fighter's elbow and knee pistons: a housing on the upper bone, a chrome rod on the lower one
   const pistons = [];
-  if (armoured && kind !== 'ref') {
+  if (kind !== 'ref') {
     const houseMat = new THREE.MeshStandardMaterial({ color: 0x2b2d32, metalness: 1, roughness: 0.42, envMapIntensity: 0.9 });
     const rodMat = new THREE.MeshStandardMaterial({ color: 0xd4d7dd, metalness: 1, roughness: 0.16, envMapIntensity: 0.9 });
     for (const [[ba, pa], [bb, pb], r, rr, hmax] of PISTONS) {
@@ -264,7 +217,7 @@ export function makeXRobot(kind, models, colors) {
   const poleV = new THREE.Vector3();
   let sitW = 0;
   let sitU = 0;
-  const bulky = armoured && kind !== 'ref';
+  const bulky = kind !== 'ref';
   if (parts.Hands) parts.Hands.visible = false;
 
   // the feet: planted on the ground where they stand, a step at a time when the body has turned or moved
@@ -292,8 +245,8 @@ export function makeXRobot(kind, models, colors) {
    *  at the desk (two points, or 'head'); rig: what the scene asks of the body this frame, all optional:
    *  hands [right, left] { at (world), w, pole (on the robot's own axes) }, feet [left, right] { at (the
    *  ankle, world), w, yaw (world) }, body { x, y, z } (the hips moved, in metres on the robot's own
-   *  axes), look (a world point the head turns to) and lookW, twist (the chest turned, radians), breath,
-   *  stance (0..1: the feet set as a boxer's), ground (the floor's height), air (off the ground: nothing
+   *  axes), look (a world point the head turns to) and lookW, twist (the chest turned, radians), tilt (the head leaned to one side, radians), breath,
+   *  stance (0..1: the feet set as a boxer's), feetFwd (the feet set this far ahead of the body, robot units), wide (the feet further apart), ground (the floor's height), air (off the ground: nothing
    *  planted), legs { hip, knee, w } (both legs bent by angles), hug (the hands round the shins). */
   function pose(c, p, t, walking, dt, reach, rig = NO_RIG) {
     root.updateMatrixWorld(true);
@@ -368,6 +321,13 @@ export function makeXRobot(kind, models, colors) {
     const headDir = UP.clone().applyEuler(_e.set(headPitch, 0, 0)).applyQuaternion(rootQ);
     aim(B.Head, AX.Head, headDir, 0.9);
     if (headYaw) B.Head.rotateOnAxis(AX.Head, headYaw);
+    if (rig.tilt) {
+      // the head leans over to one side (radians; positive: the right ear down), about the way it faces
+      B.Head.parent.getWorldQuaternion(_qp).invert();
+      _v.set(0, 0, 1).applyEuler(_e.set(headPitch, 0, 0)).applyQuaternion(rootQ).applyQuaternion(_qp);
+      B.Head.quaternion.premultiply(_q.setFromAxisAngle(_v, rig.tilt));
+      B.Head.updateMatrixWorld(true);
+    }
 
     // the arms: angles as for the simple robots, blended towards a point the hand reaches (two-bone IK)
     for (const [i, side] of [[0, 'Right'], [1, 'Left']]) {
@@ -441,7 +401,7 @@ export function makeXRobot(kind, models, colors) {
     }
     if (!tracking) {
       // where each foot belongs under the body now: a little apart, or set as a boxer's (left ahead)
-      const rest = (f, out) => out.set(f.s * (lerpN(0.1, 0.15, stance) + (rig.wide ?? 0)), 0, f.s * 0.085 * stance).applyQuaternion(rootQ).multiplyScalar(ws).add(rootAt).setY(ground + ankleY * ws).addScaledVector(vel, 0.16);
+      const rest = (f, out) => out.set(f.s * (lerpN(0.1, 0.15, stance) + (rig.wide ?? 0)), 0, f.s * 0.085 * stance + (rig.feetFwd ?? 0)).applyQuaternion(rootQ).multiplyScalar(ws).add(rootAt).setY(ground + ankleY * ws).addScaledVector(vel, 0.16);
       const busy = feet.some((f) => f.u < 1);
       if (!busy && t - lastStep > 0.05) {
         // the foot furthest from its place steps, if it is far enough (or turned enough)
@@ -543,10 +503,8 @@ export function makeXRobot(kind, models, colors) {
       }
     }
     // alive: the visor's glow and the back lights breathe, slowly
-    if (armoured) {
-      eyeMat.emissiveIntensity = 0.9 * (0.86 + 0.14 * Math.sin(t * 2.3 + phase));
-      if (lights) lights.emissiveIntensity = kind === 'ref' ? 1.7 * (0.92 + 0.08 * Math.sin(t * 0.8)) : 2.4 * (0.7 + 0.3 * Math.sin(t * 1.4 + phase));
-    }
+    eyeMat.emissiveIntensity = 0.9 * (0.86 + 0.14 * Math.sin(t * 2.3 + phase));
+    if (lights) lights.emissiveIntensity = kind === 'ref' ? 1.7 * (0.92 + 0.08 * Math.sin(t * 0.8)) : 2.4 * (0.7 + 0.3 * Math.sin(t * 1.4 + phase));
   }
 
   /** Where the walk is in its stride (0..1, 0 as the left foot leaves the ground) and how much it walks. */
