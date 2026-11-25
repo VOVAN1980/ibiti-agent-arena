@@ -428,7 +428,7 @@ const POSES = {
   // the fight is over: up from the chair and out in front of the desk, facing the ring, waiting for the referee
   stand: (t) => ({ spot: [0, 1.45], seat: false, bounce: 0, turn: 0, lean: 0, look: -0.05 + Math.sin(t * 0.9) * 0.03, ...ARMS_DOWN, a0z: -0.12 + Math.sin(t * 1.3) * 0.02, a1z: 0.12 - Math.sin(t * 1.3) * 0.02 }),
   // beaten: it stays where it stood, head and shoulders down, then trudges back round to its desk
-  sad: (t) => ({ spot: t < 4 ? [0, 1.45] : [0, -0.05], speed: 0.85, seat: false, bounce: 0, turn: Math.sin(t * 0.6) * 0.12, lean: 0.22, look: 0.55 + Math.sin(t * 1.1) * 0.05, ...ARMS_DOWN, e0: -0.05, e1: -0.05 }),
+  sad: (t) => ({ spot: t < 4 ? [0, 1.45] : [0, -0.05], speed: 0.85, seat: false, bounce: 0, turn: Math.sin(t * 0.6) * 0.12, lean: 0.22, look: 0.55 + Math.sin(t * 1.1) * 0.05, tilt: 0.1, ...ARMS_DOWN, e0: -0.05, e1: -0.05 }),
   // the winner: out to the front, jumping, arms up, turning to every stand
   win: (t) => {
     // the champion: still while the referee holds its arm up (the free fist shaking at the sky), then
@@ -438,7 +438,7 @@ const POSES = {
     const k = Math.min(1, (t - 1.75) / 0.5);
     return { spot: [0, 1.45], seat: false, hop: [0.72, 0.2 * k], bounce: 0, turn: Math.sin((t - 1.75) * 1.3) * 0.5, lean: -0.05, look: 0.05, a0x: -0.28, a0z: -2.9, e0: -0.25 - 0.55 * pump, a1x: -0.28, a1z: 2.9, e1: -0.25 - 0.55 * (1 - pump) };
   },
-  // the loser: smashes everything, then sits on the floor
+  // the loser: smashes everything, then trudges to the ropes and hangs its head there
   lose: (t) => {
     if (t < 0.5) return { spot: [0, 0], seat: false, bounce: 0, turn: 0, lean: 0, look: 0, ...ARMS_DOWN };
     if (t < 1.1) { // the monitor
@@ -461,17 +461,15 @@ const POSES = {
       const thr = ease((t - 3.4) / 0.25);
       return { spot: [0, -0.05], seat: false, bounce: 0, turn: Math.PI * k, lean: lerp(0.3, -0.2, thr), look: 0, a0x: lerp(-1.3, -2.8, thr), a0z: -0.4, e0: -0.4, a1x: lerp(-1.3, -2.8, thr), a1z: 0.4, e1: -0.4 };
     }
-    // on the floor, head down
-    const k = ease((t - 3.9) / 0.6);
-    return { spot: [0, 0.35], seat: false, floor: k, bounce: 0, turn: Math.PI * (1 - k), lean: 0.35 * k, look: 0.5 * k + Math.sin(t * 1.3) * 0.05, a0x: -0.9 * k, a0z: 0.2, e0: -0.9 * k, a1x: -0.9 * k, a1z: -0.2, e1: -0.9 * k };
+    // beaten and spent: the arms drop from the throw, the head hangs (the scene walks it to the nearest
+    // ropes and leans it there: see slumpStep)
+    const k = ease((t - 3.9) / 0.7);
+    return { spot: [0, -0.05], ropes: true, speed: 0.95, seat: false, bounce: 0, turn: Math.PI, lean: lerp(-0.2, 0.2, k), look: lerp(0, 0.66, k), a0x: lerp(-2.8, 0.05, k), a0z: lerp(-0.4, -0.12, k), e0: lerp(-0.4, -0.18, k), a1x: lerp(-2.8, 0.05, k), a1z: lerp(0.4, 0.12, k), e1: lerp(-0.4, -0.18, k) };
   },
   // the referee
   ref: () => ({ spot: [0, 0], seat: false, bounce: 0, turn: 0, lean: 0, look: 0, a0x: 0, a0z: -0.08, e0: -0.12, a1x: 0, a1z: 0.08, e1: -0.12 }),
-  refStart: (t) => {
-    const up = ease(t / 0.35);
-    const chop = ease((t - 0.5) / 0.25);
-    return { spot: [0, 0], seat: false, bounce: 0, turn: 0, lean: -0.08 * up * (1 - chop) + 0.14 * chop * (1 - ease((t - 0.9) / 0.4)), look: -0.1 * up, a0x: lerp(0, -1.4, chop), a0z: lerp(-1.5 * up, 0, chop), e0: -0.15 * (1 - chop), a1x: lerp(0, -1.4, chop), a1z: lerp(1.5 * up, 0, chop), e1: -0.15 * (1 - chop) };
-  },
+  // the start of a round: it stays as it stands
+  refStart: () => POSES.ref(),
   // it walks over to the winner; its hand takes the winner's wrist and lifts it (the scene's raise)
   refRaise: () => ({ spot: [0, 0], seat: false, bounce: 0, turn: 0, lean: 0, look: -0.15, a0x: 0.1, a0z: -0.12, e0: -0.35, a1x: 0.1, a1z: 0.12, e1: -0.35 }),
 };
@@ -756,14 +754,14 @@ export async function createScene(root) {
     st.g.rotation.y = SEAT[side].rot;
     st.g.scale.setScalar(STATION);
     scene.add(st.g);
-    const bot = xg ? makeXRobot(side, xg, COLOR) : buildRobot(side, M);
+    const bot = xg ? makeXRobot(side, xg) : buildRobot(side, M);
     bot.root.scale.setScalar(SIZE);
     st.g.add(bot.root);
     fighters[side] = { st, bot, pose: 'hype', since: 0, pos: new THREE.Vector2(0, 1.35), path: [], cur: {}, events: new Set(), wrecked: false, present: true, screen: 'code', placed: false };
     spots[side].target.position.set(SEAT[side].x, FLOOR, SEAT[side].z);
     focus[side].to.set(SEAT[side].x, FLOOR, SEAT[side].z);
   }
-  const refBot = xg ? makeXRobot('ref', xg, COLOR) : buildRobot('ref', M);
+  const refBot = xg ? makeXRobot('ref', xg) : buildRobot('ref', M);
   refBot.root.scale.setScalar(SIZE * (xg?.robots ? STATION * 1.03 : 1)); // the referee a touch taller than the fighters (they stand at SIZE × STATION)
   refBot.root.position.set(0, FLOOR, -0.35);
   scene.add(refBot.root);
@@ -1393,6 +1391,9 @@ export async function createScene(root) {
       if (lead.gesture && g.hop) p.hop = g.hop;
       p.seat = false;
     }
+    // the loser, beaten: where it goes (the nearest ropes), how it faces there, how its head hangs
+    if (p.ropes && !lead && !reduced) slumpStep(f, side, p, tt, t, dt);
+    else if (f.slump) f.slump.leaving = true;
     const c = applyBody(bot, p, Math.min(1, dt * 10));
     // walk to the spot of the pose (or to the next corner of its lap), round the desk when the way
     // crosses it, on the side it is nearer to
@@ -1457,7 +1458,7 @@ export async function createScene(root) {
     const next = f.path[0];
     const d = next.clone().sub(f.pos);
     const dist = d.length();
-    const walking = !lead?.place && dist > 0.25 && !lead?.hold; // a real walk, not the small drift of a pose
+    const walking = !lead?.place && dist > 0.25 && !lead?.hold && !p.hold; // a real walk, not the small drift of a pose
     // full speed to a corner of the way round the desk; to the spot itself slowing down as it
     // nears, so a drifting spot is followed smoothly and not in stop-and-go jumps (which a close-up
     // camera, riding with the robot, turned into a shaking picture); it gathers speed and slows down
@@ -1482,13 +1483,14 @@ export async function createScene(root) {
     let facing = c.turn;
     if (walking) facing = Math.atan2(d.x, d.y);
     else if (lead?.face != null) facing = lead.face;
+    else if (p.face != null) facing = p.face;
     else if (showing) facing = yawOut(f);
     else if (f.pose === 'stand' && other.present && !raiseOf()) facing = yawAt(f, other) * 0.7; // squared up to the other, waiting
     if (!lead?.place) {
       // eased, and never faster than a person turns: no snap at a corner of its way
       const y0 = bot.yaw ?? c.turn;
       const want = turnTo(y0, facing, Math.min(1, dt * (lead ? 5 : walking ? 4 : 3.2))) - y0;
-      const cap = dt * (lead ? 4.5 : 3.6);
+      const cap = dt * (lead ? 4.5 : p.turnCap ?? 3.6);
       bot.yaw = y0 + Math.max(-cap, Math.min(cap, want));
     }
     if (p.seat && !walking && Math.abs(turnTo(0, facing - (bot.yaw ?? facing), 1)) > 0.3) p.seat = false; // turned to its desk first, then down
@@ -1504,6 +1506,12 @@ export async function createScene(root) {
       rig.body.set(0, 0, 0);
       rig.look = null;
       rig.lookW = 1;
+      rig.tilt = 0;
+      rig.breathRate = null;
+      rig.wide = 0;
+      rig.feetFwd = 0;
+      rig.toeOut = 0;
+      rig.planted = null;
     }
     rig.ground = FLOOR;
     rig.stance = 0;
@@ -1529,7 +1537,7 @@ export async function createScene(root) {
     // standing: the weight drifts from foot to foot; the head looks about (at the other, at the stands)
     if (standing && !reduced) {
       rig.body.x += Math.sin(t * 0.47 + (side === 'red' ? 0 : 2)) * 0.035;
-      if (!rig.look) {
+      if (!rig.look && !p.ropes) {
         f.scan ??= { at: 0, yaw: 0, pitch: 0 };
         if (t > f.scan.at) {
           f.scan.at = t + 1.4 + Math.random() * 2.2;
@@ -1624,6 +1632,9 @@ export async function createScene(root) {
       rig.lookW = 0.8;
     }
     if (f.pose === 'lose') rage(f, tt, rig, c);
+    f.tiltW = (f.tiltW ?? 0) + ((p.tilt ?? 0) - (f.tiltW ?? 0)) * Math.min(1, dt * 3); // the head leans over, eased
+    rig.tilt = f.tiltW * (side === 'red' ? 1 : -1);
+    if (f.slump) slumpRig(f, side, t, dt, rig, c);
 
     // on the floor, up on the ropes, or turning over in the air about the middle of its body
     const lift = (f.lift ?? 0) + hopLift;
@@ -1636,6 +1647,123 @@ export async function createScene(root) {
     } else bot.root.position.set(f.pos.x, lift / STATION, f.pos.y);
     if (bot.pose) bot.pose(c, p, t, walking, dt, reach, rig); // on the way to its chair it walks; it sits down once there
     else applyLimbs(bot, c, p, t, walking);
+  }
+
+  // ---- the loser's ending: it trudges to the nearest ropes, turns, backs into them and hangs there
+
+  /** The ropes beside a loser's desk (the side of the ring its station stands against): the way along
+   *  them, the way out, where it waits to turn, where it leans (as the station's own x, z) and its yaw. */
+  function slumpEdge(f, side) {
+    if (!f.edge) {
+      const [kA, kB] = side === 'red' ? [3, 4] : [5, 0];
+      const post = corner(kA).multiplyScalar((RING - 0.08) / RING).setY(FLOOR);
+      const a = corner(kB).sub(corner(kA)).setY(0).normalize();
+      const out = new THREE.Vector3(a.z, 0, -a.x);
+      if (out.dot(post) < 0) out.negate();
+      const s0 = SIDE_LEN / 2;
+      const at = post.clone().addScaledVector(a, s0); // on the ropes' line, in the middle of the side
+      const spot = (back) => {
+        const o = own(f, _w.copy(at).addScaledVector(out, -back));
+        return new THREE.Vector2(o.x, o.z);
+      };
+      const left = new THREE.Vector3(-out.z, 0, out.x); // the robot's left when it faces in (up × in)
+      f.edge = { k: { post, a }, a, out, s0, at, lw: left.dot(a), yawL: Math.atan2(-out.x, -out.z) - SEAT[side].rot, wait: spot(SLUMP_BACK + 0.4), lean: spot(SLUMP_BACK) };
+    }
+    return f.edge;
+  }
+  const SLUMP_BACK = 0.42; // how far in from the top rope the loser's middle stands when it leans back on it (m)
+
+  /** Where the beaten fighter goes and how it carries itself: a slow walk to the ropes (the head
+   *  hanging), a turn on the spot, a step back, and then it stays. Sets the pose's spot, turn and head. */
+  function slumpStep(f, side, p, tt, t, dt) {
+    const E = slumpEdge(f, side);
+    const S = (f.slump ??= { phase: 'walk', since: t, w: 0, hw: 0, lw: 0, rw: 0, t0: t, leaving: false });
+    S.leaving = false;
+    const at = t - S.since;
+    const where = () => (S.phase === 'walk' || S.phase === 'turn' ? E.wait : E.lean);
+    if (S.phase === 'walk' && f.pos.distanceTo(E.wait) < 0.12) Object.assign(S, { phase: 'turn', since: t });
+    else if (S.phase === 'turn') {
+      const off = Math.abs(turnTo(0, E.yawL - (f.bot.yaw ?? 0), 1));
+      if (off < 0.12 && at > 0.4) Object.assign(S, { phase: 'back', since: t });
+    } else if (S.phase === 'back' && f.pos.distanceTo(E.lean) < 0.03) Object.assign(S, { phase: 'hold', since: t });
+    const goal = where();
+    const dist = f.pos.distanceTo(goal);
+    p.spot = [goal.x, goal.y];
+    if (S.phase !== 'walk') {
+      p.hold = true;
+      p.face = E.yawL;
+      p.turnCap = 2.2;
+    }
+    p.speed = S.phase === 'back' ? 0.42 : 0.95;
+    // leaning share: from the step back, eased
+    const back = E.wait.distanceTo(E.lean);
+    S.lw = S.phase === 'hold' ? 1 : S.phase === 'back' ? smooth(1 - dist / back) : 0;
+    S.w = Math.min(1, S.w + dt / 0.6);
+    S.hw = smooth((t - S.t0 - 0.2) / 0.8);
+    // the head: hanging, sagging a little more with every breath out, a slow shake of "no" now and then
+    const ph = side === 'blue' ? 1.7 : 0;
+    const sag = 0.5 * (1 - Math.sin(t * SLUMP_RATE + ph));
+    const sigh = Math.sin(Math.PI * Math.min(1, Math.max(0, ((tt + 3) % 13 - 9.5) / 2.6))) ** 2; // a long sigh every 13 s
+    p.look += 0.1 * S.lw + 0.045 * sag + 0.05 * sigh;
+    p.lean += 0.025 * sag + 0.04 * sigh;
+    const sh = ((tt * 1 + 2) % 11) - 7.4; // a "no, no" of two slow turns every 11 s
+    p.shake = S.lw > 0.9 && sh > 0 && sh < 2.4 ? 0.3 * Math.sin((sh / 2.4) * Math.PI * 2) * Math.sin((sh / 2.4) * Math.PI) : 0;
+  }
+  const SLUMP_RATE = 1.25; // breaths: about one every five seconds
+
+  /** The beaten fighter's rig: one glove at the head, the other hand and the back on the top rope (which
+   *  dips under it), the hips pushed back onto the rope, the head leaning to a side, slow breathing. */
+  function slumpRig(f, side, t, dt, rig, c) {
+    const S = f.slump;
+    if (S.leaving) S.w = Math.max(0, S.w - dt / 0.6);
+    if (S.leaving && S.w < 0.01) {
+      f.slump = null;
+      return;
+    }
+    const E = slumpEdge(f, side);
+    const w = S.w;
+    const hw = S.hw * w;
+    const lw = S.lw * w;
+    const bot = f.bot;
+    const q = bot.root.getWorldQuaternion(new THREE.Quaternion());
+    const ws = bot.root.getWorldScale(new THREE.Vector3()).x;
+    const iHead = side === 'red' ? 0 : 1; // the hand at the head (red its right, blue its left)
+    const iRope = 1 - iHead;
+    // the head's frame (robot axes, pitched as the head is)
+    const pitch = c.lean + c.look;
+    const hu = new THREE.Vector3(0, Math.cos(pitch), Math.sin(pitch)).applyQuaternion(q);
+    const hf = new THREE.Vector3(0, -Math.sin(pitch), Math.cos(pitch)).applyQuaternion(q);
+    const hr = new THREE.Vector3(1, 0, 0).applyQuaternion(q); // its left
+    const H = bot.bones.Head.getWorldPosition(new THREE.Vector3());
+    const out = iHead ? 1 : -1; // the head hand's own side
+    const hand = rig.hands[iHead];
+    hand.at.copy(H).addScaledVector(hu, 0.16 * ws).addScaledVector(hf, 0.16 * ws).addScaledVector(hr, out * 0.02 * ws);
+    hand.w = Math.max(hand.w, hw);
+    hand.pole.set(out * 0.9, -0.5, -0.1);
+    // the other hand on the top rope, a little along from the middle (the way its own side lies)
+    const sgn = (iRope ? 1 : -1) * E.lw; // its side along the rope: + the way of a
+    const sRope = E.s0 + sgn * 0.62;
+    const rope = rig.hands[iRope];
+    const rp = ropeAt(E.k, sRope, 3, new THREE.Vector3()).addScaledVector(E.out, -0.02).addScaledVector(UPV, 0.05);
+    const rw = lw * smooth((S.lw - 0.5) / 0.5);
+    rp.y -= (0.05 * lw) * 0.5;
+    rope.at.copy(rp);
+    rope.w = Math.max(rope.w, rw);
+    rope.pole.set(iRope ? 0.8 : -0.8, -0.6, -0.9);
+    // the weight on the ropes
+    loadOn(E.k, E.s0, 3, 0.06 * lw);
+    loadOn(E.k, E.s0, 2, 0.03 * lw);
+    loadOn(E.k, sRope, 3, 0.015 * rw);
+    // the hips back onto the rope, the knees soft, the head over to a side
+    rig.body.z -= 0.13 * lw;
+    rig.body.y -= 0.05 * lw;
+    rig.tilt = (side === 'red' ? 1 : -1) * 0.22 * hw;
+    rig.breath = 1.7;
+    rig.breathRate = SLUMP_RATE;
+    rig.wide = 0.06 * lw;
+    rig.feetFwd = 0.2 * lw;
+    rig.toeOut = 0.1;
+    rig.planted = 0.1;
   }
 
   // the loser's rage, with weight: a wind-up before each blow, the hands on what it throws
@@ -1678,17 +1806,6 @@ export async function createScene(root) {
         grab('chair', new THREE.Vector3(-0.3, 0.62, 0.02), take, 0);
         grab('chair', new THREE.Vector3(0.3, 0.62, 0.02), take, 1);
       }
-    } else if (tt >= 3.9) {
-      // down on the floor, knees up, the forearms on its knees, head down
-      const k = smooth((tt - 3.9) / 0.7);
-      const q = f.bot.root.getWorldQuaternion(new THREE.Quaternion());
-      const me = f.bot.root.getWorldPosition(new THREE.Vector3());
-      rig.hands.forEach((h, i) => {
-        h.at.set(i ? 0.2 : -0.2, 0.78 + Math.sin(tt * 1.3 + i) * 0.01, 0.82).applyQuaternion(q).add(me);
-        h.w = k;
-        h.pole.set(i ? 0.6 : -0.6, -0.4, -0.6);
-      });
-      rig.breath = 1.6;
     }
     c.bounce = 0;
   }
@@ -1730,9 +1847,8 @@ export async function createScene(root) {
   }
 
   function moveReferee(t, dt) {
-    // a serious official: planted, feet apart, hands clasped behind the back, slow breathing, looking
-    // straight ahead; now and then its head follows a fighter on the move (slowly, heavily damped), and
-    // back. It walks only when it must, in measured strides.
+    // a serious official: planted, feet a shoulder's width apart, arms down, looking straight ahead,
+    // still. It moves only for the verdict: to the winner, the arm up, back to its place.
     const r = referee;
     const tt = t - r.since;
     const p = POSES[r.pose](tt, r.side);
@@ -1755,10 +1871,10 @@ export async function createScene(root) {
     rig.twist = 0;
     rig.look = null;
     rig.lookW = 1;
-    rig.breath = reduced ? 0 : 0.8;
-    rig.breathRate = 1.05;
-    rig.wide = 0.05;
-    rig.toeOut = 0.12;
+    rig.breath = reduced ? 0 : 0.5;
+    rig.breathRate = 0.9;
+    rig.wide = 0.09; // the feet a shoulder's width apart
+    rig.toeOut = 0.05;
     rig.planted = walking ? 0.07 : 0.16; // no shuffling on the spot: a step only when it really must
     // where it faces: the way it walks; at the raise the way the winner faces, turned a little to it;
     // else straight ahead
@@ -1774,24 +1890,12 @@ export async function createScene(root) {
     }
     r.bot.yaw = turnTo(r.bot.yaw ?? 0, face, Math.min(1, dt * (walking ? 2.6 : 1.6)));
     r.bot.root.rotation.y = r.bot.yaw;
-    // the gaze: straight ahead; now and then it follows a fighter who walks round the ring
-    r.gaze ??= { follow: null, until: 0, next: t + 4 + Math.random() * 4, w: 0, at: null, mid: null };
+    // the gaze: straight ahead, always; only at the raise does it look at the winner
+    r.gaze ??= { at: null, mid: null };
     const gz = r.gaze;
-    if (!walking && r.pose !== 'refRaise' && !gz.follow && t > gz.next) {
-      const movers = ['red', 'blue'].filter((s) => fighters[s].present && !fighters[s].pose.match(/work|guard|idle|fail|done/) && ((fighters[s].spd ?? 0) > 0.35 || fighters[s].act));
-      if (movers.length) {
-        gz.follow = movers[Math.floor(Math.random() * movers.length)];
-        gz.until = t + 3 + Math.random() * 2.5;
-      } else gz.next = t + 1.5;
-    }
-    if (gz.follow && (t > gz.until || walking || r.pose === 'refRaise' || !fighters[gz.follow].present)) {
-      gz.follow = null;
-      gz.next = t + 7 + Math.random() * 6;
-    }
     const head = r.bot.bones?.Head?.getWorldPosition(new THREE.Vector3());
     let want = null;
     if (r.pose === 'refRaise' && state.winner) want = fighters[state.winner].bot.bones?.Head?.getWorldPosition(new THREE.Vector3()) ?? null;
-    else if (gz.follow) want = fighters[gz.follow].bot.bones?.Head?.getWorldPosition(new THREE.Vector3()) ?? null;
     const ahead = head ? head.clone().add(new THREE.Vector3(Math.sin(r.bot.yaw), -0.06, Math.cos(r.bot.yaw)).multiplyScalar(6)) : null;
     const aim = want ?? ahead;
     if (aim) {
@@ -1804,18 +1908,6 @@ export async function createScene(root) {
     }
     const q = r.bot.root.getWorldQuaternion(new THREE.Quaternion());
     const me = r.bot.root.getWorldPosition(new THREE.Vector3()).setY(FLOOR);
-    const s = r.bot.root.scale.x;
-    // its hands clasped behind its back (as the pose allows: the start signal and the raise use the arms)
-    const clasp = r.pose === 'ref' || (r.pose === 'refRaise' && (!raise || raise.grip + raise.off < 0.001 || raise.off > 0.5));
-    r.claspW = (r.claspW ?? 0) + ((clasp ? 1 : 0) - (r.claspW ?? 0)) * Math.min(1, dt * 2.5);
-    if (r.claspW > 0.001) {
-      for (const i of [0, 1]) {
-        const o = i ? 1 : -1;
-        rig.hands[i].at.set(o * 0.035 * s, 0.9 * s, -0.2 * s).applyQuaternion(q).add(me);
-        rig.hands[i].w = r.claspW;
-        rig.hands[i].pole.set(o * 0.9, -0.2, -0.7);
-      }
-    }
     // the raise: its near hand on the winner's wrist, up together and held, then it lets go and nods once
     if (raise && raise.grip + raise.off > 0.001 && state.winner) {
       const w = fighters[state.winner];
