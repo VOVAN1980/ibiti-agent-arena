@@ -538,9 +538,9 @@ export function hallEnvironment(renderer) {
   band(9, 0.0, 0.08, 1.6, 46); // the light track
   band(6.2, 0.1, 0.9, 0.9); // the apron's glow
   // below: the wet floor, each half's colour and a grey between
-  lamp(30, 60, 0xff1a14, 0.35, [-15, -0.5, 0]);
-  lamp(30, 60, 0x14ff3c, 0.18, [15, -0.5, 0]);
-  lamp(6, 60, 0x5a5c62, 0.4, [0, -0.45, 0]);
+  lamp(30, 60, 0xff1a14, 0.22, [-17, -0.5, 0]);
+  lamp(30, 60, 0x14ff3c, 0.12, [17, -0.5, 0]);
+  lamp(8, 60, 0x5a5c62, 0.4, [0, -0.45, 0]);
   const pm = new THREE.PMREMGenerator(renderer);
   const t = pm.fromScene(env, 0.02).texture;
   pm.dispose();
@@ -838,7 +838,7 @@ function buildStands(scene, { small, steel }) {
   const mat = new THREE.ShaderMaterial({
     defines: { POOLS },
     uniforms: { ...light, ...common },
-    vertexShader: `attribute vec2 aInfo; varying vec3 vW; varying vec3 vN; varying vec2 vUv; varying vec2 vInfo; varying float vD;
+    vertexShader: `attribute vec2 aInfo; varying vec3 vW; varying vec3 vN; varying vec2 vUv; flat varying vec2 vInfo; varying float vD;
       void main() {
         vec4 w = modelMatrix * vec4(position, 1.0);
         vN = normal;
@@ -854,7 +854,7 @@ function buildStands(scene, { small, steel }) {
         gl_Position = projectionMatrix * mv;
       }`,
     fragmentShader: `uniform vec3 fogColor; uniform float mirrorPass;
-      varying vec3 vW; varying vec3 vN; varying vec2 vUv; varying vec2 vInfo; varying float vD;
+      varying vec3 vW; varying vec3 vN; varying vec2 vUv; flat varying vec2 vInfo; varying float vD;
       ${HALL_LIGHT}
       ${HASH}
       void main() {
@@ -885,8 +885,12 @@ function buildStands(scene, { small, steel }) {
           albedo = vec3(0.03, 0.03, 0.034);
           // the steel cap along its top, and groups of LED dashes under it, red left and green right
           albedo += vec3(0.12) * step(0.95, vUv.y);
+          float aa = fwidth(vUv.x);
           float g = mod(vUv.x + tier * 3.7, 12.0);
-          float dash = step(g, 3.0) * step(fract(g / 0.75), 0.68) * step(0.8, vUv.y) * step(vUv.y, 0.88);
+          float f = mod(g, 1.25);
+          float ay = fwidth(vUv.y);
+          float dash = (1.0 - smoothstep(3.75 - aa, 3.75, g)) * smoothstep(0.0, aa, f) * (1.0 - smoothstep(0.9 - aa, 0.9, f))
+            * smoothstep(0.8 - ay, 0.8, vUv.y) * (1.0 - smoothstep(0.88, 0.88 + ay, vUv.y));
           emit += (vW.x < 0.0 ? uRed * 1.5 : uGreen * 1.1) * dash * smoothstep(2.0, 5.0, abs(vW.x));
           // the entrances in the middle tier's wall: dark, a warm light deep inside
           float door = step(tier, 1.5) * step(mod(vUv.x, 19.0), 2.4) * step(vUv.y, 0.7);
@@ -997,7 +1001,7 @@ function buildStands(scene, { small, steel }) {
         #endif
         // dark clothes mostly, now and then the corner's shirt; six skin tones; dark hair, now and then fair
         float c = hash(vec2(s, 2.0));
-        vec3 cloth = c < 0.25 ? vec3(0.02, 0.022, 0.03) : c < 0.45 ? vec3(0.05, 0.05, 0.055) : c < 0.58 ? vec3(0.03, 0.035, 0.06) : c < 0.64 ? vec3(0.09) : c < 0.7 ? vec3(0.32, 0.31, 0.3) : c < 0.78 ? vec3(0.06, 0.02, 0.02) : c < 0.9 ? vec3(0.05, 0.045, 0.03) : vRim * 0.14 + 0.01;
+        vec3 cloth = c < 0.25 ? vec3(0.02, 0.022, 0.03) : c < 0.45 ? vec3(0.05, 0.05, 0.055) : c < 0.58 ? vec3(0.03, 0.035, 0.06) : c < 0.64 ? vec3(0.09) : c < 0.7 ? vec3(0.18, 0.175, 0.17) : c < 0.78 ? vec3(0.06, 0.02, 0.02) : c < 0.9 ? vec3(0.05, 0.045, 0.03) : vRim * 0.14 + 0.01;
         float k = hash(vec2(s, 3.0));
         vec3 skin = k < 0.2 ? vec3(0.6, 0.38, 0.28) : k < 0.4 ? vec3(0.45, 0.28, 0.18) : k < 0.55 ? vec3(0.28, 0.16, 0.1) : k < 0.7 ? vec3(0.13, 0.07, 0.045) : k < 0.85 ? vec3(0.52, 0.36, 0.26) : vec3(0.36, 0.22, 0.14);
         vec3 hair = hash(vec2(s, 4.0)) < 0.8 ? vec3(0.015, 0.012, 0.01) : vec3(0.12, 0.08, 0.04);
@@ -1034,7 +1038,7 @@ function buildStands(scene, { small, steel }) {
   scene.add(seatMesh);
 
   // phones: some held up steady (filming), more that flash now and then, most when the hall roars
-  const phoneN = Math.min(full.length, small ? 90 : 320);
+  const phoneN = Math.min(full.length, small ? 300 : 1200);
   const pick = full.map((_, i) => i).sort(() => Math.random() - 0.5).slice(0, phoneN);
   const pPos = new Float32Array(phoneN * 3);
   const pData = new Float32Array(phoneN * 4);
@@ -1056,12 +1060,13 @@ function buildStands(scene, { small, steel }) {
         vec3 p = position + vec3(0.0, 1.12 + stand * 0.48 + arms * 0.45, 0.0) - normalize(vec3(position.x, 0.0, position.z)) * 0.25;
         vec4 mv = viewMatrix * vec4(p, 1.0);
         vGlow = aGlow * exp(mv.z * 0.012);
-        gl_PointSize = uSize * (aGlow > 1.5 ? 1.6 : 1.0);
+        gl_PointSize = uSize * (aGlow > 2.0 ? 1.8 : 1.0);
         gl_Position = projectionMatrix * mv;
       }`,
     fragmentShader: `uniform float mirrorPass; varying float vGlow;
       void main() {
-        float a = pow(max(0.0, 1.0 - length(gl_PointCoord - 0.5) * 2.0), 2.2);
+        float d = length(gl_PointCoord - 0.5) * 2.0;
+        float a = (1.0 - smoothstep(0.15, 0.55, d)) + 0.25 * pow(max(0.0, 1.0 - d), 2.0); // a hard point in a little glow
         gl_FragColor = vec4(vec3(0.9, 0.95, 1.0) * vGlow * a * (1.0 - mirrorPass * 0.6), 1.0);
       }`,
     blending: THREE.AdditiveBlending,
@@ -1071,7 +1076,7 @@ function buildStands(scene, { small, steel }) {
   phones.frustumCulled = false;
   phones.layers.enable(MIRROR);
   scene.add(phones);
-  const steady = pick.map(() => Math.random() < 0.3);
+  const steady = pick.map(() => Math.random() < 0.4);
 
   return {
     seats: { count, pos: Float32Array.from(seats.pos), side: Int8Array.from(seats.side), tier: Uint8Array.from(seats.tier), row: Uint8Array.from(seats.row) },
@@ -1088,15 +1093,17 @@ function buildStands(scene, { small, steel }) {
     setPhoneSize(px) {
       phones.material.uniforms.uSize.value = px;
     },
-    update(t, exc, roar, reduced) {
+    update(t, dt, exc, roar, reduced) {
       light.uExc.value.set(exc.red, exc.blue);
+      const fade = Math.exp(-dt * 20); // a flash dies fast
+      const often = dt * (0.12 + roar * 1.1); // the chance of a flash this frame
       mood.uRoar.value = roar;
       mood.uMove.value = reduced ? 0 : 1;
       for (let i = 0; i < phoneN; i++) {
-        if (steady[i]) glow[i] = 0.75 + (reduced ? 0 : 0.2 * Math.sin(t * 0.7 + i));
+        if (steady[i]) glow[i] = 1.4 + (reduced ? 0 : 0.3 * Math.sin(t * 0.7 + i));
         else {
-          glow[i] *= 0.72; // a flash dies fast
-          if (!reduced && Math.random() < 0.0012 + roar * 0.012) glow[i] = 2.6;
+          glow[i] *= fade;
+          if (!reduced && Math.random() < often) glow[i] = 5;
         }
       }
       phoneGeo.attributes.aGlow.needsUpdate = true;
@@ -1406,7 +1413,7 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring }) {
         float rr = length(vWorld.xz);
         float fall = pow(clamp(1.0 - (rr - 5.6) / 9.0, 0.0, 1.0), 1.3) * smoothstep(0.5, 4.0, abs(vWorld.x));
         float grain = clamp(dot(diffuseColor.rgb, vec3(0.33)) * 70.0, 0.7, 1.25);
-        outgoingLight += (vWorld.x < 0.0 ? uRed * 0.15 : uGreen * 0.09) * fall * grain;
+        outgoingLight += (vWorld.x < 0.0 ? uRed * 0.19 : uGreen * 0.11) * fall * grain;
         if (mirrorK > 0.0) {
           // the mirror: sharp in the puddles, stretched into streaks towards the viewer where it is only
           // damp, bent a little by the grit and the cracks
@@ -1688,11 +1695,11 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring }) {
   heads.forEach((h, i) => flarePos.set([h.at.x, h.at.y - 0.18, h.at.z], i * 3));
   flareGeo.setAttribute('position', new THREE.BufferAttribute(flarePos, 3));
   flareGeo.setAttribute('color', new THREE.BufferAttribute(flareCol, 3));
-  const flares = new THREE.Points(flareGeo, new THREE.PointsMaterial({ size: 1.0, sizeAttenuation: true, map: softSpot(64, 2.6), vertexColors: true, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
+  const flares = new THREE.Points(flareGeo, new THREE.PointsMaterial({ size: 1.3, sizeAttenuation: true, map: softSpot(64, 2.6), vertexColors: true, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
   scene.add(flares);
   const lightFlares = () => {
     heads.forEach((h, i) => {
-      const k = Math.min(1.6, 0.5 + h.k * 0.25);
+      const k = Math.min(2, 0.3 + h.k * 0.3); // the lamps that throw a beam burn brighter than those that glow
       flareCol.set([h.color.r * k, h.color.g * k, h.color.b * k], i * 3);
     });
     flareGeo.attributes.color.needsUpdate = true;
@@ -1702,7 +1709,7 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring }) {
   // ---- the stands, their crowd and its phones; the fans' pools of light on them
   const stands = buildStands(scene, { small, steel: railMat });
   stands.setPools(pools);
-  stands.setPhoneSize(2.6 * renderer.getPixelRatio());
+  stands.setPhoneSize(4 * renderer.getPixelRatio());
 
   // ---- lights: a white key on the canvas, a cool fill, and each half's colour low over the floor
   const key = new THREE.SpotLight(0xfff3e2, 4.4, 0, 0.45, 0.6, 0);
@@ -1738,7 +1745,10 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring }) {
     headAt,
     placeHeads,
     key,
+    /** Every seat of the stands: `pos` (x, y, z on its tread, under the sitter's hips), `side` (-1 red,
+     *  0 the ends, 1 green), `tier` (0 the lower bowl, 1, 2) and `row` (from the front), `count` of them. */
     seats: stands.seats,
+    /** The crowd drawn on them (one instanced cut-out a person), to be swapped for the impostor atlas. */
     crowd: stands.crowd,
     lightsToMirror,
     reflect,
@@ -1765,7 +1775,7 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring }) {
         stands.setPools(pools);
       }
       lightFlares();
-      stands.update(t, exc, roar, reduced);
+      stands.update(t, dt, exc, roar, reduced);
     },
   };
 }

@@ -726,7 +726,7 @@ export async function createScene(root) {
 
   // the atmosphere: haze, two big screens with live close-ups, pyrotechnics
   const haze = buildHaze(scene, small);
-  const screens = buildScreens(scene, renderer, { red: fighters.red.st, blue: fighters.blue.st }, small, M);
+  const screens = buildScreens(scene, renderer, { red: fighters.red.st, blue: fighters.blue.st }, small, M, SIZE);
   const pyro = buildPyro(scene, small, FLOOR);
   const postTops = room.postTops;
   room.lightsToMirror(); // every light also lights the floor's mirror picture
@@ -1351,8 +1351,8 @@ export async function createScene(root) {
       f.st.g.getWorldQuaternion(camQ);
       camFront.set(0, 0, 1).applyQuaternion(camQ);
       const k = Math.min(1, (t - cam.at) / 4.2);
-      camera.position.copy(v3).addScaledVector(camFront, 2.9 - k * 0.4).add(camUp.set(0.35, 1.85, 0));
-      camLook.copy(v3).add(camUp.set(0, 1.4, 0));
+      camera.position.copy(v3).addScaledVector(camFront, (2.9 - k * 0.4) * SIZE).add(camUp.set(0.35, 1.85 * SIZE, 0));
+      camLook.copy(v3).add(camUp.set(0, 1.4 * SIZE, 0));
       camera.lookAt(camLook);
       for (const b of beams) b.m.visible = false;
       draw(dt);
@@ -1370,8 +1370,8 @@ export async function createScene(root) {
     if (cam.shot === 'faceRed' || cam.shot === 'faceBlue') {
       // face to face: from in front of the desk, the robot over its monitor (for videos and previews)
       const g = fighters[cam.shot === 'faceRed' ? 'red' : 'blue'].st.g;
-      g.localToWorld(camAt.set(0.2, 2.15, 2.2));
-      g.localToWorld(camLook.set(0, 1.5, 0));
+      g.localToWorld(camAt.set(0.2, 2.15, 2.2).multiplyScalar(SIZE));
+      g.localToWorld(camLook.set(0, 1.5 * SIZE, 0));
       camera.position.copy(camAt);
       camera.lookAt(camLook);
       draw(dt);

@@ -79,7 +79,7 @@ export function buildHaze(scene, small) {
     // denser low round the ring, thinning out with height: the upper air stays black
     const y = low ? 0.3 + Math.random() * 0.8 : 1.6 + Math.pow(Math.random(), 1.6) * 4.5;
     const thin = low ? 1 : Math.max(0.15, 1 - (y - 1.6) / 5.5);
-    const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex[puffs.length % 2], color: low ? 0x5a606e : 0x6a7080, transparent: true, opacity: (low ? 0.06 + Math.random() * 0.05 : 0.03 + Math.random() * 0.03) * thin, blending: THREE.AdditiveBlending, depthWrite: false }));
+    const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex[puffs.length % 2], color: low ? 0x5a606e : 0x6a7080, transparent: true, opacity: (low ? 0.06 + Math.random() * 0.05 : 0.04 + Math.random() * 0.035) * thin, blending: THREE.AdditiveBlending, depthWrite: false }));
     const s = low ? 4 + Math.random() * 4 : 5 + Math.random() * 5;
     m.scale.set(s * 1.6, s * (low ? 0.45 : 0.6), 1);
     m.material.rotation = Math.random() * 6.28;
@@ -124,8 +124,9 @@ function standby(side) {
   return t;
 }
 
-/** Two big screens above the side stands, each with a live close-up of one fighter. */
-export function buildScreens(scene, renderer, stations, small, M) {
+/** Two big screens above the side stands, each with a live close-up of one fighter (`size`: the
+ *  fighters' and their desks' scale). */
+export function buildScreens(scene, renderer, stations, small, M, size = 1) {
   const screens = [];
   const faces = [];
   for (const side of ['red', 'blue']) {
@@ -165,8 +166,8 @@ export function buildScreens(scene, renderer, stations, small, M) {
       const sc = screens[n++ % screens.length];
       const st = stations[sc.side];
       if (!st.g.visible) return;
-      st.g.localToWorld(at.set(0.15, 1.95, 2.35));
-      st.g.localToWorld(look.set(0, 1.55, 0));
+      st.g.localToWorld(at.set(0.15, 1.95, 2.35).multiplyScalar(size));
+      st.g.localToWorld(look.set(0, 1.55 * size, 0));
       sc.cam.position.copy(at);
       sc.cam.lookAt(look);
       // the screens must not film themselves (a picture drawn into itself)
