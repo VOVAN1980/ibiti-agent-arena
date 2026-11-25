@@ -7,7 +7,7 @@
 // and back lights breathe a little. They ride the skeleton of the X Bot model from Mixamo (Adobe; free
 // to use in one's own projects, commercial ones included): the same bones, rest pose and clips, so they
 // walk and stand with its animations. Everything else (sitting at the desk, typing, arms up, the
-// loser's rage, the referee's verdict) is posed here through the skeleton, from the same pose values the simple robots use, and
+// loser's rage, the referee's verdict) is posed here through the skeleton, from the scene's pose values, and
 // the hands reach the keyboard or the head by solving the arm (two-bone IK).
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -329,7 +329,7 @@ export function makeXRobot(kind, models) {
       B.Head.updateMatrixWorld(true);
     }
 
-    // the arms: angles as for the simple robots, blended towards a point the hand reaches (two-bone IK)
+    // the arms: angles from the pose, blended towards a point the hand reaches (two-bone IK)
     for (const [i, side] of [[0, 'Right'], [1, 'Left']]) {
       const upper = B[`${side}Arm`];
       const fore = B[`${side}ForeArm`];

@@ -3,7 +3,8 @@
 // before the bell they walk out and work the crowd; at the bell they sit down and type; whoever
 // answers jumps up with both arms raised, whoever runs out of time holds its head. At the end the
 // referee robot raises the winner's arm, the winner dances, and the loser smashes its monitor,
-// throws its keyboard, flips its desk and hurls its chair, then sits on the floor.
+// throws its keyboard, flips its desk and hurls its chair, then trudges to the nearest ropes and hangs
+// its head there.
 // The page tells the scene what happens (the same calls as the 2D scene in scene.js); the scene
 // only draws it.
 // The hall itself (the ring and its apron, the truss and its lights, the wet floor, the stands and
@@ -20,7 +21,7 @@ import { buildHaze, buildScreens, buildPyro } from './atmosphere.js';
 import { buildRoom, loadHallAssets, hallEnvironment, volumeMaterial, softSpot, GradeShader, TRUSS, emblemPlate, ROPES, ROPE_LOAD } from './room.js';
 import { loadXbot, makeXRobot } from './xbot.js';
 
-const COLOR = { red: 0xef4444, blue: 0x22c55e, ref: 0xe6ebf5, gold: 0xf5b301 };
+const COLOR = { red: 0xef4444, blue: 0x22c55e };
 const CSS = { red: '#ef4444', blue: '#22c55e' };
 const FLOOR = 1.0; // the top of the ring
 const SIZE = 1.2; // the robots and their desks, a size up from life so they read in the wide shot
@@ -99,13 +100,6 @@ function drawEmblem(g, cx, cy, size, rot = 0) {
   for (const y of [-5, 0, 5]) g.fillRect(-6 * k, (y - 1) * k, 12 * k, 2 * k);
   g.restore();
 }
-
-const stripeTex = () => canvasTex(64, 64, (g, w, h) => {
-  g.fillStyle = '#f4f6fb';
-  g.fillRect(0, 0, w, h);
-  g.fillStyle = '#111318';
-  g.fillRect(0, 0, w / 2, h);
-}, { repeat: [5, 1] });
 
 function screenTex(side, kind) {
   return canvasTex(256, 160, (g, w, h) => {
@@ -217,16 +211,10 @@ function materials() {
     dark: std({ color: 0x24272e, metalness: 0.8, roughness: 0.4 }),
     black: std({ color: 0x0b0c0f, metalness: 0.4, roughness: 0.5 }),
     glass: std({ color: 0x07080a, metalness: 0.3, roughness: 0.06, envMapIntensity: 1.2 }),
-    visor: std({ color: 0x04060b, metalness: 1, roughness: 0.06 }),
-    gold: std({ color: 0xf5b301, metalness: 0.85, roughness: 0.28, emissive: 0x2a1c00 }),
     desk: std({ color: 0x1b1d22, metalness: 0.85, roughness: 0.32 }),
-    stripes: std({ map: stripeTex(), roughness: 0.6 }),
-    accent: (c) => std({ color: c, metalness: 0.35, roughness: 0.32 }),
     glow,
   };
 }
-const capsule = (r, l) => new THREE.CapsuleGeometry(r, l, 4, 12);
-const sphere = (r) => new THREE.SphereGeometry(r, 18, 14);
 const cyl = (r1, r2, h, n = 20) => new THREE.CylinderGeometry(r1, r2, h, n);
 const rbox = (w, h, d, r = 0.04) => new RoundedBoxGeometry(w, h, d, 3, r);
 function mesh(geo, mat, at = [0, 0, 0], parent = null) {
@@ -246,75 +234,8 @@ function bar(a, b, r, mat) {
   return m;
 }
 
-// ------------------------------------------------------------------ a robot
-
-function buildRobot(kind, M) {
-  const ref = kind === 'ref';
-  const acc = M.accent(COLOR[kind]);
-  const glow = M.glow(ref ? COLOR.gold : COLOR[kind]);
-  const root = new THREE.Group();
-  const hips = new THREE.Group();
-  hips.position.y = 0.95;
-  root.add(hips);
-  const legs = [-1, 1].map((s) => {
-    const hip = new THREE.Group();
-    hip.position.set(0.17 * s, 0, 0);
-    hips.add(hip);
-    mesh(capsule(0.12, 0.3), M.metal, [0, -0.24, 0], hip);
-    const knee = new THREE.Group();
-    knee.position.y = -0.47;
-    hip.add(knee);
-    mesh(sphere(0.115), M.dark, [0, 0, 0], knee);
-    mesh(capsule(0.105, 0.28), M.metal, [0, -0.22, 0], knee);
-    mesh(rbox(0.24, 0.1, 0.36), ref ? M.black : M.dark, [0, -0.44, 0.07], knee);
-    return { hip, knee };
-  });
-  mesh(cyl(0.33, 0.36, 0.28), ref ? M.black : acc, [0, 0.02, 0], hips);
-  const belt = mesh(new THREE.TorusGeometry(0.345, 0.045, 8, 28), M.gold, [0, 0.16, 0], hips);
-  belt.rotation.x = Math.PI / 2;
-  const torso = new THREE.Group();
-  torso.position.y = 0.18;
-  hips.add(torso);
-  mesh(rbox(0.84, 0.7, 0.48, 0.12), ref ? M.stripes : M.metal, [0, 0.42, 0], torso);
-  if (!ref) mesh(rbox(0.52, 0.3, 0.06, 0.03), acc, [0, 0.5, 0.235], torso);
-  const core = mesh(cyl(0.1, 0.1, 0.04, 6), glow, [0, 0.5, 0.275], torso);
-  core.rotation.x = Math.PI / 2;
-  if (ref) {
-    for (const s of [-1, 1]) {
-      const tie = mesh(new THREE.ConeGeometry(0.06, 0.12, 4), M.black, [0.06 * s, 0.76, 0.25], torso);
-      tie.rotation.z = (Math.PI / 2) * s;
-    }
-  }
-  for (const s of [-1, 1]) mesh(sphere(0.16), ref ? M.black : acc, [0.5 * s, 0.7, 0], torso);
-  mesh(cyl(0.09, 0.11, 0.14), M.dark, [0, 0.83, 0], torso);
-  const head = new THREE.Group();
-  head.position.y = 0.9;
-  torso.add(head);
-  mesh(rbox(0.6, 0.44, 0.5, 0.15), M.metal, [0, 0.22, 0], head);
-  mesh(rbox(0.48, 0.22, 0.05, 0.05), M.visor, [0, 0.22, 0.245], head);
-  const eyes = [-1, 1].map((s) => mesh(new THREE.BoxGeometry(0.1, 0.07, 0.02), glow, [0.11 * s, 0.23, 0.275], head));
-  mesh(cyl(0.015, 0.015, 0.22, 6), M.dark, [0, 0.53, 0], head);
-  const beacon = mesh(sphere(0.05), glow, [0, 0.66, 0], head);
-  for (const s of [-1, 1]) {
-    const ear = mesh(cyl(0.07, 0.07, 0.06), M.dark, [0.32 * s, 0.22, 0], head);
-    ear.rotation.z = Math.PI / 2;
-  }
-  const arms = [-1, 1].map((s) => {
-    const sh = new THREE.Group();
-    sh.position.set(0.5 * s, 0.66, 0);
-    torso.add(sh);
-    mesh(capsule(0.09, 0.3), M.metal, [0, -0.24, 0], sh);
-    const el = new THREE.Group();
-    el.position.y = -0.46;
-    sh.add(el);
-    mesh(sphere(0.1), M.dark, [0, 0, 0], el);
-    mesh(capsule(0.085, 0.26), M.metal, [0, -0.22, 0], el);
-    const hand = mesh(sphere(0.12), ref ? M.metal : acc, [0, -0.47, 0], el);
-    hand.scale.set(1, 1.15, 0.9);
-    return { sh, el };
-  });
-  return { root, hips, torso, head, legs, arms, eyes, beacon, glow };
-}
+/** What stands where a robot would, if the robots' models cannot be had: nothing to draw, nothing to move. */
+const EMPTY_BOT = () => ({ root: new THREE.Group(), eyes: [], bones: {}, feet: [], cur: {}, pose() {}, gait: () => ({ phase: 0, w: 0 }) });
 
 /** Turn an angle towards a target the short way round, at most `k` of the way this frame. */
 function turnTo(from, to, k) {
@@ -581,7 +502,8 @@ function buildStation(side, M, kit) {
 // ------------------------------------------------------------------ the scene
 
 export async function createScene(root) {
-  // the robots' model and the hall's baked parts load together; each falls back to code on its own.
+  // the robots' models and the hall's baked parts load together (a hall whose robots will not load
+  // stands empty).
   // A still of the hall comes first and shows while the hall is built and its shaders compile (seconds
   // on a cold start), until the first frame is drawn
   const poster = new Image();
@@ -591,7 +513,7 @@ export async function createScene(root) {
   }, () => {});
   const [xg, assets] = await Promise.all([
     loadXbot(small).catch((e) => {
-      console.warn('humanoid robots not available, using the simple ones:', e.message);
+      console.error('the robots could not be loaded; the hall stands without them:', e.message);
       return null;
     }),
     loadHallAssets(small),
@@ -754,15 +676,15 @@ export async function createScene(root) {
     st.g.rotation.y = SEAT[side].rot;
     st.g.scale.setScalar(STATION);
     scene.add(st.g);
-    const bot = xg ? makeXRobot(side, xg) : buildRobot(side, M);
+    const bot = xg ? makeXRobot(side, xg) : EMPTY_BOT();
     bot.root.scale.setScalar(SIZE);
     st.g.add(bot.root);
     fighters[side] = { st, bot, pose: 'hype', since: 0, pos: new THREE.Vector2(0, 1.35), path: [], cur: {}, events: new Set(), wrecked: false, present: true, screen: 'code', placed: false };
     spots[side].target.position.set(SEAT[side].x, FLOOR, SEAT[side].z);
     focus[side].to.set(SEAT[side].x, FLOOR, SEAT[side].z);
   }
-  const refBot = xg ? makeXRobot('ref', xg) : buildRobot('ref', M);
-  refBot.root.scale.setScalar(SIZE * (xg?.robots ? STATION * 1.03 : 1)); // the referee a touch taller than the fighters (they stand at SIZE × STATION)
+  const refBot = xg ? makeXRobot('ref', xg) : EMPTY_BOT();
+  refBot.root.scale.setScalar(SIZE * STATION * 1.03); // the referee a touch taller than the fighters (they stand at SIZE × STATION)
   refBot.root.position.set(0, FLOOR, -0.35);
   scene.add(refBot.root);
   const referee = { bot: refBot, pose: 'ref', since: 0, side: null, pos: new THREE.Vector2(0, -0.35), target: new THREE.Vector2(0, -0.35), cur: {} };
@@ -1645,8 +1567,7 @@ export async function createScene(root) {
       // (stepAct put the root so that the middle of the body is where the flight has it)
       bot.root.position.set(f.pos.x, lift / STATION, f.pos.y);
     } else bot.root.position.set(f.pos.x, lift / STATION, f.pos.y);
-    if (bot.pose) bot.pose(c, p, t, walking, dt, reach, rig); // on the way to its chair it walks; it sits down once there
-    else applyLimbs(bot, c, p, t, walking);
+    bot.pose(c, p, t, walking, dt, reach, rig); // on the way to its chair it walks; it sits down once there
   }
 
   // ---- the loser's ending: it trudges to the nearest ropes, turns, backs into them and hangs there
@@ -1810,27 +1731,6 @@ export async function createScene(root) {
     c.bounce = 0;
   }
 
-  function applyLimbs(bot, c, p, t, walking) {
-    const seated = p.seat && !walking;
-    const sit = bot.sit = (bot.sit ?? 0) + ((seated ? 1 : 0) - (bot.sit ?? 0)) * 0.15;
-    const floor = c.floor || 0;
-    bot.hips.position.y = lerp(lerp(0.95, 0.5, sit), 0.22, floor) + (seated ? 0 : c.bounce);
-    const step = walking ? Math.sin(t * 9) : 0;
-    bot.legs.forEach((leg, i) => {
-      const s = i ? -1 : 1;
-      leg.hip.rotation.x = lerp(step * 0.55 * s - c.bounce * 1.5, -1.5, Math.max(sit, floor, c.tuck || 0));
-      leg.knee.rotation.x = lerp(Math.max(0, -step * s) * 0.7 + c.bounce * 2.5, 1.5, Math.max(sit, c.tuck || 0)) * (1 - floor) + 0.15 * floor;
-    });
-    bot.torso.rotation.x = c.lean;
-    bot.head.rotation.x = c.look;
-    bot.head.rotation.y = c.shake;
-    bot.arms[0].sh.rotation.set(c.a0x, 0, c.a0z);
-    bot.arms[0].el.rotation.x = c.e0;
-    bot.arms[1].sh.rotation.set(c.a1x, 0, c.a1z);
-    bot.arms[1].el.rotation.x = c.e1;
-    bot.beacon.visible = Math.sin(t * 6) > -0.3;
-  }
-
   function wreck(f, tt) {
     const once = (name, at, fn) => {
       if (tt >= at && !f.events.has(name)) {
@@ -1926,8 +1826,7 @@ export async function createScene(root) {
       if (rig.look && nod > 0.001) rig.look.y -= 0.5 * nod;
     }
     rig.ground = FLOOR;
-    if (r.bot.pose) r.bot.pose(c, p, t, walking, dt, null, rig);
-    else applyLimbs(r.bot, c, p, t, walking);
+    r.bot.pose(c, p, t, walking, dt, null, rig);
   }
 
   // a slow device: once the hall has settled, if it cannot keep about 40 frames a second, the heavy
@@ -1981,11 +1880,11 @@ export async function createScene(root) {
     for (const side of ['red', 'blue']) {
       const f = fighters[side];
       if (!f.present) continue;
-      moveFighter(f, side, t, dt);
-      if (f.pose === 'lose') wreck(f, t - f.since);
+      if (xg) moveFighter(f, side, t, dt);
+      if (xg && f.pose === 'lose') wreck(f, t - f.since);
       if (f.screen === 'code') f.st.screens.code.offset.y = (t * 0.35) % 1;
     }
-    moveReferee(t, dt);
+    if (xg) moveReferee(t, dt);
     // the ropes dip where they carry a climbing fighter (the four heaviest loads)
     loads.sort((x, y) => y.amount - x.amount);
     for (let i = 0; i < 4; i++) {
