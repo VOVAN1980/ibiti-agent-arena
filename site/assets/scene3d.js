@@ -409,7 +409,7 @@ const POSES = {
   work: (t, side) => {
     const calm = side === 'blue';
     const q = calm ? 0.72 : 1; // blue types evenly, red hammers the keys
-    return { spot: [0, 0], reach: 'keys', seat: true, bounce: 0, turn: 0, lean: calm ? 0.1 : 0.26, look: (calm ? 0.2 : 0.34) + Math.sin(t * (calm ? 0.9 : 1.7)) * (calm ? 0.12 : 0.05), a0x: 0.45 + Math.sin(t * 21 * q) * 0.04, a0z: 0.5, e0: -1.91 + Math.sin(t * 25 * q) * 0.1, a1x: 0.45 + Math.sin(t * 19 * q + 2) * 0.04, a1z: -0.5, e1: -1.91 + Math.sin(t * 23 * q + 1) * 0.1 };
+    return { spot: [0, 0], reach: 'keys', seat: true, bounce: 0, turn: 0, lean: calm ? 0.1 : 0.26, look: (calm ? 0.2 : 0.34) + Math.sin(t * 0.4) * 0.03, a0x: 0.45 + Math.sin(t * 21 * q) * 0.04, a0z: 0.5, e0: -1.91 + Math.sin(t * 25 * q) * 0.1, a1x: 0.45 + Math.sin(t * 19 * q + 2) * 0.04, a1z: -0.5, e1: -1.91 + Math.sin(t * 23 * q + 1) * 0.1 };
   },
   // answered in time: up from the chair, both arms high
   done: (t, side) => {
@@ -466,7 +466,7 @@ const POSES = {
     return { spot: [0, 0.35], seat: false, floor: k, bounce: 0, turn: Math.PI * (1 - k), lean: 0.35 * k, look: 0.5 * k + Math.sin(t * 1.3) * 0.05, a0x: -0.9 * k, a0z: 0.2, e0: -0.9 * k, a1x: -0.9 * k, a1z: -0.2, e1: -0.9 * k };
   },
   // the referee
-  ref: (t) => ({ spot: [0, 0], seat: false, bounce: 0, turn: Math.sin(t * 0.5) * 0.35, lean: 0, look: 0, a0x: 0.45, a0z: -0.1, e0: -1.1, a1x: 0.45, a1z: 0.1, e1: -1.1 }),
+  ref: () => ({ spot: [0, 0], seat: false, bounce: 0, turn: 0, lean: 0, look: 0, a0x: 0, a0z: -0.08, e0: -0.12, a1x: 0, a1z: 0.08, e1: -0.12 }),
   refStart: (t) => {
     const up = ease(t / 0.35);
     const chop = ease((t - 0.5) / 0.25);
@@ -764,7 +764,7 @@ export async function createScene(root) {
     focus[side].to.set(SEAT[side].x, FLOOR, SEAT[side].z);
   }
   const refBot = xg ? makeXRobot('ref', xg, COLOR) : buildRobot('ref', M);
-  refBot.root.scale.setScalar(SIZE * (xg?.robots ? 1.03 : 1)); // the referee as tall as the fighters (slim beside their bulk)
+  refBot.root.scale.setScalar(SIZE * (xg?.robots ? STATION * 1.03 : 1)); // the referee a touch taller than the fighters (they stand at SIZE × STATION)
   refBot.root.position.set(0, FLOOR, -0.35);
   scene.add(refBot.root);
   const referee = { bot: refBot, pose: 'ref', since: 0, side: null, pos: new THREE.Vector2(0, -0.35), target: new THREE.Vector2(0, -0.35), cur: {} };
@@ -1326,7 +1326,7 @@ export async function createScene(root) {
     const gripAt = Math.max(r.arrivedAt, 1.15);
     const grip = smooth((tt - gripAt) / 0.4);
     const up = smooth((tt - Math.max(gripAt + 0.35, 1.9)) / 0.55);
-    const off = smooth((tt - 3.7) / 0.45);
+    const off = smooth((tt - 4.2) / 0.45);
     return { grip: grip * (1 - off), up, off, tt };
   }
 
@@ -1368,7 +1368,7 @@ export async function createScene(root) {
       }
     }
     // the winner, once the referee has let go of its arm: to its corner, up the ropes, and the backflip
-    if (!reduced && f.pose === 'win' && !f.act && !f.flipped && tt > 2.0) {
+    if (!reduced && f.pose === 'win' && !f.act && !f.flipped && tt > 2.3) {
       f.flipped = true;
       f.act = { kind: 'win', phase: 'go', since: t, gesture: 'pump' };
     }
@@ -1484,7 +1484,14 @@ export async function createScene(root) {
     else if (lead?.face != null) facing = lead.face;
     else if (showing) facing = yawOut(f);
     else if (f.pose === 'stand' && other.present && !raiseOf()) facing = yawAt(f, other) * 0.7; // squared up to the other, waiting
-    if (!lead?.place) bot.yaw = turnTo(bot.yaw ?? c.turn, facing, Math.min(1, dt * (lead ? 5 : walking ? 5 : 3.2)));
+    if (!lead?.place) {
+      // eased, and never faster than a person turns: no snap at a corner of its way
+      const y0 = bot.yaw ?? c.turn;
+      const want = turnTo(y0, facing, Math.min(1, dt * (lead ? 5 : walking ? 4 : 3.2))) - y0;
+      const cap = dt * (lead ? 4.5 : 3.6);
+      bot.yaw = y0 + Math.max(-cap, Math.min(cap, want));
+    }
+    if (p.seat && !walking && Math.abs(turnTo(0, facing - (bot.yaw ?? facing), 1)) > 0.3) p.seat = false; // turned to its desk first, then down
 
     // the body's rig for this frame: an act's own, or the pose's (a guard, hops, typing, the loser's rage)
     const rig = lead?.rig ?? f.rig;
@@ -1568,9 +1575,9 @@ export async function createScene(root) {
       const leftW = new THREE.Vector3(1, 0, 0).applyQuaternion(q);
       const i = leftW.dot(s.sub(me)) > 0 ? 1 : 0; // the arm on the referee's side
       const out = i ? 1 : -1;
-      // up as high as the referee (a head shorter) can hold it
+      // straight up, held high by the referee's grip
       const low = new THREE.Vector3(out * 0.5, 1.5, 0.2);
-      const high = new THREE.Vector3(out * 0.5, 2.68, 0.14);
+      const high = new THREE.Vector3(out * 0.36, 3.2, 0.06);
       rig.hands[i].at.copy(low.lerp(high, raise.up)).applyQuaternion(q).add(me.setY(FLOOR));
       rig.hands[i].w = raise.grip;
       rig.hands[i].pole.set(out * 0.8, raise.up > 0.5 ? 0.2 : -1, -0.6);
@@ -1578,7 +1585,7 @@ export async function createScene(root) {
     } else f.raiseArm = null;
     // typing: each hand from key to key, a tap on each; the head reads the screen
     let reach = null;
-    if (p.reach === 'keys' && !walking) {
+    if (p.reach === 'keys' && !walking && p.seat) {
       f.keys ??= [0, 1].map(() => ({ from: new THREE.Vector3(), to: new THREE.Vector3(), u: 1, dur: 0.1 }));
       const calm = side === 'blue';
       reach = f.keys.map((kk, i) => {
@@ -1594,10 +1601,22 @@ export async function createScene(root) {
         v.y += Math.sin(Math.PI * Math.min(1, kk.u / 0.7)) * 0.025 - (kk.u > 0.75 ? Math.sin(Math.PI * (kk.u - 0.75) / 0.25) * 0.008 : 0);
         return f.st.g.localToWorld(v);
       });
-      rig.twist = Math.sin(t * (calm ? 1.1 : 1.9)) * 0.05;
-      const line = (t * (calm ? 0.9 : 1.3)) % 1;
-      const row = Math.floor(t * (calm ? 0.9 : 1.3)) % 7;
-      rig.look = f.st.g.localToWorld(new THREE.Vector3(lerp(-0.22, 0.2, line), 1.46 - row * 0.035, 0.84));
+      rig.twist = Math.sin(t * (calm ? 0.5 : 0.7)) * 0.02;
+      // the head on the screen, steady: its gaze drifts slowly over it (a damped follow, nothing of the
+      // keystrokes reaches it), now and then a slow glance at the other fighter
+      f.gaze ??= { at: null, mid: null, glance: t + 6 + Math.random() * 6, until: 0 };
+      const G_ = f.gaze;
+      if (t > G_.glance) {
+        G_.until = t + 1.6;
+        G_.glance = t + 9 + Math.random() * 8;
+      }
+      const want = t < G_.until && other.present ? other.bot.bones?.Head?.getWorldPosition(new THREE.Vector3()) ?? null : null;
+      const scr = f.st.g.localToWorld(new THREE.Vector3(Math.sin(t * 0.37 + (calm ? 1 : 0)) * 0.12, 1.4 + Math.sin(t * 0.23) * 0.04, 0.84));
+      const aim = want ?? scr;
+      const kk2 = 1 - Math.exp(-dt * 3.2);
+      G_.mid = G_.mid ? G_.mid.lerp(aim, kk2) : aim.clone();
+      G_.at = G_.at ? G_.at.lerp(G_.mid, kk2) : G_.mid.clone();
+      rig.look = G_.at.clone();
       rig.lookW = 0.9;
     } else if (p.reach === 'head' && !walking) reach = 'head';
     else if (p.seat && !walking && f.pose === 'guard') {
@@ -1711,14 +1730,20 @@ export async function createScene(root) {
   }
 
   function moveReferee(t, dt) {
+    // a serious official: planted, feet apart, hands clasped behind the back, slow breathing, looking
+    // straight ahead; now and then its head follows a fighter on the move (slowly, heavily damped), and
+    // back. It walks only when it must, in measured strides.
     const r = referee;
     const tt = t - r.since;
     const p = POSES[r.pose](tt, r.side);
-    const c = applyBody(r.bot, p, Math.min(1, dt * 10));
+    const c = applyBody(r.bot, p, Math.min(1, dt * 4));
     const d = r.target.clone().sub(r.pos);
     const dist = d.length();
     const walking = dist > 0.03;
-    r.speed = Math.min(2, dist * 4, (r.speed ?? 0) + dt * 3); // speeding up at the start, slowing down at the end
+    // a steady pace: it gathers speed over a stride or two and slows down the same way to stop
+    const pace = Math.min(1.05, Math.max(0.12, dist * 1.6));
+    r.speed = (r.speed ?? 0) + (pace - (r.speed ?? 0)) * Math.min(1, dt * 2.2);
+    if (!walking) r.speed = 0;
     r.pos.add(d.clampLength(0, dt * r.speed));
     if (r.pose === 'refRaise' && r.arrivedAt == null && dist < 0.08) r.arrivedAt = tt;
     if (r.pose !== 'refRaise') r.arrivedAt = null;
@@ -1730,11 +1755,15 @@ export async function createScene(root) {
     rig.twist = 0;
     rig.look = null;
     rig.lookW = 1;
+    rig.breath = reduced ? 0 : 0.8;
+    rig.breathRate = 1.05;
+    rig.wide = 0.05;
+    rig.toeOut = 0.12;
+    rig.planted = walking ? 0.07 : 0.16; // no shuffling on the spot: a step only when it really must
     // where it faces: the way it walks; at the raise the way the winner faces, turned a little to it;
-    // else between the two fighters, looking from one to the other
-    let face = c.turn;
+    // else straight ahead
+    let face = 0;
     const raise = raiseOf();
-    const live = ['red', 'blue'].filter((s) => fighters[s].present);
     if (walking && dist > 0.2) face = Math.atan2(d.x, d.y);
     else if (r.pose === 'refRaise' && state.winner) {
       const w = fighters[state.winner];
@@ -1742,49 +1771,68 @@ export async function createScene(root) {
       const fw = new THREE.Vector3(0, 0, 1).applyQuaternion(wq);
       const to = w.bot.root.getWorldPosition(new THREE.Vector3()).sub(r.bot.root.getWorldPosition(new THREE.Vector3()));
       face = Math.atan2(fw.x, fw.z) + 0.3 * Math.sign(fw.x * to.z - fw.z * to.x) * -1;
-      rig.look = w.bot.bones?.Head?.getWorldPosition(new THREE.Vector3()) ?? null;
-      rig.lookW = 0.7 * (1 - (raise?.up ?? 0) * 0.6);
-    } else if (live.length) {
-      r.lookAt ??= { side: 'red', until: 0 };
-      if (t > r.lookAt.until) {
-        r.lookAt.side = live.length > 1 && r.lookAt.side === 'red' ? 'blue' : live[0];
-        r.lookAt.until = t + 2.2 + Math.random() * 1.6;
-      }
-      const lf = fighters[r.lookAt.side];
-      const at = lf.bot.root.getWorldPosition(new THREE.Vector3());
-      face = Math.atan2(at.x - r.pos.x, at.z - r.pos.y) * 0.55 + (r.pose === 'refStart' ? 0 : 0);
-      rig.look = lf.bot.bones?.Head?.getWorldPosition(new THREE.Vector3()) ?? at.setY(FLOOR + 2.4);
-      rig.lookW = 0.9;
-      if (r.pose === 'refStart') face = 0;
     }
-    r.bot.yaw = turnTo(r.bot.yaw ?? 0, face, Math.min(1, dt * (walking ? 6 : 3.5)));
+    r.bot.yaw = turnTo(r.bot.yaw ?? 0, face, Math.min(1, dt * (walking ? 2.6 : 1.6)));
     r.bot.root.rotation.y = r.bot.yaw;
-    // the raise: its near hand on the winner's wrist, up together, then it lets go
+    // the gaze: straight ahead; now and then it follows a fighter who walks round the ring
+    r.gaze ??= { follow: null, until: 0, next: t + 4 + Math.random() * 4, w: 0, at: null, mid: null };
+    const gz = r.gaze;
+    if (!walking && r.pose !== 'refRaise' && !gz.follow && t > gz.next) {
+      const movers = ['red', 'blue'].filter((s) => fighters[s].present && !fighters[s].pose.match(/work|guard|idle|fail|done/) && ((fighters[s].spd ?? 0) > 0.35 || fighters[s].act));
+      if (movers.length) {
+        gz.follow = movers[Math.floor(Math.random() * movers.length)];
+        gz.until = t + 3 + Math.random() * 2.5;
+      } else gz.next = t + 1.5;
+    }
+    if (gz.follow && (t > gz.until || walking || r.pose === 'refRaise' || !fighters[gz.follow].present)) {
+      gz.follow = null;
+      gz.next = t + 7 + Math.random() * 6;
+    }
+    const head = r.bot.bones?.Head?.getWorldPosition(new THREE.Vector3());
+    let want = null;
+    if (r.pose === 'refRaise' && state.winner) want = fighters[state.winner].bot.bones?.Head?.getWorldPosition(new THREE.Vector3()) ?? null;
+    else if (gz.follow) want = fighters[gz.follow].bot.bones?.Head?.getWorldPosition(new THREE.Vector3()) ?? null;
+    const ahead = head ? head.clone().add(new THREE.Vector3(Math.sin(r.bot.yaw), -0.06, Math.cos(r.bot.yaw)).multiplyScalar(6)) : null;
+    const aim = want ?? ahead;
+    if (aim) {
+      // two damped stages (a critically damped follow): the head never snaps, it eases on and off
+      const k = 1 - Math.exp(-dt * 2.4);
+      gz.mid = gz.mid ? gz.mid.lerp(aim, k) : aim.clone();
+      gz.at = gz.at ? gz.at.lerp(gz.mid, k) : gz.mid.clone();
+      rig.look = gz.at.clone();
+      rig.lookW = 1;
+    }
+    const q = r.bot.root.getWorldQuaternion(new THREE.Quaternion());
+    const me = r.bot.root.getWorldPosition(new THREE.Vector3()).setY(FLOOR);
+    const s = r.bot.root.scale.x;
+    // its hands clasped behind its back (as the pose allows: the start signal and the raise use the arms)
+    const clasp = r.pose === 'ref' || (r.pose === 'refRaise' && (!raise || raise.grip + raise.off < 0.001 || raise.off > 0.5));
+    r.claspW = (r.claspW ?? 0) + ((clasp ? 1 : 0) - (r.claspW ?? 0)) * Math.min(1, dt * 2.5);
+    if (r.claspW > 0.001) {
+      for (const i of [0, 1]) {
+        const o = i ? 1 : -1;
+        rig.hands[i].at.set(o * 0.035 * s, 0.9 * s, -0.2 * s).applyQuaternion(q).add(me);
+        rig.hands[i].w = r.claspW;
+        rig.hands[i].pole.set(o * 0.9, -0.2, -0.7);
+      }
+    }
+    // the raise: its near hand on the winner's wrist, up together and held, then it lets go and nods once
     if (raise && raise.grip + raise.off > 0.001 && state.winner) {
       const w = fighters[state.winner];
       const wi = w.raiseArm ?? 1;
       const wrist = w.bot.bones?.[wi ? 'LeftHand' : 'RightHand']?.getWorldPosition(new THREE.Vector3());
-      if (wrist) {
-        const me = r.bot.root.getWorldPosition(new THREE.Vector3());
-        const q = r.bot.root.getWorldQuaternion(new THREE.Quaternion());
+      if (wrist && raise.grip > 0.001) {
         const leftW = new THREE.Vector3(1, 0, 0).applyQuaternion(q);
         const i = leftW.dot(wrist.clone().sub(me)) > 0 ? 1 : 0;
-        rig.hands[i].at.copy(wrist).addScaledVector(UPV, -0.04);
+        rig.hands[i].at.copy(wrist).addScaledVector(UPV, -0.05);
         rig.hands[i].w = raise.grip;
-        rig.hands[i].pole.set(i ? 0.6 : -0.6, raise.up > 0.5 ? -0.2 : -1, -0.4);
+        rig.hands[i].pole.set(i ? 0.7 : -0.7, raise.up > 0.5 ? -0.3 : -1, -0.3);
         r.gripArm = i;
-        // the other hand: at its side, then applauding the winner
-        const o = 1 - i;
-        if (raise.off > 0.3) {
-          const clap = Math.sin(t * 9) * 0.06;
-          rig.hands[o].at.set((o ? 1 : -1) * (0.05 + clap), 1.5, 0.36).applyQuaternion(q).add(me.setY(FLOOR));
-          rig.hands[o].w = raise.off;
-          rig.hands[i].at.set((i ? 1 : -1) * (0.05 + clap), 1.5, 0.36).applyQuaternion(q).add(r.bot.root.getWorldPosition(new THREE.Vector3()).setY(FLOOR));
-          rig.hands[i].w = raise.off;
-        }
       }
+      // the nod: once, firmly, after it lets go
+      const nod = Math.sin(Math.PI * smooth((raise.tt - 4.55) / 0.7));
+      if (rig.look && nod > 0.001) rig.look.y -= 0.5 * nod;
     }
-    if (!walking) rig.body.x += Math.sin(t * 0.4 + 1) * 0.025;
     rig.ground = FLOOR;
     if (r.bot.pose) r.bot.pose(c, p, t, walking, dt, null, rig);
     else applyLimbs(r.bot, c, p, t, walking);
@@ -2213,7 +2261,7 @@ export async function createScene(root) {
       if (mode === 'winner' && winner) {
         // beside the winner's spot in front of its desk, on the side towards the centre
         const spot = fighters[winner].st.g.localToWorld(new THREE.Vector3(0, 0, 1.5));
-        referee.target.set(spot.x + (winner === 'red' ? 0.9 : -0.9), spot.z - 0.18);
+        referee.target.set(spot.x + (winner === 'red' ? 1.08 : -1.08), spot.z - 0.12);
         referee.pose = 'refRaise';
         referee.side = winner;
         referee.since = now();

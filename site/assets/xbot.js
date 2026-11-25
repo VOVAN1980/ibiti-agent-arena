@@ -1,8 +1,9 @@
 // The fighters and the referee as humanoid robots. Our own robots (built in Blender for the arena,
 // baked PBR maps): the fighters are heavy boxer robots (layered plates in the corner's colour, chipped
 // down to the steel, with rivets, bolts, panel lines and vents over a dark mechanical frame, exposed
-// servos, one narrow visor slit, leather gloves, cloth shorts), the referee an android in black
-// titanium armour edged in gold, with a bow tie. Pistons at a
+// servos, one narrow visor slit, leather gloves, cloth shorts), the referee an athletic android in
+// glossy black titanium with gold piping, a face of black glass in a gold frame, glowing gold rings at
+// its ears and a gold bow tie. Pistons at a
 // fighter's elbows and knees slide in and out as the joints bend (aimed here every frame), its visor
 // and back lights breathe a little. They ride the skeleton of the X
 // Bot model from Mixamo (Adobe; free to use in one's own projects, commercial ones included): the same
@@ -114,12 +115,17 @@ export function makeXRobot(kind, models, colors) {
     o.frustumCulled = false; // a posed skinned mesh can leave its bind-pose box
     if (armoured) {
       if (o.name === 'Gloves' || o.name === 'Hands') parts[o.name] = o;
+      if (o.name === 'Face') {
+        // the referee's face: one smooth panel of black glass, the hall's lights crisp in it
+        o.material = new THREE.MeshPhysicalMaterial({ color: 0x030405, metalness: 0.1, roughness: 0.05, clearcoat: 1, clearcoatRoughness: 0.02, envMapIntensity: 2.2, ior: 1.6, specularIntensity: 1 });
+        return;
+      }
       // the baked plates as they are; the small lights (the back pack's) in the corner's colour
       if (o.material.name === 'Glow') {
         o.material = o.material.clone();
         o.material.color.setHex(0x000000);
-        o.material.emissive.setHex(color);
-        o.material.emissiveIntensity = 2.4;
+        o.material.emissive.setHex(kind === 'ref' ? 0xffb83d : color); // the referee's ear rings: a warm, clean gold
+        o.material.emissiveIntensity = kind === 'ref' ? 1.7 : 2.4;
         lights = o.material;
       } else o.material.envMapIntensity = 0.9;
       return;
@@ -158,7 +164,8 @@ export function makeXRobot(kind, models, colors) {
 
   const eyeMat = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: color, emissiveIntensity: armoured ? 0.9 : 3 });
   let eyes;
-  if (armoured) {
+  if (armoured && kind === 'ref') eyes = []; // the referee's face is glass: no slits
+  else if (armoured) {
     // one narrow slit of light across the visor, in two halves that meet in a shallow V (the referee's in gold), on the head bone
     const hs = 1 / B.Head.getWorldScale(new THREE.Vector3()).x;
     const toHead = (v) => B.Head.worldToLocal(model.localToWorld(new THREE.Vector3(...v)));
@@ -256,6 +263,7 @@ export function makeXRobot(kind, models, colors) {
   const tmp2 = new THREE.Vector3();
   const poleV = new THREE.Vector3();
   let sitW = 0;
+  let sitU = 0;
   const bulky = armoured && kind !== 'ref';
   if (parts.Hands) parts.Hands.visible = false;
 
@@ -312,7 +320,12 @@ export function makeXRobot(kind, models, colors) {
     mixer.update(dt);
     gaitT = walk.time / walk.getClip().duration; // where in its stride (0: the left foot leaves the ground)
 
-    sitW += ((p.seat && !walking ? 1 : 0) - sitW) * Math.min(1, dt * 7);
+    // down into the chair (and up out of it) in an eased move of about 0.8 s, leaning forward over the
+    // knees on the way
+    const sitTo = p.seat && !walking ? 1 : 0;
+    sitU = Math.min(1, Math.max(0, sitU + (sitTo ? 1 : -1) * dt / 0.8));
+    sitW = sitU * sitU * (3 - 2 * sitU);
+    const sitLean = Math.sin(Math.PI * sitW) * 0.32;
     if (parts.Gloves && parts.Hands) {
       // gloves on, except at the keyboard: there the armoured fingers type
       const bare = sitW > 0.5 && Array.isArray(reach);
@@ -333,8 +346,8 @@ export function makeXRobot(kind, models, colors) {
     leanQ.setFromEuler(_e.set(c.lean, 0, 0));
     const toWorld = (v) => v.applyQuaternion(leanQ).applyQuaternion(rootQ);
     // the spine leans (and breathes), the chest turns, the head looks and shakes
-    const breath = (rig.breath ?? 1) * Math.sin(t * 1.9 + phase) * 0.025;
-    const spineDir = UP.clone().applyEuler(_e.set(c.lean + breath, 0, 0)).applyQuaternion(rootQ);
+    const breath = (rig.breath ?? 1) * Math.sin(t * (rig.breathRate ?? 1.9) + phase) * 0.025;
+    const spineDir = UP.clone().applyEuler(_e.set(c.lean + sitLean + breath, 0, 0)).applyQuaternion(rootQ);
     const twist = (rig.twist ?? 0) / 3;
     for (const n of ['Spine', 'Spine1', 'Spine2']) {
       aim(B[n], AX[n], spineDir, 0.9);
@@ -382,7 +395,8 @@ export function makeXRobot(kind, models, colors) {
         else poleV.set(side === 'Left' ? 0.6 : -0.6, -1, -0.3);
         w = h.w;
       }
-      handW[i] = reach ? 1 : handW[i] + (w - handW[i]) * Math.min(1, dt * 14);
+      // eased on and off (to the keys over about half a second, as it settles in its chair)
+      handW[i] += ((reach ? 1 : w) - handW[i]) * Math.min(1, dt * (reach ? 6 : 14));
       if (w > 0.001) {
         upper.getWorldPosition(shoulderAt);
         fore.getWorldPosition(tmp);
@@ -414,7 +428,7 @@ export function makeXRobot(kind, models, colors) {
     const tracking = walkW > 0.5 || !!rig.air || legsW > 0.5;
     plantW += ((tracking ? 0 : 1) - plantW) * Math.min(1, dt * 10);
     shift.multiplyScalar(Math.max(0, 1 - dt * 5));
-    const restYaw = (f) => rootYaw + f.s * 0.08 * (1 - stance) - 0.3 * stance;
+    const restYaw = (f) => rootYaw + f.s * (0.08 + (rig.toeOut ?? 0)) * (1 - stance) - 0.3 * stance;
     for (const f of feet) {
       if (tracking || !f.ready) {
         // following the clip (or the pose): ready to be planted where the foot is when it stops
@@ -427,7 +441,7 @@ export function makeXRobot(kind, models, colors) {
     }
     if (!tracking) {
       // where each foot belongs under the body now: a little apart, or set as a boxer's (left ahead)
-      const rest = (f, out) => out.set(f.s * lerpN(0.1, 0.15, stance), 0, f.s * 0.085 * stance).applyQuaternion(rootQ).multiplyScalar(ws).add(rootAt).setY(ground + ankleY * ws).addScaledVector(vel, 0.16);
+      const rest = (f, out) => out.set(f.s * (lerpN(0.1, 0.15, stance) + (rig.wide ?? 0)), 0, f.s * 0.085 * stance).applyQuaternion(rootQ).multiplyScalar(ws).add(rootAt).setY(ground + ankleY * ws).addScaledVector(vel, 0.16);
       const busy = feet.some((f) => f.u < 1);
       if (!busy && t - lastStep > 0.05) {
         // the foot furthest from its place steps, if it is far enough (or turned enough)
@@ -442,7 +456,7 @@ export function makeXRobot(kind, models, colors) {
             worst = f;
           }
         }
-        if (worst && err > 0.07) {
+        if (worst && err > (rig.planted ?? 0.07)) {
           worst.from.copy(worst.at);
           rest(worst, worst.to);
           worst.fromYaw = worst.yaw;
@@ -531,7 +545,7 @@ export function makeXRobot(kind, models, colors) {
     // alive: the visor's glow and the back lights breathe, slowly
     if (armoured) {
       eyeMat.emissiveIntensity = 0.9 * (0.86 + 0.14 * Math.sin(t * 2.3 + phase));
-      if (lights) lights.emissiveIntensity = 2.4 * (0.7 + 0.3 * Math.sin(t * 1.4 + phase));
+      if (lights) lights.emissiveIntensity = kind === 'ref' ? 1.7 * (0.92 + 0.08 * Math.sin(t * 0.8)) : 2.4 * (0.7 + 0.3 * Math.sin(t * 1.4 + phase));
     }
   }
 
