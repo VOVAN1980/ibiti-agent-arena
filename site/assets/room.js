@@ -5,11 +5,14 @@
 // box truss with moving heads and LED blocks above, a plain steel railing, and the stands: three tiers
 // of stepped rows round the hall, lit stair aisles, balconies with railings and LED dashes, a crowd on
 // the seats and their phones. Red is the left half of the hall, green the right.
+// The ring's steel (posts, apron, brackets, steps, canvas) and the crowd come baked from
+// assets/arena/ (loadHallAssets); when they do not load, the hall builds its own in code.
 // The fighters, their desks, the referee and the scoreboard are scene3d.js's; this module only builds
 // and runs the room.
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 export const MIRROR = 1; // the layer of what the wet floor mirrors
 export const TIME = { value: 0 }; // shared by the shaders that move
@@ -48,6 +51,49 @@ export function standHeight(r) {
 const RED = new THREE.Color().setRGB(1, 0.012, 0.012); // linear: a pure, deep red
 const GREEN = new THREE.Color().setRGB(0.02, 1, 0.07); // and a pure green
 const sideColor = (x) => (x < 0 ? RED : GREEN);
+
+// ------------------------------------------------------------------ the baked parts
+
+const ARENA = new URL('./arena/', import.meta.url).href;
+/**
+ * Loads the hall's baked parts: the ring kit (steel posts, apron sides, brackets, steps, canvas,
+ * emblem, desk, monitor and chair, baked PBR maps inside) and the crowd's atlas (people in their poses,
+ * colour and normal maps and the cells). Phones take the smaller set. Either is null if it does not load:
+ * the hall then builds that part in code.
+ */
+export async function loadHallAssets(small) {
+  const soft = (p, what) => p.catch((e) => {
+    console.warn(`${what} not available, building it in code:`, e?.message || 'failed to load');
+    return null;
+  });
+  const kit = new GLTFLoader().loadAsync(`${ARENA}models/ring-kit${small ? '-lite' : ''}.glb`).then((gltf) => {
+    const pieces = Object.fromEntries(gltf.scene.children.map((o) => [o.name, o]));
+    // the steel needs the hall's reflections to read as steel; the canvas's plates also take the lamps'
+    // light (half metal), and the gold gives a little light back even in shadow, so it always reads
+    const tune = { KIT: 1.7, ACCENT_NEUTRAL: 1.3, CANVAS: 1.5, GOLD: 1.5, GRILLE: 1.3 };
+    gltf.scene.traverse((o) => {
+      const m = o.material;
+      if (!o.isMesh || !tune[m.name]) return;
+      m.envMapIntensity = tune[m.name];
+      if (m.name === 'CANVAS') m.metalness = 0.4;
+      if (m.name === 'GOLD') Object.assign(m, { emissive: new THREE.Color(0xf2cf6e), emissiveMap: m.map, emissiveIntensity: 0.1 });
+    });
+    return pieces;
+  });
+  const lite = small ? '-lite' : '';
+  const load = (name, srgb) => new THREE.TextureLoader().loadAsync(`${ARENA}${name}`).then((t) => {
+    if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = 4;
+    return t;
+  });
+  const crowd = Promise.all([
+    fetch(`${ARENA}crowd-atlas.json`).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`crowd-atlas.json: ${r.status}`)))),
+    load(`crowd-atlas${lite}.webp`, true),
+    load(`crowd-atlas${lite}-normal.webp`, false),
+  ]).then(([atlas, map, normal]) => ({ cells: atlas.cells, map, normal }));
+  const [k, c] = await Promise.all([soft(kit, 'the ring kit'), soft(crowd, 'the crowd atlas')]);
+  return { kit: k, crowd: c };
+}
 
 // ------------------------------------------------------------------ noise and drawn textures
 
@@ -260,6 +306,23 @@ function plateMaps(size, R, ring) {
     normal: normalFrom(heightsOf(small), hs, 2.2),
     emissive: tex(ec),
   };
+}
+
+/** Grime over the whole canvas (the kit's plates tile): blotches, darker where the fighters walk, a little
+ *  lighter where the plates are scuffed bright. Grey, 0.5 the plain plate. */
+function grimeTex(size) {
+  const n = fbm(size, 5, 5, 31);
+  const f = fbm(size, 24, 3, 17);
+  const c = canvas(size);
+  const g = c.getContext('2d');
+  const img = g.createImageData(size, size);
+  for (let i = 0; i < size * size; i++) {
+    const v = 128 + (THREE.MathUtils.smoothstep(n[i], 0.3, 0.75) - 0.5) * 150 + (f[i] - 0.5) * 60;
+    img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = v;
+    img.data[i * 4 + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  return tex(c, { srgb: false, aniso: 4 });
 }
 
 /** Dark brushed steel with a little grime, `w` × `h`, tiling. */
@@ -494,9 +557,10 @@ export function emblemPlate(w = 512, h = 512) {
 // ------------------------------------------------------------------ the environment light
 
 /** What the metal reflects, seen from the ring's middle: a dark hall, rings of small hot lamps on the
- *  truss above, the scoreboard's faces, the stands all round in bands (each half in its colour, grey at
- *  the ends, dimmer as they rise) with the balconies' LED dashes, the light track and the apron low
- *  round the ring, and the wet floor below giving back each half's colour. */
+ *  truss above and the haze they light under the roof, the scoreboard's faces, the stands all round in
+ *  bands (mostly grey, only a touch of each half's colour, dimmer as they rise) with the balconies' LED
+ *  dashes, the light track and the apron low round the ring, and the wet floor below. The colour stays
+ *  small and local, so the steel reads as steel; the lights carry the red and the green. */
 export function hallEnvironment(renderer) {
   const env = new THREE.Scene();
   const EYE = 1.6; // the height it is seen from
@@ -514,8 +578,9 @@ export function hallEnvironment(renderer) {
   }
   // the scoreboard's four bright faces
   for (let i = 0; i < 4; i++) lamp(3, 1.4, 0xd8dce6, 0.5, [Math.sin((i * Math.PI) / 2) * 2.5, 6.9, Math.cos((i * Math.PI) / 2) * 2.5], 0, (i * Math.PI) / 2);
-  /** A ring of the hall from y0 to y1 at radius r, coloured by its side, `k` bright, in `dash` dashes. */
-  const band = (r, y0, y1, k, dash = 0) => {
+  /** A ring of the hall from y0 to y1 at radius r, `sat` of the way to its side's colour, `k` bright, in
+   *  `dash` dashes. */
+  const band = (r, y0, y1, k, sat, dash = 0) => {
     const g = new THREE.CylinderGeometry(r, r, y1 - y0, dash ? dash * 3 : 128, 1, true).translate(0, (y0 + y1) / 2 - EYE, 0).toNonIndexed();
     const p = g.attributes.position;
     const col = new Float32Array(p.count * 3);
@@ -525,22 +590,24 @@ export function hallEnvironment(renderer) {
       const x = (p.getX(i) + p.getX(i + 1) + p.getX(i + 2)) / 3 / r;
       const z = (p.getZ(i) + p.getZ(i + 1) + p.getZ(i + 2)) / 3 / r;
       const on = dash ? +(Math.floor(((Math.atan2(z, x) + Math.PI) / (Math.PI * 2)) * dash * 3) % 3 === 0) : 1;
-      c.setRGB(0.5, 0.48, 0.52).lerp(x < 0 ? RED : GREEN, THREE.MathUtils.smoothstep(Math.abs(x), 0.1, 0.6)).multiplyScalar(k * on * (x > 0 ? 0.7 : 1));
+      c.setRGB(0.5, 0.48, 0.52).lerp(x < 0 ? RED : GREEN, sat * THREE.MathUtils.smoothstep(Math.abs(x), 0.1, 0.6)).multiplyScalar(k * on * (x > 0 ? 0.7 : 1));
       for (let j = 0; j < 3; j++) col.set([c.r, c.g, c.b], (i + j) * 3);
     }
     g.setAttribute('color', new THREE.BufferAttribute(col, 3));
     env.add(new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide })));
   };
-  band(STANDS_R + 4, 0.4, 5.5, 0.4);
-  band(STANDS_R + 14, 7.5, 12.5, 0.14);
-  band(STANDS_R + 23, 14, 19, 0.05);
-  band(STANDS_R + 11.6, 7.15, 7.35, 2.5, 90); // the balconies' dashes
-  band(9, 0.0, 0.08, 1.6, 46); // the light track
-  band(6.2, 0.1, 0.9, 0.9); // the apron's glow
-  // below: the wet floor, each half's colour and a grey between
-  lamp(30, 60, 0xff1a14, 0.22, [-17, -0.5, 0]);
-  lamp(30, 60, 0x14ff3c, 0.12, [17, -0.5, 0]);
-  lamp(8, 60, 0x5a5c62, 0.4, [0, -0.45, 0]);
+  band(STANDS_R + 4, 0.4, 5.5, 0.75, 0.35);
+  band(STANDS_R + 8, 5.5, 8.5, 0.3, 0.15); // the beams' haze over the stands
+  band(STANDS_R + 14, 7.5, 12.5, 0.16, 0.3);
+  band(STANDS_R + 23, 14, 19, 0.06, 0.2);
+  band(STANDS_R + 11.6, 7.15, 7.35, 2.5, 1, 90); // the balconies' dashes
+  band(9, 0.0, 0.08, 1.6, 1, 46); // the light track
+  band(6.2, 0.1, 0.9, 0.35, 1); // the apron's glow
+  lamp(22, 22, 0x8c929c, 0.32, [0, 17, 0]); // the haze under the roof, lit by the truss
+  // below: the wet floor, grey with a little of each half's colour
+  lamp(30, 60, 0xff1a14, 0.1, [-17, -0.5, 0]);
+  lamp(30, 60, 0x14ff3c, 0.06, [17, -0.5, 0]);
+  lamp(14, 60, 0x5a5c62, 0.3, [0, -0.45, 0]);
   const pm = new THREE.PMREMGenerator(renderer);
   const t = pm.fromScene(env, 0.02).texture;
   pm.dispose();
@@ -686,13 +753,21 @@ const HALL_LIGHT = `
   }`;
 const HASH = 'float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }';
 
+// The crowd atlas's people (cell = person * 10 + frame): their frames, who wears a corner's colour (a
+// red jersey, a red scarf, a maroon hoodie; a green scarf, a green jersey), and the share of each on the
+// red half's seats, the ends' and the green half's
+const F = { seated: 0, seated2: 1, clap: 2, lean: 3, seatedCheer: 4, seatedPhone: 5, standing: 6, cheer: 7, fist: 8, standingPhone: 9 };
+const FANS = { red: [2, 7, 11], green: [5, 10], none: [0, 1, 3, 4, 6, 8, 9] };
+const FAN_SHARE = [[0.2, 0.02], [0.04, 0.04], [0.02, 0.2]];
+
 /**
  * The stands round the hall (TIERS): stepped rows of concrete, stair aisles with a light on every
  * step, a walkway behind each tier with entrances in the wall, the balconies' fronts with groups of
- * LED dashes and a steel railing, the upper dark ring's columns; a crowd on the seats and their
- * phones. Returns the seats (for the crowd, `seats`), the crowd and an update for each frame.
+ * LED dashes and a steel railing, the upper dark ring's columns; a crowd on the seats (from `atlas`,
+ * loadHallAssets's crowd, or cut-outs without it) and their phones. Returns the seats (`seats`), the
+ * crowd and an update for each frame.
  */
-function buildStands(scene, { small, steel }) {
+function buildStands(scene, { small, steel, atlas }) {
   const pos = [];
   const nor = [];
   const uvs = [];
@@ -909,117 +984,249 @@ function buildStands(scene, { small, steel }) {
   railing.layers.enable(MIRROR);
   scene.add(railing);
 
-  // the crowd: someone on most seats, a cut-out turned to the camera, seated, standing or with the arms
-  // up as the hall's mood says; the empty seats show as seats
+  // the crowd: someone on most seats, the empty ones show as seats (a phone draws fewer people, thinner
+  // in the upper tiers, and leaves the seats it skips bare). From the atlas: people in their poses as the
+  // hall's mood says; without it, cut-outs drawn in the shader
   const count = seats.tier.length;
   const full = [];
   const empty = [];
-  for (let i = 0; i < count; i++) (Math.random() < 0.9 ? full : empty).push(i);
-  const iPos = new Float32Array(full.length * 3);
-  const iData = new Float32Array(full.length * 4); // a draw, the side (-1 red, 0 the ends, 1 green), the tier, a draw
-  full.forEach((s, i) => {
-    iPos.set(seats.pos.slice(s * 3, s * 3 + 3), i * 3);
-    iData.set([Math.random(), seats.side[s], seats.tier[s], Math.random()], i * 4);
-  });
-  const card = new THREE.PlaneGeometry(1, 1).translate(0, 0.5, 0);
-  const crowdGeo = new THREE.InstancedBufferGeometry();
-  crowdGeo.index = card.index;
-  crowdGeo.setAttribute('position', card.attributes.position);
-  crowdGeo.setAttribute('iPos', new THREE.InstancedBufferAttribute(iPos, 3));
-  crowdGeo.setAttribute('iData', new THREE.InstancedBufferAttribute(iData, 4));
-  crowdGeo.instanceCount = full.length;
+  const shown = small ? [0.75, 0.4, 0.25] : [1, 1, 1];
+  for (let i = 0; i < count; i++) {
+    if (Math.random() < 0.1) empty.push(i);
+    else if (Math.random() < shown[seats.tier[i]]) full.push(i);
+  }
   const mood = { uRoar: { value: 0.3 }, uMove: { value: 1 } };
-  // who is up: the more the hall roars (and their side is excited) the more stand, and of those some
-  // with their arms up; the upper tiers stay down longer
+
+  /** The people from the atlas: a billboard each, turned round the vertical to the camera, lit through
+   *  its normal map by the hall's light; red fans mostly on the left, green on the right. pose() sets
+   *  each one's pose from the hall's mood (each has its own draws, so they change one by one as the mood
+   *  does); clapping (two cells in turn) and cheering (a little bob) move in the shader. */
+  const atlasPeople = () => {
+    const { cells } = atlas;
+    const n = full.length;
+    // the cells for the shader: row 0 the uv rect, row 1 the size in metres and the anchor
+    const table = new Float32Array(cells.length * 8);
+    cells.forEach((c, i) => {
+      table.set(c.uv, i * 4);
+      table.set([...c.size, ...c.anchor], (cells.length + i) * 4);
+    });
+    const cellTex = new THREE.DataTexture(table, cells.length, 2, THREE.RGBAFormat, THREE.FloatType);
+    cellTex.needsUpdate = true;
+    const pos = new Float32Array(n * 3);
+    const look = new Float32Array(n * 4); // brightness, mirrored (-1) or not, a phase, a size
+    const cell = new Float32Array(n * 3); // the pose's cell, the one it swaps with (clapping), 1 clapping or 2 cheering
+    const who = new Uint8Array(n);
+    const draw = new Float32Array(n * 4);
+    const any = (l) => l[Math.floor(Math.random() * l.length)];
+    full.forEach((s, i) => {
+      pos.set(seats.pos.slice(s * 3, s * 3 + 3), i * 3);
+      const [red, green] = FAN_SHARE[seats.side[s] + 1];
+      const r = Math.random();
+      who[i] = r < red ? any(FANS.red) : r < red + green ? any(FANS.green) : any(FANS.none);
+      look.set([0.82 + Math.random() * 0.3, Math.random() < 0.5 ? 1 : -1, Math.random(), 0.95 + Math.random() * 0.1], i * 4);
+      draw.set([Math.random(), Math.random(), Math.random(), Math.random()], i * 4);
+    });
+    const quad = new THREE.PlaneGeometry(1, 1).translate(0.5, 0.5, 0);
+    const geo = new THREE.InstancedBufferGeometry();
+    geo.index = quad.index;
+    geo.setAttribute('position', quad.attributes.position);
+    geo.setAttribute('iPos', new THREE.InstancedBufferAttribute(pos, 3));
+    geo.setAttribute('iLook', new THREE.InstancedBufferAttribute(look, 4));
+    geo.setAttribute('iCell', new THREE.InstancedBufferAttribute(cell, 3).setUsage(THREE.DynamicDrawUsage));
+    geo.instanceCount = n;
+    const mat = new THREE.ShaderMaterial({
+      defines: { POOLS, SOFT: small ? 0 : 1 },
+      uniforms: { ...light, ...common, ...mood, uCells: { value: cellTex }, uMap: { value: atlas.map }, uNormal: { value: atlas.normal } },
+      alphaToCoverage: !small,
+      side: THREE.DoubleSide, // a mirrored one turns its back
+      vertexShader: `attribute vec3 iPos; attribute vec4 iLook; attribute vec3 iCell; uniform sampler2D uCells; uniform float uTime; uniform float uMove;
+        varying vec2 vUv; varying vec3 vW; flat varying vec3 vRight; flat varying vec3 vToCam; flat varying float vTint; varying float vD;
+        void main() {
+          float clap = uMove * step(0.5, iCell.z) * step(iCell.z, 1.5) * step(0.5, fract(uTime * 2.6 + iLook.z * 7.0));
+          int c = int(mix(iCell.x, iCell.y, clap) + 0.5);
+          vec4 uvr = texelFetch(uCells, ivec2(c, 0), 0);
+          vec4 sa = texelFetch(uCells, ivec2(c, 1), 0);
+          vec2 toCam = normalize(cameraPosition.xz - iPos.xz + vec2(0.0001));
+          vec3 right = vec3(toCam.y, 0.0, -toCam.x);
+          float bob = uMove * step(1.5, iCell.z) * abs(sin(uTime * 4.2 + iLook.z * 40.0)) * 0.035;
+          vec2 size = sa.xy * iLook.w;
+          vW = iPos + right * (position.x - sa.z) * size.x * iLook.y + vec3(0.0, (position.y - sa.w) * size.y + bob, 0.0);
+          vUv = mix(uvr.xy, uvr.zw, position.xy);
+          vRight = right * iLook.y;
+          vToCam = vec3(toCam.x, 0.0, toCam.y);
+          vTint = iLook.x;
+          vec4 mv = viewMatrix * vec4(vW, 1.0);
+          vD = -mv.z;
+          gl_Position = projectionMatrix * mv;
+        }`,
+      fragmentShader: `uniform sampler2D uMap; uniform sampler2D uNormal; uniform vec3 fogColor; uniform float mirrorPass;
+        varying vec2 vUv; varying vec3 vW; flat varying vec3 vRight; flat varying vec3 vToCam; flat varying float vTint; varying float vD;
+        ${HALL_LIGHT}
+        void main() {
+          vec4 a = texture2D(uMap, vUv);
+          #if SOFT
+          if (a.a < 0.1) discard;
+          #else
+          if (a.a < 0.5) discard;
+          #endif
+          // the normal in the picture's frame: x along it, y up, z towards the camera
+          vec3 n = texture2D(uNormal, vUv).xyz * 2.0 - 1.0;
+          vec3 N = normalize(vRight * n.x + vec3(0.0, n.y, 0.0) + vToCam * n.z);
+          // the hall's light, and the ring's white spilling up on the faces turned to it
+          vec2 d = normalize(vW.xz);
+          float face = max(dot(N, vec3(-d.x, 0.0, -d.y)), 0.0);
+          vec3 col = a.rgb * vTint * (hallLight(vW, N) + vec3(1.0, 0.86, 0.72) * 0.012 * (0.3 + face) * uGain) * 12.0;
+          ${HAZE}
+          gl_FragColor = vec4(col, a.a);
+        }`,
+    });
+    const stretch = 1 / Math.cos(THREE.MathUtils.degToRad(atlas.elev)); // the pictures are seen from above
+    const off = new Float32Array(n * 2);
+    const holds = new Uint8Array(n);
+    let last = null;
+    const pose = (roar, exc) => {
+      const now = [roar, exc.red, exc.blue];
+      if (last && now.every((v, k) => Math.abs(v - last[k]) < 0.02)) return false;
+      last = now;
+      for (let i = 0; i < n; i++) {
+        const s = full[i];
+        const side = seats.side[s];
+        const sideExc = side < 0 ? exc.red : side > 0 ? exc.blue : (exc.red + exc.blue) / 2;
+        const up = THREE.MathUtils.clamp(roar * (1 - seats.tier[s] * 0.25) + sideExc * 0.3 - 0.1, 0, 1);
+        const [a, b, c, d] = draw.subarray(i * 4, i * 4 + 4);
+        const phone = a < 0.03 + up * 0.07;
+        const sit = d < 0.5 ? F.seated : F.seated2;
+        let f = sit;
+        let swap = f;
+        if (b < 0.03 + up * 0.45) f = phone ? F.standingPhone : c < up * 0.6 ? (d < 0.5 ? F.cheer : F.fist) : F.standing;
+        else if (phone) f = F.seatedPhone;
+        else if (c < 0.08) f = F.lean;
+        else if (c < 0.08 + up * 0.6) swap = F.clap;
+        else if (c < 0.08 + up * 0.75) f = F.seatedCheer;
+        const base = who[i] * 10;
+        const move = swap !== f ? 1 : f === F.cheer || f === F.fist || f === F.seatedCheer ? 2 : 0;
+        cell.set([base + f, base + swap, move], i * 3);
+        holds[i] = +phone;
+        // the phone: in the hand in the picture, or (a flash from someone with none drawn) before the face
+        const k = cells[base + f];
+        const sz = look[i * 4 + 3];
+        off[i * 2] = k.torch ? (k.torch[0] - k.anchor[0]) * k.size[0] * sz * look[i * 4 + 1] : 0;
+        off[i * 2 + 1] = k.torch ? (k.torch[1] - k.anchor[1]) * k.size[1] * sz : (k.headTop - 0.2) * sz * stretch;
+      }
+      geo.attributes.iCell.needsUpdate = true;
+      return true;
+    };
+    return { mesh: new THREE.Mesh(geo, mat), pos, off, holds, pose, mayHold: (i) => draw[i * 4] < 0.1 };
+  };
+
+  // the cut-outs: a person turned to the camera, seated, standing or with the arms up. Who is up: the
+  // more the hall roars (and their side is excited) the more stand, and of those some with their arms
+  // up; the upper tiers stay down longer
   const POSE = `
     float sideExc = iData.y < -0.5 ? uExc.x : iData.y > 0.5 ? uExc.y : 0.5 * (uExc.x + uExc.y);
     float up = clamp(uRoar * (1.0 - iData.z * 0.25) + sideExc * 0.3 - 0.1, 0.0, 1.0);
     float stand = step(iData.x, up * 0.55);
     float arms = step(iData.w, up * 0.5) * stand + step(iData.w, up * 0.08) * (1.0 - stand);`;
-  const crowdMat = new THREE.ShaderMaterial({
-    defines: { POOLS, SOFT: small ? 0 : 1 },
-    uniforms: { ...light, ...common, ...mood },
-    alphaToCoverage: !small,
-    vertexShader: `attribute vec3 iPos; attribute vec4 iData; uniform float uRoar; uniform float uMove; uniform float uTime;
-      varying vec2 vP; flat varying vec4 vData; varying vec3 vLight; flat varying vec3 vRim; varying float vD; flat varying vec2 vPose;
-      ${HALL_LIGHT}
-      void main() {
-        ${POSE}
-        float big = 0.92 + 0.16 * fract(iData.x * 37.0);
-        float h = (stand > 0.5 ? 2.25 : 1.6) * big;
-        float w = 0.78 * big;
-        vec2 toCam = normalize(cameraPosition.xz - iPos.xz + vec2(0.0001));
-        vec3 right = vec3(toCam.y, 0.0, -toCam.x);
-        float bob = uMove * arms * abs(sin(uTime * 5.5 + iData.x * 40.0)) * 0.07;
-        vP = vec2(position.x * w, position.y * h) / big;
-        vec3 p = iPos + right * position.x * w + vec3(0.0, position.y * h + bob, 0.0);
-        vData = iData;
-        vPose = vec2(stand, arms);
-        vec3 face = normalize(vec3(-iPos.x, 0.0, -iPos.z));
-        float low = exp(-iPos.y * 0.1 - max(length(iPos.xz) - 14.0, 0.0) * 0.03);
-        vLight = (hallLight(iPos + vec3(0.0, 1.0, 0.0), normalize(face + vec3(0.0, 0.5, 0.0))) + vec3(0.03, 0.029, 0.027) * low * uGain) * (0.75 + 0.5 * fract(iData.w * 53.0));
-        vRim = iData.y < -0.5 ? uRed : iData.y > 0.5 ? uGreen : vec3(0.5, 0.5, 0.55);
-        vec4 mv = viewMatrix * vec4(p, 1.0);
-        vD = -mv.z;
-        gl_Position = projectionMatrix * mv;
-      }`,
-    fragmentShader: `uniform vec3 fogColor; uniform float mirrorPass; uniform float uTime; uniform float uMove;
-      varying vec2 vP; flat varying vec4 vData; varying vec3 vLight; flat varying vec3 vRim; varying float vD; flat varying vec2 vPose;
-      ${HASH}
-      float box(vec2 p, vec2 b, float r) { vec2 q = abs(p) - b + r; return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r; }
-      float seg(vec2 p, vec2 a, vec2 b, float r) { vec2 pa = p - a; vec2 ba = b - a; return length(pa - ba * clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0)) - r; }
-      void main() {
-        float s = vData.x * 91.0;
-        float stand = vPose.x;
-        float arms = vPose.y;
-        vec2 p = vP;
-        float wide = 0.9 + 0.25 * hash(vec2(s, 1.0));
-        // the body: a person on a seat (the hips at 0.45 m), or standing (at 0.95)
-        float sh = 0.95 + stand * 0.48;              // the shoulders' height
-        vec2 hc = vec2(0.0, sh + 0.2);               // the head's centre
-        float taper = mix(0.78, 1.0, smoothstep(sh - 0.45, sh - 0.1, p.y));
-        float torso = box(vec2(p.x / (wide * taper), p.y - (sh - 0.22)), vec2(0.22, 0.23), 0.11);
-        float legs = stand > 0.5 ? min(seg(p, vec2(-0.1, 0.05), vec2(-0.09, 0.95), 0.08), seg(p, vec2(0.1, 0.05), vec2(0.09, 0.95), 0.08))
-                                 : box(p - vec2(0.0, 0.32), vec2(0.18 * wide, 0.18), 0.08);
-        float head = (length((p - hc) / vec2(0.105, 0.128)) - 1.0) * 0.105;
-        float neck = box(p - vec2(0.0, sh), vec2(0.045, 0.06), 0.02);
-        float sway = uMove * sin(uTime * 3.0 + s) * 0.06;
-        vec2 l0 = vec2(-0.22 * wide, sh - 0.06);
-        vec2 r0 = vec2(0.22 * wide, sh - 0.06);
-        vec2 le = vec2(-0.32 + sway, sh + 0.28);
-        vec2 re = vec2(0.32 + sway, sh + 0.28);
-        float armsD = arms > 0.5
-          ? min(min(seg(p, l0, le, 0.05), seg(p, le, le + vec2(0.07, 0.27), 0.045)), min(seg(p, r0, re, 0.05), seg(p, re, re + vec2(-0.07, 0.27), 0.045)))
-          : min(seg(p, l0, vec2(-0.26 * wide, sh - 0.45), 0.055), seg(p, r0, vec2(0.26 * wide, sh - 0.45), 0.055));
-        float d = min(min(min(torso, legs), min(neck, armsD)), head);
-        #if SOFT
-        float a = clamp(0.5 - d / max(fwidth(d), 0.0001), 0.0, 1.0);
-        if (a < 0.01) discard;
-        #else
-        float a = 1.0;
-        if (d > 0.0) discard;
-        #endif
-        // dark clothes mostly, now and then the corner's shirt; six skin tones; dark hair, now and then fair
-        float c = hash(vec2(s, 2.0));
-        vec3 cloth = c < 0.25 ? vec3(0.02, 0.022, 0.03) : c < 0.45 ? vec3(0.05, 0.05, 0.055) : c < 0.58 ? vec3(0.03, 0.035, 0.06) : c < 0.64 ? vec3(0.09) : c < 0.7 ? vec3(0.18, 0.175, 0.17) : c < 0.78 ? vec3(0.06, 0.02, 0.02) : c < 0.9 ? vec3(0.05, 0.045, 0.03) : vRim * 0.14 + 0.01;
-        float k = hash(vec2(s, 3.0));
-        vec3 skin = k < 0.2 ? vec3(0.6, 0.38, 0.28) : k < 0.4 ? vec3(0.45, 0.28, 0.18) : k < 0.55 ? vec3(0.28, 0.16, 0.1) : k < 0.7 ? vec3(0.13, 0.07, 0.045) : k < 0.85 ? vec3(0.52, 0.36, 0.26) : vec3(0.36, 0.22, 0.14);
-        vec3 hair = hash(vec2(s, 4.0)) < 0.8 ? vec3(0.015, 0.012, 0.01) : vec3(0.12, 0.08, 0.04);
-        vec3 albedo = cloth;
-        if (head < 0.0 || (arms > 0.5 && armsD < 0.0 && p.y > sh + 0.45)) albedo = skin;
-        if (head < 0.0 && p.y > hc.y + 0.118 * (0.25 + 0.3 * hash(vec2(s, 5.0)))) albedo = hair;
-        // lit from above and from the ring, the side's colour on the rim
-        float shade = 0.55 + 0.45 * smoothstep(0.0, sh + 0.3, p.y);
-        float rim = (1.0 - smoothstep(0.0, 0.04, -d)) * smoothstep(sh - 0.4, sh + 0.2, p.y);
-        vec3 col = albedo * vLight * 6.0 * shade + vRim * vLight * rim * 0.12;
-        ${HAZE}
-        gl_FragColor = vec4(col, a);
-      }`,
-  });
-  const crowd = new THREE.Mesh(crowdGeo, crowdMat);
-  crowd.frustumCulled = false;
-  crowd.layers.enable(MIRROR);
-  scene.add(crowd);
+  const cutOuts = () => {
+    const iPos = new Float32Array(full.length * 3);
+    const iData = new Float32Array(full.length * 4); // a draw, the side (-1 red, 0 the ends, 1 green), the tier, a draw
+    full.forEach((s, i) => {
+      iPos.set(seats.pos.slice(s * 3, s * 3 + 3), i * 3);
+      iData.set([Math.random(), seats.side[s], seats.tier[s], Math.random()], i * 4);
+    });
+    const card = new THREE.PlaneGeometry(1, 1).translate(0, 0.5, 0);
+    const crowdGeo = new THREE.InstancedBufferGeometry();
+    crowdGeo.index = card.index;
+    crowdGeo.setAttribute('position', card.attributes.position);
+    crowdGeo.setAttribute('iPos', new THREE.InstancedBufferAttribute(iPos, 3));
+    crowdGeo.setAttribute('iData', new THREE.InstancedBufferAttribute(iData, 4));
+    crowdGeo.instanceCount = full.length;
+    const crowdMat = new THREE.ShaderMaterial({
+      defines: { POOLS, SOFT: small ? 0 : 1 },
+      uniforms: { ...light, ...common, ...mood },
+      alphaToCoverage: !small,
+      vertexShader: `attribute vec3 iPos; attribute vec4 iData; uniform float uRoar; uniform float uMove; uniform float uTime;
+        varying vec2 vP; flat varying vec4 vData; varying vec3 vLight; flat varying vec3 vRim; varying float vD; flat varying vec2 vPose;
+        ${HALL_LIGHT}
+        void main() {
+          ${POSE}
+          float big = 0.92 + 0.16 * fract(iData.x * 37.0);
+          float h = (stand > 0.5 ? 2.25 : 1.6) * big;
+          float w = 0.78 * big;
+          vec2 toCam = normalize(cameraPosition.xz - iPos.xz + vec2(0.0001));
+          vec3 right = vec3(toCam.y, 0.0, -toCam.x);
+          float bob = uMove * arms * abs(sin(uTime * 5.5 + iData.x * 40.0)) * 0.07;
+          vP = vec2(position.x * w, position.y * h) / big;
+          vec3 p = iPos + right * position.x * w + vec3(0.0, position.y * h + bob, 0.0);
+          vData = iData;
+          vPose = vec2(stand, arms);
+          vec3 face = normalize(vec3(-iPos.x, 0.0, -iPos.z));
+          float low = exp(-iPos.y * 0.1 - max(length(iPos.xz) - 14.0, 0.0) * 0.03);
+          vLight = (hallLight(iPos + vec3(0.0, 1.0, 0.0), normalize(face + vec3(0.0, 0.5, 0.0))) + vec3(0.03, 0.029, 0.027) * low * uGain) * (0.75 + 0.5 * fract(iData.w * 53.0));
+          vRim = iData.y < -0.5 ? uRed : iData.y > 0.5 ? uGreen : vec3(0.5, 0.5, 0.55);
+          vec4 mv = viewMatrix * vec4(p, 1.0);
+          vD = -mv.z;
+          gl_Position = projectionMatrix * mv;
+        }`,
+      fragmentShader: `uniform vec3 fogColor; uniform float mirrorPass; uniform float uTime; uniform float uMove;
+        varying vec2 vP; flat varying vec4 vData; varying vec3 vLight; flat varying vec3 vRim; varying float vD; flat varying vec2 vPose;
+        ${HASH}
+        float box(vec2 p, vec2 b, float r) { vec2 q = abs(p) - b + r; return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r; }
+        float seg(vec2 p, vec2 a, vec2 b, float r) { vec2 pa = p - a; vec2 ba = b - a; return length(pa - ba * clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0)) - r; }
+        void main() {
+          float s = vData.x * 91.0;
+          float stand = vPose.x;
+          float arms = vPose.y;
+          vec2 p = vP;
+          float wide = 0.9 + 0.25 * hash(vec2(s, 1.0));
+          // the body: a person on a seat (the hips at 0.45 m), or standing (at 0.95)
+          float sh = 0.95 + stand * 0.48;              // the shoulders' height
+          vec2 hc = vec2(0.0, sh + 0.2);               // the head's centre
+          float taper = mix(0.78, 1.0, smoothstep(sh - 0.45, sh - 0.1, p.y));
+          float torso = box(vec2(p.x / (wide * taper), p.y - (sh - 0.22)), vec2(0.22, 0.23), 0.11);
+          float legs = stand > 0.5 ? min(seg(p, vec2(-0.1, 0.05), vec2(-0.09, 0.95), 0.08), seg(p, vec2(0.1, 0.05), vec2(0.09, 0.95), 0.08))
+                                   : box(p - vec2(0.0, 0.32), vec2(0.18 * wide, 0.18), 0.08);
+          float head = (length((p - hc) / vec2(0.105, 0.128)) - 1.0) * 0.105;
+          float neck = box(p - vec2(0.0, sh), vec2(0.045, 0.06), 0.02);
+          float sway = uMove * sin(uTime * 3.0 + s) * 0.06;
+          vec2 l0 = vec2(-0.22 * wide, sh - 0.06);
+          vec2 r0 = vec2(0.22 * wide, sh - 0.06);
+          vec2 le = vec2(-0.32 + sway, sh + 0.28);
+          vec2 re = vec2(0.32 + sway, sh + 0.28);
+          float armsD = arms > 0.5
+            ? min(min(seg(p, l0, le, 0.05), seg(p, le, le + vec2(0.07, 0.27), 0.045)), min(seg(p, r0, re, 0.05), seg(p, re, re + vec2(-0.07, 0.27), 0.045)))
+            : min(seg(p, l0, vec2(-0.26 * wide, sh - 0.45), 0.055), seg(p, r0, vec2(0.26 * wide, sh - 0.45), 0.055));
+          float d = min(min(min(torso, legs), min(neck, armsD)), head);
+          #if SOFT
+          float a = clamp(0.5 - d / max(fwidth(d), 0.0001), 0.0, 1.0);
+          if (a < 0.01) discard;
+          #else
+          float a = 1.0;
+          if (d > 0.0) discard;
+          #endif
+          // dark clothes mostly, now and then the corner's shirt; six skin tones; dark hair, now and then fair
+          float c = hash(vec2(s, 2.0));
+          vec3 cloth = c < 0.25 ? vec3(0.02, 0.022, 0.03) : c < 0.45 ? vec3(0.05, 0.05, 0.055) : c < 0.58 ? vec3(0.03, 0.035, 0.06) : c < 0.64 ? vec3(0.09) : c < 0.7 ? vec3(0.18, 0.175, 0.17) : c < 0.78 ? vec3(0.06, 0.02, 0.02) : c < 0.9 ? vec3(0.05, 0.045, 0.03) : vRim * 0.14 + 0.01;
+          float k = hash(vec2(s, 3.0));
+          vec3 skin = k < 0.2 ? vec3(0.6, 0.38, 0.28) : k < 0.4 ? vec3(0.45, 0.28, 0.18) : k < 0.55 ? vec3(0.28, 0.16, 0.1) : k < 0.7 ? vec3(0.13, 0.07, 0.045) : k < 0.85 ? vec3(0.52, 0.36, 0.26) : vec3(0.36, 0.22, 0.14);
+          vec3 hair = hash(vec2(s, 4.0)) < 0.8 ? vec3(0.015, 0.012, 0.01) : vec3(0.12, 0.08, 0.04);
+          vec3 albedo = cloth;
+          if (head < 0.0 || (arms > 0.5 && armsD < 0.0 && p.y > sh + 0.45)) albedo = skin;
+          if (head < 0.0 && p.y > hc.y + 0.118 * (0.25 + 0.3 * hash(vec2(s, 5.0)))) albedo = hair;
+          // lit from above and from the ring, the side's colour on the rim
+          float shade = 0.55 + 0.45 * smoothstep(0.0, sh + 0.3, p.y);
+          float rim = (1.0 - smoothstep(0.0, 0.04, -d)) * smoothstep(sh - 0.4, sh + 0.2, p.y);
+          vec3 col = albedo * vLight * 6.0 * shade + vRim * vLight * rim * 0.12;
+          ${HAZE}
+          gl_FragColor = vec4(col, a);
+        }`,
+    });
+    return { mesh: new THREE.Mesh(crowdGeo, crowdMat), pos: iPos, data: iData };
+  };
+  const people = atlas ? atlasPeople() : cutOuts();
+  people.mesh.frustumCulled = false;
+  people.mesh.layers.enable(MIRROR);
+  scene.add(people.mesh);
 
   // the empty seats: a pan and a back of dark plastic
   const seatGeo = mergeGeometries([new THREE.BoxGeometry(0.46, 0.06, 0.4).translate(0, 0.42, 0.02), new THREE.BoxGeometry(0.46, 0.4, 0.05).rotateX(-0.12).translate(0, 0.64, 0.22)]);
@@ -1037,27 +1244,43 @@ function buildStands(scene, { small, steel }) {
   seatMesh.layers.enable(MIRROR);
   scene.add(seatMesh);
 
-  // phones: some held up steady (filming), more that flash now and then, most when the hall roars
+  // phones: some held up steady (filming), more that flash now and then, most when the hall roars.
+  // From the atlas, the steady ones are the people holding one up, at the phone in their picture
   const phoneN = Math.min(full.length, small ? 300 : 1200);
-  const pick = full.map((_, i) => i).sort(() => Math.random() - 0.5).slice(0, phoneN);
+  const order = full.map((_, i) => i).sort(() => Math.random() - 0.5);
+  const pick = [...new Set([...order.filter((i) => people.mayHold?.(i)), ...order])].slice(0, phoneN);
   const pPos = new Float32Array(phoneN * 3);
-  const pData = new Float32Array(phoneN * 4);
   const glow = new Float32Array(phoneN);
-  pick.forEach((i, n) => {
-    pPos.set(iPos.slice(i * 3, i * 3 + 3), n * 3);
-    pData.set(iData.slice(i * 4, i * 4 + 4), n * 4);
-  });
+  pick.forEach((i, n) => pPos.set(people.pos.slice(i * 3, i * 3 + 3), n * 3));
   const phoneGeo = new THREE.BufferGeometry();
   phoneGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
-  phoneGeo.setAttribute('iData', new THREE.BufferAttribute(pData, 4));
   phoneGeo.setAttribute('aGlow', new THREE.BufferAttribute(glow, 1));
+  const pOff = new Float32Array(phoneN * 2); // from the atlas: the phone from the person's feet, along the picture and up
+  if (atlas) phoneGeo.setAttribute('aOff', new THREE.BufferAttribute(pOff, 2));
+  else {
+    const pData = new Float32Array(phoneN * 4);
+    pick.forEach((i, n) => pData.set(people.data.slice(i * 4, i * 4 + 4), n * 4));
+    phoneGeo.setAttribute('iData', new THREE.BufferAttribute(pData, 4));
+  }
   const phones = new THREE.Points(phoneGeo, new THREE.ShaderMaterial({
+    defines: { ATLAS: atlas ? 1 : 0 },
     uniforms: { ...light, ...common, ...mood, uSize: { value: 3 } },
-    vertexShader: `attribute vec4 iData; attribute float aGlow; uniform vec2 uExc; uniform float uRoar; uniform float uSize; varying float vGlow;
+    vertexShader: `attribute float aGlow; uniform vec2 uExc; uniform float uRoar; uniform float uSize; varying float vGlow;
+      #if ATLAS
+      attribute vec2 aOff;
+      #else
+      attribute vec4 iData;
+      #endif
       void main() {
+        #if ATLAS
+        // at the phone in the person's picture, a hand's breadth before it
+        vec2 toCam = normalize(cameraPosition.xz - position.xz + vec2(0.0001));
+        vec3 p = position + vec3(toCam.y, 0.0, -toCam.x) * aOff.x + vec3(toCam.x * 0.12, aOff.y, toCam.y * 0.12);
+        #else
         ${POSE}
         // held up in front of the face, or over the head with the arms up
         vec3 p = position + vec3(0.0, 1.12 + stand * 0.48 + arms * 0.45, 0.0) - normalize(vec3(position.x, 0.0, position.z)) * 0.25;
+        #endif
         vec4 mv = viewMatrix * vec4(p, 1.0);
         vGlow = aGlow * exp(mv.z * 0.012);
         gl_PointSize = uSize * (aGlow > 2.0 ? 1.8 : 1.0);
@@ -1076,11 +1299,11 @@ function buildStands(scene, { small, steel }) {
   phones.frustumCulled = false;
   phones.layers.enable(MIRROR);
   scene.add(phones);
-  const steady = pick.map(() => Math.random() < 0.4);
+  const steady = pick.map(() => !atlas && Math.random() < 0.4);
 
   return {
     seats: { count, pos: Float32Array.from(seats.pos), side: Int8Array.from(seats.side), tier: Uint8Array.from(seats.tier), row: Uint8Array.from(seats.row) },
-    crowd,
+    crowd: people.mesh,
     /** Where the fans' beams land on the stands: [{ at: Vector3, color: Color }]. */
     setPools(list) {
       if (!POOLS) return;
@@ -1095,10 +1318,18 @@ function buildStands(scene, { small, steel }) {
     },
     update(t, dt, exc, roar, reduced) {
       light.uExc.value.set(exc.red, exc.blue);
-      const fade = Math.exp(-dt * 20); // a flash dies fast
-      const often = dt * (0.12 + roar * 1.1); // the chance of a flash this frame
       mood.uRoar.value = roar;
       mood.uMove.value = reduced ? 0 : 1;
+      if (people.pose?.(roar, exc)) {
+        // new poses: the phones follow the people holding one
+        pick.forEach((i, n) => {
+          pOff.set(people.off.subarray(i * 2, i * 2 + 2), n * 2);
+          steady[n] = people.holds[i] === 1;
+        });
+        phoneGeo.attributes.aOff.needsUpdate = true;
+      }
+      const fade = Math.exp(-dt * 20); // a flash dies fast
+      const often = dt * (0.12 + roar * 1.1); // the chance of a flash this frame
       for (let i = 0; i < phoneN; i++) {
         if (steady[i]) glow[i] = 1.4 + (reduced ? 0 : 0.3 * Math.sin(t * 0.7 + i));
         else {
@@ -1110,8 +1341,57 @@ function buildStands(scene, { small, steel }) {
     },
   };
 }
-
 // ------------------------------------------------------------------ the room
+
+/**
+ * The ring in the kit's baked steel: six posts, six brackets, six apron sides, the steps, the canvas
+ * and its emblem, each where the code's own part would stand (R the ring's radius). The kit's neutral
+ * lights take their half's colour (`led`, `cap`, `panel`: red left, green right); then every piece is merged
+ * into one mesh a material, so the whole ring is a handful of draws.
+ */
+function kitRing(kit, { R, led, cap, panel }) {
+  const APO = R * Math.cos(Math.PI / 6);
+  const at = (k, r) => new THREE.Vector3(r * Math.cos((k * Math.PI) / 3), 0, r * Math.sin((k * Math.PI) / 3));
+  const byMat = new Map();
+  const mid = new THREE.Vector3();
+  const place = (name, p, rotY, keep = () => true) => {
+    const o = kit[name].clone();
+    o.position.copy(p);
+    o.rotation.y = rotY;
+    o.updateMatrixWorld(true);
+    o.traverse((m) => {
+      if (!m.isMesh || !keep(m.name)) return;
+      const g = m.geometry.clone().applyMatrix4(m.matrixWorld);
+      g.computeBoundingBox();
+      const side = g.boundingBox.getCenter(mid).x < 0 ? 'red' : 'green';
+      const mat = m.name === 'PostCapLED' ? cap[side] : { LED_NEUTRAL: led[side], LED_RED: led.red, LED_GREEN: led.green, GLOW_NEUTRAL: panel[side] }[m.material.name] ?? m.material;
+      if (!byMat.has(mat)) byMat.set(mat, []);
+      byMat.get(mat).push(g);
+    });
+  };
+  for (let k = 0; k < 6; k++) {
+    // the post's strips: the face to the ring and the face to the hall; the two side posts also the
+    // face that looks towards the near stand (the wide camera's), which their outer face does not
+    const p = at(k, R - 0.08);
+    const rot = Math.atan2(-p.x, -p.z); // +z towards the ring's centre
+    const flank = Math.abs(p.z) < 1 ? (-Math.sin(rot) > 0 ? 'PostLED_R' : 'PostLED_L') : ''; // the world z of local +x is -sin(rot)
+    place('Post', p, rot, (n) => !n.startsWith('PostLED_') || n === 'PostLED_In' || n === 'PostLED_Out' || n === flank);
+    const c = at(k, R);
+    place('Bracket', c, Math.atan2(c.x, c.z));
+    const a = at(k + 0.5, APO);
+    place('ApronSide', a, Math.atan2(a.x, a.z));
+  }
+  place('Steps', new THREE.Vector3(0, 0, APO), 0);
+  place('Canvas', new THREE.Vector3(), 0);
+  place('Emblem', new THREE.Vector3(), 0);
+  const ring = new THREE.Group();
+  for (const [mat, geos] of byMat) {
+    const m = new THREE.Mesh(mergeGeometries(geos), mat);
+    m.name = mat.name;
+    ring.add(m);
+  }
+  return ring;
+}
 
 /** Quads into one geometry: each [p0, p1, p2, p3] (counter-clockwise seen from `out`), uv 0..1 over it
  *  (or `uv` [u0, u1, v0, v1]). */
@@ -1145,9 +1425,9 @@ function quadGeo(list) {
 
 /**
  * Builds the hall into `scene`. `opts`: { R (the ring's radius), FLOOR (the canvas's height), small,
- * ring ('red' | 'green') }.
+ * ring ('red' | 'green'), kit and crowd (loadHallAssets's; null builds those parts in code) }.
  */
-export function buildRoom(scene, renderer, { R, FLOOR, small, ring }) {
+export function buildRoom(scene, renderer, { R, FLOOR, small, ring, kit = null, crowd = null }) {
   const heavy = !small;
   const COS30 = Math.cos(Math.PI / 6);
   const APO = R * COS30; // the ring's apothem: from the centre to the middle of a side
@@ -1181,190 +1461,217 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring }) {
   const darkSteel = std({ color: 0xa4a9b2, map: brushed, metalness: 0.75, roughness: 0.38, envMapIntensity: 1.6 });
   const rubber = std({ color: 0x0b0c0e, metalness: 0, roughness: 0.7 });
   const led = { red: glow(RED, 1.3), green: glow(GREEN, 0.95) };
-    const sideOf = (x) => (x < 0 ? 'red' : 'green');
+  const sideOf = (x) => (x < 0 ? 'red' : 'green');
 
-  // ---- the canvas: hex plates of dark steel, the emblem inlaid in gold
-  const pm = plateMaps(small ? 1024 : 2048, R + 0.05, ring);
-  const canvasTop = new THREE.Mesh(new THREE.CircleGeometry(R + 0.05, 6).rotateX(-Math.PI / 2), std({
-    map: pm.map, roughnessMap: pm.rough, metalnessMap: pm.rough, normalMap: pm.normal, normalScale: new THREE.Vector2(0.9, 0.9),
-    emissive: 0xffffff, emissiveMap: pm.emissive, emissiveIntensity: 0.14, roughness: 1, metalness: 1, envMapIntensity: 1.15,
-  }));
-  canvasTop.position.y = FLOOR;
-  add(canvasTop, { receive: true, mirror: true });
+  // ---- the ring's deck: black under the canvas, the apron round it
   const deck = new THREE.Mesh(new THREE.CylinderGeometry(R + 0.04, R + 0.04, FLOOR - 0.02, 6, 1, false, Math.PI / 6), rubber);
   deck.position.y = (FLOOR - 0.02) / 2;
   add(deck);
 
-  // ---- the apron: a flat riveted lip round the canvas, then a skirt slanting out to the floor, each
-  // half side a steel frame round a mesh grille lit from behind; LED lines along the canvas's edge and
-  // the lip's front; chunky steel brackets at the corners. Each half of a side takes its half's colour.
-  const LIP = [0.03, 0.44]; // the lip, out from the side line
-  const LIP_Y = FLOOR - 0.05;
-  const SKIRT = [0.44, 0.78]; // the skirt runs from the lip's front, low, out to the floor
-  const SKIRT_Y = [FLOOR - 0.13, 0.02];
-  {
-    const lip = [];
-    const skirt = { red: [], green: [] };
-    const lines = { red: [], green: [] };
-    const soft = { red: [], green: [] };
-    const fronts = [];
-    const up = new THREE.Vector3(0, 1, 0);
-    for (let k = 0; k < 6; k++) for (const [s0, s1] of [[0, 0.5], [0.5, 1]]) {
-      const mid = onSide(k, (s0 + s1) / 2, 0, 0);
-      const side = sideOf(mid.x);
-      const out = mid.clone().setY(0).normalize();
-      const P = (s, d, y) => onSide(k, s, d, y);
-      lip.push({ p: [P(s0, LIP[0], LIP_Y), P(s1, LIP[0], LIP_Y), P(s1, LIP[1], LIP_Y), P(s0, LIP[1], LIP_Y)], out: up, uvr: [0, 1, 0, 1] });
-      // the lip's front, and the canvas's edge: thin faces carrying the LED lines
-      fronts.push({ p: [P(s0, LIP[1], SKIRT_Y[0]), P(s1, LIP[1], SKIRT_Y[0]), P(s1, LIP[1], LIP_Y), P(s0, LIP[1], LIP_Y)], out });
-      lines[side].push({ p: [P(s0, LIP[1] + 0.004, LIP_Y - 0.065), P(s1, LIP[1] + 0.004, LIP_Y - 0.065), P(s1, LIP[1] + 0.004, LIP_Y - 0.03), P(s0, LIP[1] + 0.004, LIP_Y - 0.03)], out });
-      lines[side].push({ p: [P(s0, LIP[0] + 0.012, LIP_Y + 0.005), P(s1, LIP[0] + 0.012, LIP_Y + 0.005), P(s1, LIP[0] + 0.012, FLOOR - 0.012), P(s0, LIP[0] + 0.012, FLOOR - 0.012)], out });
-      soft[side].push({ p: [P(s0, LIP[0] + 0.01, LIP_Y + 0.002), P(s1, LIP[0] + 0.01, LIP_Y + 0.002), P(s1, LIP[0] + 0.1, LIP_Y + 0.002), P(s0, LIP[0] + 0.1, LIP_Y + 0.002)], out: up });
-      skirt[side].push({ p: [P(s0, SKIRT[1], SKIRT_Y[1]), P(s1, SKIRT[1], SKIRT_Y[1]), P(s1, SKIRT[0], SKIRT_Y[0]), P(s0, SKIRT[0], SKIRT_Y[0])], out: out.clone().add(up) });
+  // ---- the ring's steel: the kit's baked posts, apron, brackets, steps and canvas when it loaded, the
+  // panels behind its grilles lit in each half's colour; else the code's own
+  if (kit) {
+    const panel = Object.fromEntries(['red', 'green'].map((sd) => {
+      const m = kit.ApronSide.getObjectByName('ApronGlow_L').material.clone();
+      m.emissive.copy(sd === 'red' ? RED : GREEN).multiplyScalar(sd === 'red' ? 0.8 : 0.5);
+      return [sd, m];
+    }));
+    const cap = { red: glow(RED, 0.45), green: glow(GREEN, 0.35) }; // the lens on each post's cap, dim
+    const steelRing = add(kitRing(kit, { R, led, cap, panel }), { cast: heavy, mirror: true });
+    // the canvas's plates tile: grime over the whole of it, darker and duller in the blotches
+    const grime = { value: grimeTex(small ? 256 : 512) };
+    steelRing.getObjectByName('CANVAS').material.onBeforeCompile = (sh) => {
+      sh.uniforms.tGrime = grime;
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec2 vGrime;')
+        .replace('#include <fog_vertex>', `#include <fog_vertex>\nvGrime = (modelMatrix * vec4(transformed, 1.0)).xz / ${(2 * R + 0.2).toFixed(1)} + 0.5;`);
+      sh.fragmentShader = sh.fragmentShader
+        .replace('#include <common>', '#include <common>\nuniform sampler2D tGrime;\nvarying vec2 vGrime;')
+        .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+          float grime = texture2D(tGrime, vGrime).r;
+          diffuseColor.rgb *= 0.55 + grime * 0.9;
+          roughnessFactor = clamp(roughnessFactor + (0.5 - grime) * 0.35, 0.05, 1.0);`);
+    };
+  } else {
+    // ---- the canvas: hex plates of dark steel, the emblem inlaid in gold
+    const pm = plateMaps(small ? 1024 : 2048, R + 0.05, ring);
+    const canvasTop = new THREE.Mesh(new THREE.CircleGeometry(R + 0.05, 6).rotateX(-Math.PI / 2), std({
+      map: pm.map, roughnessMap: pm.rough, metalnessMap: pm.rough, normalMap: pm.normal, normalScale: new THREE.Vector2(0.9, 0.9),
+      emissive: 0xffffff, emissiveMap: pm.emissive, emissiveIntensity: 0.14, roughness: 1, metalness: 1, envMapIntensity: 1.15,
+    }));
+    canvasTop.position.y = FLOOR;
+    add(canvasTop, { receive: true, mirror: true });
+
+    // ---- the apron: a flat riveted lip round the canvas, then a skirt slanting out to the floor, each
+    // half side a steel frame round a mesh grille lit from behind; LED lines along the canvas's edge and
+    // the lip's front; chunky steel brackets at the corners. Each half of a side takes its half's colour.
+    const LIP = [0.03, 0.44]; // the lip, out from the side line
+    const LIP_Y = FLOOR - 0.05;
+    const SKIRT = [0.44, 0.78]; // the skirt runs from the lip's front, low, out to the floor
+    const SKIRT_Y = [FLOOR - 0.13, 0.02];
+    {
+      const lip = [];
+      const skirt = { red: [], green: [] };
+      const lines = { red: [], green: [] };
+      const soft = { red: [], green: [] };
+      const fronts = [];
+      const up = new THREE.Vector3(0, 1, 0);
+      for (let k = 0; k < 6; k++) for (const [s0, s1] of [[0, 0.5], [0.5, 1]]) {
+        const mid = onSide(k, (s0 + s1) / 2, 0, 0);
+        const side = sideOf(mid.x);
+        const out = mid.clone().setY(0).normalize();
+        const P = (s, d, y) => onSide(k, s, d, y);
+        lip.push({ p: [P(s0, LIP[0], LIP_Y), P(s1, LIP[0], LIP_Y), P(s1, LIP[1], LIP_Y), P(s0, LIP[1], LIP_Y)], out: up, uvr: [0, 1, 0, 1] });
+        // the lip's front, and the canvas's edge: thin faces carrying the LED lines
+        fronts.push({ p: [P(s0, LIP[1], SKIRT_Y[0]), P(s1, LIP[1], SKIRT_Y[0]), P(s1, LIP[1], LIP_Y), P(s0, LIP[1], LIP_Y)], out });
+        lines[side].push({ p: [P(s0, LIP[1] + 0.004, LIP_Y - 0.065), P(s1, LIP[1] + 0.004, LIP_Y - 0.065), P(s1, LIP[1] + 0.004, LIP_Y - 0.03), P(s0, LIP[1] + 0.004, LIP_Y - 0.03)], out });
+        lines[side].push({ p: [P(s0, LIP[0] + 0.012, LIP_Y + 0.005), P(s1, LIP[0] + 0.012, LIP_Y + 0.005), P(s1, LIP[0] + 0.012, FLOOR - 0.012), P(s0, LIP[0] + 0.012, FLOOR - 0.012)], out });
+        soft[side].push({ p: [P(s0, LIP[0] + 0.01, LIP_Y + 0.002), P(s1, LIP[0] + 0.01, LIP_Y + 0.002), P(s1, LIP[0] + 0.1, LIP_Y + 0.002), P(s0, LIP[0] + 0.1, LIP_Y + 0.002)], out: up });
+        skirt[side].push({ p: [P(s0, SKIRT[1], SKIRT_Y[1]), P(s1, SKIRT[1], SKIRT_Y[1]), P(s1, SKIRT[0], SKIRT_Y[0]), P(s0, SKIRT[0], SKIRT_Y[0])], out: out.clone().add(up) });
+      }
+      const lipTex = plateTex();
+      lipTex.wrapS = lipTex.wrapT = THREE.RepeatWrapping;
+      lipTex.repeat.set(2, 1);
+      add(new THREE.Mesh(quadGeo(lip), std({ color: 0x8a9099, map: lipTex, metalness: 0.85, roughness: 0.38, envMapIntensity: 1.2 })), { mirror: true });
+      add(new THREE.Mesh(quadGeo(fronts), darkSteel), { mirror: true });
+      const sk = skirtMaps();
+      for (const side of ['red', 'green']) {
+        const mat = std({ color: 0xb4b9c2, map: sk.map, metalness: 0.8, roughness: 0.4, envMapIntensity: 1.1, emissive: (side === 'red' ? RED : GREEN).clone(), emissiveMap: sk.emissive, emissiveIntensity: side === 'red' ? 0.8 : 0.5 });
+        add(new THREE.Mesh(quadGeo(skirt[side]), mat), { mirror: true, receive: false });
+        add(new THREE.Mesh(quadGeo(lines[side]), led[side]), { mirror: true, receive: false });
+        add(new THREE.Mesh(quadGeo(soft[side]), new THREE.MeshBasicMaterial({ color: (side === 'red' ? RED : GREEN).clone().multiplyScalar(0.22), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false })), { receive: false });
+      }
+      // the corner brackets: chunky riveted steel, the full height of the apron
+      const bracketTex = plateTex(256, 256);
+      const bracketMat = std({ color: 0xd0d4dc, map: bracketTex, metalness: 0.8, roughness: 0.34, envMapIntensity: 2.2 });
+      const parts = [];
+      for (let k = 0; k < 6; k++) {
+        const dir = corner(k, 1).setY(0).normalize();
+        const r0 = (APO + 0.1) / COS30;
+        const r1 = (APO + SKIRT[1] + 0.04) / COS30;
+        const b = new RoundedBoxGeometry(0.5, FLOOR + 0.02, r1 - r0, 1, 0.06);
+        b.rotateY(Math.atan2(dir.x, dir.z));
+        b.translate(dir.x * (r0 + r1) / 2, (FLOOR + 0.02) / 2, dir.z * (r0 + r1) / 2);
+        parts.push(b);
+        // a heavy foot plate
+        const f = new RoundedBoxGeometry(0.66, 0.09, 0.5, 1, 0.03);
+        f.rotateY(Math.atan2(dir.x, dir.z));
+        f.translate(dir.x * (r1 - 0.12), 0.045, dir.z * (r1 - 0.12));
+        parts.push(f);
+      }
+      add(new THREE.Mesh(mergeGeometries(parts), bracketMat), { mirror: true, cast: false });
     }
-    const lipTex = plateTex();
-    lipTex.wrapS = lipTex.wrapT = THREE.RepeatWrapping;
-    lipTex.repeat.set(2, 1);
-    add(new THREE.Mesh(quadGeo(lip), std({ color: 0x8a9099, map: lipTex, metalness: 0.85, roughness: 0.38, envMapIntensity: 1.2 })), { mirror: true });
-    add(new THREE.Mesh(quadGeo(fronts), darkSteel), { mirror: true });
-    const sk = skirtMaps();
-    for (const side of ['red', 'green']) {
-      const mat = std({ color: 0xb4b9c2, map: sk.map, metalness: 0.8, roughness: 0.4, envMapIntensity: 1.1, emissive: (side === 'red' ? RED : GREEN).clone(), emissiveMap: sk.emissive, emissiveIntensity: side === 'red' ? 0.8 : 0.5 });
-      add(new THREE.Mesh(quadGeo(skirt[side]), mat), { mirror: true, receive: false });
-      add(new THREE.Mesh(quadGeo(lines[side]), led[side]), { mirror: true, receive: false });
-      add(new THREE.Mesh(quadGeo(soft[side]), new THREE.MeshBasicMaterial({ color: (side === 'red' ? RED : GREEN).clone().multiplyScalar(0.22), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false })), { receive: false });
+
+    // ---- the steps up the near side, in its middle: diamond-plate treads, steel stringers with a line of
+    // light down each, red on the left and green on the right
+    {
+      const g = new THREE.Group();
+      const mid = onSide(1, 0.5, 0, 0);
+      g.position.set(mid.x, 0, mid.z);
+      g.rotation.y = Math.atan2(mid.x, mid.z); // +z away from the ring
+      const tm = treadMaps();
+      const tread = std({ color: 0xa8aeb8, map: tm.map, normalMap: tm.normal, metalness: 0.85, roughness: 0.34, envMapIntensity: 1.2 });
+      const n = 6;
+      const W = 1.7;
+      const D = 0.3;
+      for (let i = 0; i < n; i++) {
+        const top = LIP_Y - (LIP_Y / (n + 0.4)) * (i + 1);
+        const box = new THREE.Mesh(new THREE.BoxGeometry(W, top, D), [darkSteel, darkSteel, tread, darkSteel, darkSteel, darkSteel]);
+        box.position.set(0, top / 2, LIP[1] + D * (i + 0.5));
+        g.add(box);
+        const nose = new THREE.Mesh(new THREE.BoxGeometry(W - 0.04, 0.02, 0.025), steel);
+        nose.position.set(0, top, LIP[1] + D * (i + 1) - 0.012);
+        g.add(nose);
+      }
+      // the landing on the lip, and the stringers
+      const land = new THREE.Mesh(new THREE.BoxGeometry(W, 0.03, LIP[1] - LIP[0]), tread);
+      land.position.set(0, LIP_Y + 0.012, (LIP[0] + LIP[1]) / 2);
+      g.add(land);
+      const run = D * n;
+      const shape = new THREE.Shape([new THREE.Vector2(LIP[0], FLOOR + 0.03), new THREE.Vector2(LIP[0], 0), new THREE.Vector2(LIP[1] + run + 0.1, 0), new THREE.Vector2(LIP[1] + run + 0.1, 0.12)]);
+      const sg = new THREE.ExtrudeGeometry(shape, { depth: 0.16, bevelEnabled: false }).rotateY(-Math.PI / 2); // the shape's x along +z, extruded towards -x
+      for (const s of [-1, 1]) {
+        const st = new THREE.Mesh(sg, darkSteel);
+        st.position.x = s > 0 ? W / 2 + 0.16 : -W / 2;
+        g.add(st);
+        // the line of light along its top, down the slope
+        const a = new THREE.Vector3(s * (W / 2 + 0.08), FLOOR + 0.04, LIP[0] + 0.02);
+        const b = new THREE.Vector3(s * (W / 2 + 0.08), 0.13, LIP[1] + run + 0.09);
+        const d = new THREE.Vector3().subVectors(b, a);
+        const line = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.02, d.length()), led[s < 0 ? 'red' : 'green']);
+        line.position.copy(a).addScaledVector(d, 0.5);
+        line.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), d.clone().normalize());
+        g.add(line);
+        const front = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.12, 0.02), led[s < 0 ? 'red' : 'green']);
+        front.position.set(s * (W / 2 + 0.08), 0.065, LIP[1] + run + 0.1);
+        g.add(front);
+      }
+      add(g, { mirror: true });
     }
-    // the corner brackets: chunky riveted steel, the full height of the apron
-    const bracketTex = plateTex(256, 256);
-    const bracketMat = std({ color: 0xd0d4dc, map: bracketTex, metalness: 0.8, roughness: 0.34, envMapIntensity: 2.2 });
-    const parts = [];
+
+    // ---- the posts: thick dark steel, chamfered, an LED strip set into every face, a lamp on the cap
+    const postGeo = new RoundedBoxGeometry(0.5, FLOOR + 1.55, 0.5, 3, 0.07);
+    const capGeo = new THREE.CylinderGeometry(0.22, 0.33, 0.2, 8, 1).rotateY(Math.PI / 8);
+    const stripGeo = new THREE.BoxGeometry(0.07, 1.25, 0.02);
+    const coreGeo = new THREE.BoxGeometry(0.026, 1.21, 0.022);
+    const slotGeo = new THREE.BoxGeometry(0.12, 1.34, 0.012);
+    const haloGeo = new THREE.PlaneGeometry(0.42, 1.6);
+    const postMat = std({ color: 0xd8dce4, map: brushed, metalness: 0.8, roughness: 0.34, envMapIntensity: 2.2 });
+    const capMat = std({ color: 0xffffff, map: brushed, metalness: 0.85, roughness: 0.32, envMapIntensity: 2.4, flatShading: true });
+    const slotMat = std({ color: 0x050506, metalness: 0.5, roughness: 0.5 });
+    // each strip: a white-hot core in its colour's glow, and a soft halo on the steel round it
+    const core = { red: glow(new THREE.Color(1, 0.16, 0.14), 2.2), green: glow(new THREE.Color(0.18, 1, 0.22), 1.7) };
+    const haloTex = softSpot(64, 1.4);
+    const halo = Object.fromEntries(['red', 'green'].map((sd) => [sd, new THREE.MeshBasicMaterial({ map: haloTex, color: (sd === 'red' ? RED : GREEN).clone().multiplyScalar(sd === 'red' ? 0.2 : 0.14), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false })]));
     for (let k = 0; k < 6; k++) {
-      const dir = corner(k, 1).setY(0).normalize();
-      const r0 = (APO + 0.1) / COS30;
-      const r1 = (APO + SKIRT[1] + 0.04) / COS30;
-      const b = new RoundedBoxGeometry(0.5, FLOOR + 0.02, r1 - r0, 1, 0.06);
-      b.rotateY(Math.atan2(dir.x, dir.z));
-      b.translate(dir.x * (r0 + r1) / 2, (FLOOR + 0.02) / 2, dir.z * (r0 + r1) / 2);
-      parts.push(b);
-      // a heavy foot plate
-      const f = new RoundedBoxGeometry(0.66, 0.09, 0.5, 1, 0.03);
-      f.rotateY(Math.atan2(dir.x, dir.z));
-      f.translate(dir.x * (r1 - 0.12), 0.045, dir.z * (r1 - 0.12));
-      parts.push(f);
+      const p = corner(k, R - 0.08);
+      const side = sideOf(p.x);
+      const g = new THREE.Group();
+      g.position.set(p.x, 0, p.z);
+      g.rotation.y = Math.atan2(-p.x, -p.z); // +z towards the ring's centre
+      const post = new THREE.Mesh(postGeo, postMat);
+      post.position.y = (FLOOR + 1.55) / 2 + 0.1;
+      g.add(post);
+      const cap = new THREE.Mesh(capGeo, capMat);
+      cap.position.y = FLOOR + 1.75;
+      g.add(cap);
+      // the strips: on the face out to the hall and the face in to the ring; the two side posts also on
+      // the face that looks towards the near stand (the wide camera's), which their outer face does not
+      const rot = g.rotation.y;
+      const faces = [Math.PI, 0];
+      if (Math.abs(p.z) < 1) faces.push(-Math.sin(rot) > 0 ? Math.PI / 2 : -Math.PI / 2); // the world z of local +x is -sin(rot)
+      for (const a of faces) {
+        const slot = new THREE.Mesh(slotGeo, slotMat);
+        slot.position.set(Math.sin(a) * 0.247, FLOOR + 0.85, Math.cos(a) * 0.247);
+        slot.rotation.y = a;
+        g.add(slot);
+        const s = new THREE.Mesh(stripGeo, led[side]);
+        s.position.set(Math.sin(a) * 0.245, FLOOR + 0.85, Math.cos(a) * 0.245);
+        s.rotation.y = a;
+        g.add(s);
+        const c = new THREE.Mesh(coreGeo, core[side]);
+        c.position.set(Math.sin(a) * 0.247, FLOOR + 0.85, Math.cos(a) * 0.247);
+        c.rotation.y = a;
+        g.add(c);
+        const h = new THREE.Mesh(haloGeo, halo[side]);
+        h.position.set(Math.sin(a) * 0.262, FLOOR + 0.85, Math.cos(a) * 0.262);
+        h.rotation.y = a;
+        g.add(h);
+      }
+      // the rope ends: steel rings on the inner face
+      for (const h of ROPES) {
+        const eye = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.016, 6, 12), steel);
+        eye.position.set(0, FLOOR + h, 0.26);
+        g.add(eye);
+      }
+      add(g, { cast: true, mirror: true });
     }
-    add(new THREE.Mesh(mergeGeometries(parts), bracketMat), { mirror: true, cast: false });
   }
+  const postTops = Array.from({ length: 6 }, (_, k) => corner(k, R * 0.97).setY(FLOOR + 1.9));
 
-  // ---- the steps up the near side, in its middle: diamond-plate treads, steel stringers with a line of
-  // light down each, red on the left and green on the right
+  // ---- the ropes: braided steel, a little sag, black sleeves where they meet the code's posts
   {
-    const g = new THREE.Group();
-    const mid = onSide(1, 0.5, 0, 0);
-    g.position.set(mid.x, 0, mid.z);
-    g.rotation.y = Math.atan2(mid.x, mid.z); // +z away from the ring
-    const tm = treadMaps();
-    const tread = std({ color: 0xa8aeb8, map: tm.map, normalMap: tm.normal, metalness: 0.85, roughness: 0.34, envMapIntensity: 1.2 });
-    const n = 6;
-    const W = 1.7;
-    const D = 0.3;
-    for (let i = 0; i < n; i++) {
-      const top = LIP_Y - (LIP_Y / (n + 0.4)) * (i + 1);
-      const box = new THREE.Mesh(new THREE.BoxGeometry(W, top, D), [darkSteel, darkSteel, tread, darkSteel, darkSteel, darkSteel]);
-      box.position.set(0, top / 2, LIP[1] + D * (i + 0.5));
-      g.add(box);
-      const nose = new THREE.Mesh(new THREE.BoxGeometry(W - 0.04, 0.02, 0.025), steel);
-      nose.position.set(0, top, LIP[1] + D * (i + 1) - 0.012);
-      g.add(nose);
-    }
-    // the landing on the lip, and the stringers
-    const land = new THREE.Mesh(new THREE.BoxGeometry(W, 0.03, LIP[1] - LIP[0]), tread);
-    land.position.set(0, LIP_Y + 0.012, (LIP[0] + LIP[1]) / 2);
-    g.add(land);
-    const run = D * n;
-    const shape = new THREE.Shape([new THREE.Vector2(LIP[0], FLOOR + 0.03), new THREE.Vector2(LIP[0], 0), new THREE.Vector2(LIP[1] + run + 0.1, 0), new THREE.Vector2(LIP[1] + run + 0.1, 0.12)]);
-    const sg = new THREE.ExtrudeGeometry(shape, { depth: 0.16, bevelEnabled: false }).rotateY(-Math.PI / 2); // the shape's x along +z, extruded towards -x
-    for (const s of [-1, 1]) {
-      const st = new THREE.Mesh(sg, darkSteel);
-      st.position.x = s > 0 ? W / 2 + 0.16 : -W / 2;
-      g.add(st);
-      // the line of light along its top, down the slope
-      const a = new THREE.Vector3(s * (W / 2 + 0.08), FLOOR + 0.04, LIP[0] + 0.02);
-      const b = new THREE.Vector3(s * (W / 2 + 0.08), 0.13, LIP[1] + run + 0.09);
-      const d = new THREE.Vector3().subVectors(b, a);
-      const line = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.02, d.length()), led[s < 0 ? 'red' : 'green']);
-      line.position.copy(a).addScaledVector(d, 0.5);
-      line.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), d.clone().normalize());
-      g.add(line);
-      const front = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.12, 0.02), led[s < 0 ? 'red' : 'green']);
-      front.position.set(s * (W / 2 + 0.08), 0.065, LIP[1] + run + 0.1);
-      g.add(front);
-    }
-    add(g, { mirror: true });
-  }
-
-  // ---- the posts: thick dark steel, chamfered, an LED strip set into every face, a lamp on the cap
-  const postGeo = new RoundedBoxGeometry(0.5, FLOOR + 1.55, 0.5, 3, 0.07);
-  const capGeo = new THREE.CylinderGeometry(0.22, 0.33, 0.2, 8, 1).rotateY(Math.PI / 8);
-  const stripGeo = new THREE.BoxGeometry(0.07, 1.25, 0.02);
-  const coreGeo = new THREE.BoxGeometry(0.026, 1.21, 0.022);
-  const slotGeo = new THREE.BoxGeometry(0.12, 1.34, 0.012);
-  const haloGeo = new THREE.PlaneGeometry(0.42, 1.6);
-  const postMat = std({ color: 0xd8dce4, map: brushed, metalness: 0.8, roughness: 0.34, envMapIntensity: 2.2 });
-  const capMat = std({ color: 0xffffff, map: brushed, metalness: 0.85, roughness: 0.32, envMapIntensity: 2.4, flatShading: true });
-  const slotMat = std({ color: 0x050506, metalness: 0.5, roughness: 0.5 });
-  // each strip: a white-hot core in its colour's glow, and a soft halo on the steel round it
-  const core = { red: glow(new THREE.Color(1, 0.16, 0.14), 2.2), green: glow(new THREE.Color(0.18, 1, 0.22), 1.7) };
-  const haloTex = softSpot(64, 1.4);
-  const halo = Object.fromEntries(['red', 'green'].map((sd) => [sd, new THREE.MeshBasicMaterial({ map: haloTex, color: (sd === 'red' ? RED : GREEN).clone().multiplyScalar(sd === 'red' ? 0.2 : 0.14), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false })]));
-  const postTops = [];
-  for (let k = 0; k < 6; k++) {
-    const p = corner(k, R - 0.08);
-    const side = sideOf(p.x);
-    const g = new THREE.Group();
-    g.position.set(p.x, 0, p.z);
-    g.rotation.y = Math.atan2(-p.x, -p.z); // +z towards the ring's centre
-    const post = new THREE.Mesh(postGeo, postMat);
-    post.position.y = (FLOOR + 1.55) / 2 + 0.1;
-    g.add(post);
-    const cap = new THREE.Mesh(capGeo, capMat);
-    cap.position.y = FLOOR + 1.75;
-    g.add(cap);
-    // the strips: on the face out to the hall and the face in to the ring; the two side posts also on
-    // the face that looks towards the near stand (the wide camera's), which their outer face does not
-    const rot = g.rotation.y;
-    const faces = [Math.PI, 0];
-    if (Math.abs(p.z) < 1) faces.push(-Math.sin(rot) > 0 ? Math.PI / 2 : -Math.PI / 2); // the world z of local +x is -sin(rot)
-    for (const a of faces) {
-      const slot = new THREE.Mesh(slotGeo, slotMat);
-      slot.position.set(Math.sin(a) * 0.247, FLOOR + 0.85, Math.cos(a) * 0.247);
-      slot.rotation.y = a;
-      g.add(slot);
-      const s = new THREE.Mesh(stripGeo, led[side]);
-      s.position.set(Math.sin(a) * 0.245, FLOOR + 0.85, Math.cos(a) * 0.245);
-      s.rotation.y = a;
-      g.add(s);
-      const c = new THREE.Mesh(coreGeo, core[side]);
-      c.position.set(Math.sin(a) * 0.247, FLOOR + 0.85, Math.cos(a) * 0.247);
-      c.rotation.y = a;
-      g.add(c);
-      const h = new THREE.Mesh(haloGeo, halo[side]);
-      h.position.set(Math.sin(a) * 0.262, FLOOR + 0.85, Math.cos(a) * 0.262);
-      h.rotation.y = a;
-      g.add(h);
-    }
-    // the rope ends: steel rings on the inner face
-    for (const h of ROPES) {
-      const eye = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.016, 6, 12), steel);
-      eye.position.set(0, FLOOR + h, 0.26);
-      g.add(eye);
-    }
-    add(g, { cast: true, mirror: true });
-    postTops.push(corner(k, R * 0.97).setY(FLOOR + 1.9));
-  }
-
-  // ---- the ropes: braided steel, a little sag, black sleeves where they meet the posts
-  {
-    const ropeMat = std({ color: 0x70757d, metalness: 0.95, roughness: 0.3, normalMap: braidNormal(), normalScale: new THREE.Vector2(1.4, 1.4), envMapIntensity: 2.6 });
+    const ropeMat = std({ color: 0x5a5e66, metalness: 0.95, roughness: 0.24, normalMap: braidNormal(), normalScale: new THREE.Vector2(1.4, 1.4), envMapIntensity: 2.6 });
     ropeMat.normalMap.wrapS = ropeMat.normalMap.wrapT = THREE.RepeatWrapping;
     ropeMat.normalMap.repeat.set(140, 1);
     const ropes = [];
@@ -1373,14 +1680,15 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring }) {
       const a = corner(k, R - 0.08);
       const b = corner((k + 1) % 6, R - 0.08);
       const d = new THREE.Vector3().subVectors(b, a).normalize();
-      const a2 = a.clone().addScaledVector(d, 0.2);
-      const b2 = b.clone().addScaledVector(d, -0.2);
+      // from the kit's turnbuckles (they end 0.46 m from the post's centre), or the code's rope eyes
+      const a2 = a.clone().addScaledVector(d, kit ? 0.46 : 0.2);
+      const b2 = b.clone().addScaledVector(d, kit ? -0.46 : -0.2);
       for (const h of ROPES) {
         const p0 = a2.clone().setY(FLOOR + h);
         const p2 = b2.clone().setY(FLOOR + h);
         const p1 = p0.clone().lerp(p2, 0.5).setY(FLOOR + h - 0.05); // a 2.5 cm sag in the middle
         ropes.push(new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(p0, p1, p2), 32, 0.042, 8));
-        for (const [from, s] of [[p0, 1], [p2, -1]]) {
+        if (!kit) for (const [from, s] of [[p0, 1], [p2, -1]]) {
           const c = new THREE.CylinderGeometry(0.056, 0.056, 0.24, 10);
           c.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d));
           const at = from.clone().addScaledVector(d, 0.12 * s);
@@ -1390,7 +1698,7 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring }) {
       }
     }
     add(new THREE.Mesh(mergeGeometries(ropes), ropeMat), { cast: true, mirror: true });
-    add(new THREE.Mesh(mergeGeometries(sleeves), rubber), { mirror: true });
+    if (sleeves.length) add(new THREE.Mesh(mergeGeometries(sleeves), rubber), { mirror: true });
   }
 
   // ---- the floor: black polished concrete, wet, mirroring the ring and the lights
@@ -1707,7 +2015,7 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring }) {
   lightFlares();
 
   // ---- the stands, their crowd and its phones; the fans' pools of light on them
-  const stands = buildStands(scene, { small, steel: railMat });
+  const stands = buildStands(scene, { small, steel: railMat, atlas: crowd });
   stands.setPools(pools);
   stands.setPhoneSize(4 * renderer.getPixelRatio());
 

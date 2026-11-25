@@ -17,7 +17,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { buildHaze, buildScreens, buildPyro } from './atmosphere.js';
-import { buildRoom, hallEnvironment, volumeMaterial, softSpot, GradeShader, TRUSS, emblemPlate } from './room.js';
+import { buildRoom, loadHallAssets, hallEnvironment, volumeMaterial, softSpot, GradeShader, TRUSS, emblemPlate } from './room.js';
 import { loadXbot, makeXRobot } from './xbot.js';
 
 const COLOR = { red: 0xef4444, blue: 0x22c55e, ref: 0xe6ebf5, gold: 0xf5b301 };
@@ -477,54 +477,76 @@ const POSES = {
 let deskEmblem = null;
 const DESK_EMBLEM = () => (deskEmblem ??= emblemPlate(256, 256));
 
-function buildStation(side, M) {
+/** A fighter's station: a chair, a desk with the monitor, the keyboard and the computer on it. With the
+ *  ring kit the chair, the desk and the monitor are its baked pieces; without it, they are drawn here. */
+function buildStation(side, M, kit) {
   const g = new THREE.Group();
   const col = COLOR[side];
   const glow = M.glow(col, 2.0);
-  // a gaming chair in black leather, the corner's colour on its wings
-  const leather = new THREE.MeshPhysicalMaterial({ color: 0x101114, roughness: 0.48, metalness: 0, clearcoat: 0.45, clearcoatRoughness: 0.4 });
-  const wing = new THREE.MeshPhysicalMaterial({ color: side === 'red' ? 0x5a0b10 : 0x083d1f, roughness: 0.45, clearcoat: 0.5, clearcoatRoughness: 0.35 });
-  const chair = new THREE.Group();
-  chair.position.set(0, 0, -0.12);
-  g.add(chair);
-  mesh(rbox(0.5, 0.1, 0.5, 0.045), leather, [0, 0.36, 0], chair);
-  for (const s of [-1, 1]) mesh(rbox(0.08, 0.13, 0.5, 0.035), wing, [0.27 * s, 0.39, 0], chair);
-  mesh(rbox(0.48, 0.8, 0.09, 0.045), leather, [0, 0.8, -0.29], chair);
-  for (const s of [-1, 1]) mesh(rbox(0.075, 0.72, 0.11, 0.035), wing, [0.27 * s, 0.78, -0.28], chair);
-  mesh(new THREE.BoxGeometry(0.03, 0.5, 0.012), glow, [0, 0.82, -0.24], chair);
-  for (const s of [-1, 1]) mesh(new THREE.BoxGeometry(0.06, 0.035, 0.3), M.dark, [0.31 * s, 0.56, 0.02], chair);
-  mesh(cyl(0.03, 0.03, 0.32, 10), M.metal, [0, 0.18, 0], chair);
-  mesh(cyl(0.3, 0.32, 0.03, 5), M.dark, [0, 0.03, 0], chair);
-  // the desk: dark brushed metal on two panel legs, a thin line of the corner's light along its front
-  const desk = new THREE.Group();
-  desk.position.set(0, 0, 0.48);
-  g.add(desk);
-  mesh(rbox(1.5, 0.045, 0.72, 0.012), M.desk, [0, 0.725, 0], desk);
-  for (const x of [-0.69, 0.69]) mesh(rbox(0.045, 0.7, 0.6, 0.012), M.dark, [x, 0.35, 0], desk);
-  mesh(new THREE.BoxGeometry(1.34, 0.12, 0.02), M.dark, [0, 0.6, -0.28], desk);
-  // its front: a closed panel of dark steel with the gold emblem, lines of the corner's light along
-  // its top and its foot
-  mesh(new THREE.BoxGeometry(1.42, 0.62, 0.03), M.desk, [0, 0.39, 0.345], desk);
-  const plate = mesh(new THREE.PlaneGeometry(0.4, 0.4), new THREE.MeshStandardMaterial({ map: DESK_EMBLEM(), emissive: 0xffffff, emissiveMap: DESK_EMBLEM(), emissiveIntensity: 0.55, metalness: 0.6, roughness: 0.35 }), [0, 0.4, 0.362], desk);
-  plate.castShadow = false;
-  mesh(new THREE.BoxGeometry(1.46, 0.014, 0.012), glow, [0, 0.705, 0.364], desk);
-  mesh(new THREE.BoxGeometry(1.4, 0.012, 0.012), glow, [0, 0.07, 0.364], desk);
-  // the monitor: a thin black bezel, the screen inset, the emblem on its back
-  const monitor = new THREE.Group();
-  monitor.position.set(0, 0.75, 0.7);
-  g.add(monitor);
-  mesh(rbox(0.28, 0.012, 0.18, 0.006), M.dark, [0, 0.006, -0.02], monitor);
-  mesh(new THREE.BoxGeometry(0.04, 0.22, 0.025), M.dark, [0, 0.12, -0.045], monitor);
+  const group = (x, y, z) => {
+    const o = new THREE.Group();
+    o.position.set(x, y, z);
+    g.add(o);
+    return o;
+  };
+  const chair = group(0, 0, -0.12);
+  const desk = group(0, 0, 0.48);
+  const monitor = group(0, 0.75, 0.7);
   const screens = { code: screenTex(side, 'code'), sent: screenTex(side, 'sent'), time: screenTex(side, 'time') };
   screens.code.wrapT = THREE.RepeatWrapping;
   const face = new THREE.MeshBasicMaterial({ map: screens.code, color: 0xc8d4ff });
   const backTex = screenTex(side, 'back');
   const back = new THREE.MeshStandardMaterial({ map: backTex, emissive: 0xffffff, emissiveMap: backTex, emissiveIntensity: 0.9, roughness: 0.35, metalness: 0.3 });
-  const dark = M.black;
-  mesh(new THREE.BoxGeometry(0.88, 0.52, 0.028), [dark, dark, dark, dark, back, dark], [0, 0.34, 0], monitor);
-  const screen = mesh(new THREE.PlaneGeometry(0.85, 0.49), face, [0, 0.34, -0.0145], monitor);
-  screen.rotation.y = Math.PI;
-  screen.castShadow = false;
+  if (kit) {
+    // the kit's slots: its lights in the corner's colour, the chair's wings tinted, the screen's pictures
+    let wing = null;
+    kit.Chair.traverse((m) => {
+      if (m.material?.name === 'ACCENT_NEUTRAL') wing = m.material.clone();
+    });
+    wing?.color.set(side === 'red' ? 0xa0161e : 0x138040);
+    const slot = { LED_NEUTRAL: glow, ACCENT_NEUTRAL: wing, SCREEN: face, SCREEN_BACK: back };
+    for (const [name, parent] of [['Chair', chair], ['Desk', desk], ['Monitor', monitor]]) {
+      const o = kit[name].clone();
+      o.traverse((m) => {
+        if (!m.isMesh) return;
+        m.material = slot[m.material.name] ?? m.material;
+        m.castShadow = !small && m.material !== face;
+        m.receiveShadow = !small;
+      });
+      parent.add(o);
+    }
+  } else {
+    // a gaming chair in black leather, the corner's colour on its wings
+    const leather = new THREE.MeshPhysicalMaterial({ color: 0x101114, roughness: 0.48, metalness: 0, clearcoat: 0.45, clearcoatRoughness: 0.4 });
+    const wing = new THREE.MeshPhysicalMaterial({ color: side === 'red' ? 0x5a0b10 : 0x083d1f, roughness: 0.45, clearcoat: 0.5, clearcoatRoughness: 0.35 });
+    mesh(rbox(0.5, 0.1, 0.5, 0.045), leather, [0, 0.36, 0], chair);
+    for (const s of [-1, 1]) mesh(rbox(0.08, 0.13, 0.5, 0.035), wing, [0.27 * s, 0.39, 0], chair);
+    mesh(rbox(0.48, 0.8, 0.09, 0.045), leather, [0, 0.8, -0.29], chair);
+    for (const s of [-1, 1]) mesh(rbox(0.075, 0.72, 0.11, 0.035), wing, [0.27 * s, 0.78, -0.28], chair);
+    mesh(new THREE.BoxGeometry(0.03, 0.5, 0.012), glow, [0, 0.82, -0.24], chair);
+    for (const s of [-1, 1]) mesh(new THREE.BoxGeometry(0.06, 0.035, 0.3), M.dark, [0.31 * s, 0.56, 0.02], chair);
+    mesh(cyl(0.03, 0.03, 0.32, 10), M.metal, [0, 0.18, 0], chair);
+    mesh(cyl(0.3, 0.32, 0.03, 5), M.dark, [0, 0.03, 0], chair);
+    // the desk: dark brushed metal on two panel legs, a thin line of the corner's light along its front
+    mesh(rbox(1.5, 0.045, 0.72, 0.012), M.desk, [0, 0.725, 0], desk);
+    for (const x of [-0.69, 0.69]) mesh(rbox(0.045, 0.7, 0.6, 0.012), M.dark, [x, 0.35, 0], desk);
+    mesh(new THREE.BoxGeometry(1.34, 0.12, 0.02), M.dark, [0, 0.6, -0.28], desk);
+    // its front: a closed panel of dark steel with the gold emblem, lines of the corner's light along
+    // its top and its foot
+    mesh(new THREE.BoxGeometry(1.42, 0.62, 0.03), M.desk, [0, 0.39, 0.345], desk);
+    const plate = mesh(new THREE.PlaneGeometry(0.4, 0.4), new THREE.MeshStandardMaterial({ map: DESK_EMBLEM(), emissive: 0xffffff, emissiveMap: DESK_EMBLEM(), emissiveIntensity: 0.55, metalness: 0.6, roughness: 0.35 }), [0, 0.4, 0.362], desk);
+    plate.castShadow = false;
+    mesh(new THREE.BoxGeometry(1.46, 0.014, 0.012), glow, [0, 0.705, 0.364], desk);
+    mesh(new THREE.BoxGeometry(1.4, 0.012, 0.012), glow, [0, 0.07, 0.364], desk);
+    // the monitor: a thin black bezel, the screen inset, the emblem on its back
+    mesh(rbox(0.28, 0.012, 0.18, 0.006), M.dark, [0, 0.006, -0.02], monitor);
+    mesh(new THREE.BoxGeometry(0.04, 0.22, 0.025), M.dark, [0, 0.12, -0.045], monitor);
+    const dark = M.black;
+    mesh(new THREE.BoxGeometry(0.88, 0.52, 0.028), [dark, dark, dark, dark, back, dark], [0, 0.34, 0], monitor);
+    const screen = mesh(new THREE.PlaneGeometry(0.85, 0.49), face, [0, 0.34, -0.0145], monitor);
+    screen.rotation.y = Math.PI;
+    screen.castShadow = false;
+  }
   // the keyboard, low, its keys lit from under
   const keyboard = new THREE.Group();
   keyboard.position.set(0, 0.765, 0.32);
@@ -553,10 +575,14 @@ function buildStation(side, M) {
 // ------------------------------------------------------------------ the scene
 
 export async function createScene(root) {
-  const xg = await loadXbot().catch((e) => {
-    console.warn('humanoid robots not available, using the simple ones:', e.message);
-    return null;
-  });
+  // the robots' model and the hall's baked parts load together; each falls back to code on its own
+  const [xg, assets] = await Promise.all([
+    loadXbot().catch((e) => {
+      console.warn('humanoid robots not available, using the simple ones:', e.message);
+      return null;
+    }),
+    loadHallAssets(small),
+  ]);
   root.innerHTML = '';
   const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
   const pixelRatio = Math.min(window.devicePixelRatio || 1, small ? 1.25 : 1.75);
@@ -593,7 +619,7 @@ export async function createScene(root) {
 
   // the hall: the ring, its apron, posts and ropes, the truss, the floor, the railing, the stands
   // (room.js)
-  const room = buildRoom(scene, renderer, { R: RING, FLOOR, small, ring: window.ARENA_CONFIG?.ring });
+  const room = buildRoom(scene, renderer, { R: RING, FLOOR, small, ring: window.ARENA_CONFIG?.ring, ...assets });
   const corner = (k) => new THREE.Vector3(RING * Math.cos((k * Math.PI) / 3), FLOOR, RING * Math.sin((k * Math.PI) / 3));
 
   // the scoreboard over the ring: an eight-sided box of black steel, the clock on its four wide faces,
@@ -707,7 +733,7 @@ export async function createScene(root) {
   const SEAT = { red: { x: -2.15, z: 0.25, rot: 0.8 }, blue: { x: 2.15, z: 0.25, rot: -0.8 } };
   const fighters = {};
   for (const side of ['red', 'blue']) {
-    const st = buildStation(side, M);
+    const st = buildStation(side, M, assets.kit);
     st.g.position.set(SEAT[side].x, FLOOR, SEAT[side].z);
     st.g.rotation.y = SEAT[side].rot;
     scene.add(st.g);
