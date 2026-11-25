@@ -17,7 +17,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 export const MIRROR = 1; // the layer of what the wet floor mirrors
 export const TIME = { value: 0 }; // shared by the shaders that move
 const MIRROR_PASS = { value: 0 }; // 1 while the floor's mirror is drawn
-export const TRUSS = { y: 9.0, r: 9.0, yIn: 8.3, rIn: 5.2 }; // the two rings of the lighting truss
+export const TRUSS = { y: 9.0, r: 9.6, yIn: 8.05, rIn: 4.4 }; // the two rings of the lighting truss
 export const STANDS_R = 13.5; // the first row of the stands
 export const RAIL_R = STANDS_R - 0.1; // the steel railing in front of them
 export const ROPES = [0.35, 0.72, 1.08, 1.45]; // the ropes' heights over the canvas
@@ -26,11 +26,11 @@ export const ROPES = [0.35, 0.72, 1.08, 1.45]; // the ropes' heights over the ca
 // over a walkway behind the tier below. rows of `depth` metres each rising `rise`; `aisles` stair
 // aisles cut through them round the circle; gap: the walkway; fascia: the balcony's wall above it.
 const TIERS = [
-  { rows: 15, depth: 0.62, rise: 0.31, aisles: 12 },
-  { rows: 12, depth: 0.62, rise: 0.39, aisles: 16, gap: 1.9, fascia: 2.5 },
-  { rows: 11, depth: 0.62, rise: 0.46, aisles: 20, gap: 1.2, fascia: 2.3 },
+  { rows: 19, depth: 0.49, rise: 0.245, aisles: 12 },
+  { rows: 15, depth: 0.5, rise: 0.312, aisles: 16, gap: 1.9, fascia: 2.5 },
+  { rows: 14, depth: 0.49, rise: 0.36, aisles: 20, gap: 1.2, fascia: 2.3 },
 ];
-const SEAT_W = 0.42; // a seat's share of its row
+const SEAT_W = 0.37; // a seat's share of its row
 const AISLE_W = 1.3;
 for (const [k, t] of TIERS.entries()) {
   const below = TIERS[k - 1];
@@ -670,6 +670,40 @@ export function hallEnvironment(renderer) {
   return t;
 }
 
+/** What polished metal up close reflects (the gold emblem, the post caps): the same hall seen sharper
+ *  and with more contrast, a black room with rows of small hot lamps all round at the heights the
+ *  rig's beams cross, the truss's lamps overhead, a warm glow from the stands low down and a dark
+ *  floor, so a polished face catches bright points and dark gaps instead of an even tint. */
+function polishedEnvironment(renderer) {
+  const env = new THREE.Scene();
+  env.add(new THREE.Mesh(new THREE.SphereGeometry(60, 32, 16), new THREE.MeshBasicMaterial({ color: 0x020203, side: THREE.BackSide })));
+  const spot = (r, el, az, size, k, color = 0xfff4e4) => {
+    const m = new THREE.Mesh(new THREE.CircleGeometry(size, 12), new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(k), side: THREE.DoubleSide }));
+    m.position.set(Math.cos(az) * Math.cos(el) * r, Math.sin(el) * r, Math.sin(az) * Math.cos(el) * r);
+    m.lookAt(0, 0, 0);
+    env.add(m);
+  };
+  for (let i = 0; i < 36; i++) {
+    const az = (i / 36) * Math.PI * 2;
+    spot(20, 0.3 + 0.25 * ((i * 7) % 3) / 2, az + 0.05, 0.4, 14);
+    if (i % 2) spot(20, 0.95 + 0.2 * (i % 3), az, 0.55, 10);
+  }
+  spot(20, 1.45, 0, 2.2, 2.5, 0xfff0dc); // the key's glow, straight above
+  // the stands' warm glow low down, the haze the beams light over them, and the halves' colour only at
+  // the sides
+  for (const [y0, y1, k] of [[-1, 4, 0.3], [4, 12, 0.55]]) env.add(new THREE.Mesh(new THREE.CylinderGeometry(24, 24, y1 - y0, 64, 1, true).translate(0, (y0 + y1) / 2, 0), new THREE.MeshBasicMaterial({ color: new THREE.Color(0x8a7a66).multiplyScalar(k), side: THREE.DoubleSide })));
+  for (const [x, c] of [[-1, RED], [1, GREEN]]) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(10, 3), new THREE.MeshBasicMaterial({ color: c.clone().multiplyScalar(0.6), side: THREE.DoubleSide }));
+    m.position.set(x * 22, 1, 0);
+    m.lookAt(0, 1, 0);
+    env.add(m);
+  }
+  const pm = new THREE.PMREMGenerator(renderer);
+  const t = pm.fromScene(env, 0.01).texture;
+  pm.dispose();
+  return t;
+}
+
 // ------------------------------------------------------------------ the floor's mirror
 
 /** A planar reflection of the layer MIRROR in the plane y = 0, rendered at a fraction of the screen. */
@@ -995,7 +1029,7 @@ function buildStands(scene, { small, steel, atlas }) {
         float tier = floor(vInfo.y);
         vec3 n = normalize(vN);
         // dark concrete, each stretch of a row a touch different
-        vec3 albedo = vec3(0.06, 0.06, 0.066) * (0.8 + 0.4 * hash(vec2(floor(vUv.x / 3.0), floor(vInfo.y * 40.0))));
+        vec3 albedo = vec3(0.042, 0.042, 0.046) * (0.8 + 0.4 * hash(vec2(floor(vUv.x / 3.0), floor(vInfo.y * 40.0))));
         vec3 emit = vec3(0.0);
         vec3 warm = vec3(1.0, 0.7, 0.42);
         if (kind < 0.5) {
@@ -1073,6 +1107,7 @@ function buildStands(scene, { small, steel, atlas }) {
     const pos = new Float32Array(n * 3);
     const look = new Float32Array(n * 4); // brightness, mirrored (-1) or not, a phase, a size
     const dye = new Float32Array(n * 3); // a dark hue their clothes take on, so no two copies match
+    const vary = new Float32Array(n * 4); // a light shirt (1) or not, the light where they sit, a hue for the skin, standing out
     const cell = new Float32Array(n * 3); // the pose's cell, the one it swaps with (clapping), 1 clapping or 2 cheering
     const who = new Uint8Array(n);
     const draw = new Float32Array(n * 4);
@@ -1081,14 +1116,18 @@ function buildStands(scene, { small, steel, atlas }) {
       // a little off the seat's middle, so the rows do not read as a grid
       const [x, y, z] = seats.pos.slice(s * 3, s * 3 + 3);
       const rad = Math.hypot(x, z);
-      const along = (Math.random() - 0.5) * 0.14;
-      const out = 1 + (Math.random() - 0.5) * 0.12 / rad;
-      pos.set([(x - (z / rad) * along) * out, y, (z + (x / rad) * along) * out], i * 3);
+      const along = (Math.random() - 0.5) * 0.2;
+      const out = 1 + (Math.random() - 0.5) * 0.2 / rad;
+      pos.set([(x - (z / rad) * along) * out, y - Math.random() * 0.06, (z + (x / rad) * along) * out], i * 3);
       const [red, green] = FAN_SHARE[seats.side[s] + 1];
       const r = Math.random();
       who[i] = r < red ? any(FANS.red) : r < red + green ? any(FANS.green) : any(FANS.none);
-      look.set([0.55 + Math.random() * 0.5, Math.random() < 0.5 ? 1 : -1, Math.random(), 0.64 + Math.random() * 0.1], i * 4);
+      // life size and a little over (the hall is built big), each a touch different; most a dark mass,
+      // some caught bright by the lamps
+      const lit = Math.random();
+      look.set([0.5 + 0.75 * lit * lit + Math.random() * 0.12, Math.random() < 0.5 ? 1 : -1, Math.random(), 0.74 + Math.random() * 0.22], i * 4);
       dye.set(DYES[Math.floor(Math.random() * DYES.length)], i * 3);
+      vary.set([Math.random() < 0.24 ? 1 : 0, Math.random(), Math.random(), Math.random()], i * 4);
       draw.set([Math.random(), Math.random(), Math.random(), Math.random()], i * 4);
     });
     const quad = new THREE.PlaneGeometry(1, 1).translate(0.5, 0.5, 0);
@@ -1098,15 +1137,18 @@ function buildStands(scene, { small, steel, atlas }) {
     geo.setAttribute('iPos', new THREE.InstancedBufferAttribute(pos, 3));
     geo.setAttribute('iLook', new THREE.InstancedBufferAttribute(look, 4));
     geo.setAttribute('iDye', new THREE.InstancedBufferAttribute(dye, 3));
+    geo.setAttribute('iVary', new THREE.InstancedBufferAttribute(vary, 4));
     geo.setAttribute('iCell', new THREE.InstancedBufferAttribute(cell, 3).setUsage(THREE.DynamicDrawUsage));
     geo.instanceCount = n;
     const mat = new THREE.ShaderMaterial({
       defines: { POOLS, SOFT: small ? 0 : 1 },
-      uniforms: { ...light, ...common, ...mood, uCells: { value: cellTex }, uMap: { value: atlas.map }, uNormal: { value: atlas.normal } },
+      uniforms: { ...light, ...common, ...mood, uRig: { value: 1.25 }, uCells: { value: cellTex }, uMap: { value: atlas.map }, uNormal: { value: atlas.normal } },
       alphaToCoverage: !small,
       side: THREE.DoubleSide, // a mirrored one turns its back
-      vertexShader: `attribute vec3 iPos; attribute vec4 iLook; attribute vec3 iCell; attribute vec3 iDye; uniform sampler2D uCells; uniform float uTime; uniform float uMove;
-        varying vec2 vUv; varying vec3 vW; flat varying vec3 vRight; flat varying vec3 vToCam; flat varying float vTint; flat varying vec3 vDye; varying float vD;
+      vertexShader: `attribute vec3 iPos; attribute vec4 iLook; attribute vec3 iCell; attribute vec3 iDye; attribute vec4 iVary; uniform sampler2D uCells; uniform float uTime; uniform float uMove; uniform float uRig;
+        varying vec2 vUv; varying float vD; flat varying vec3 vRight; flat varying vec3 vToCam; flat varying vec3 vDye; flat varying vec4 vVary;
+        flat varying vec3 vHall; flat varying vec3 vRigL; flat varying vec3 vToRig; flat varying vec3 vFace; flat varying vec3 vWash; flat varying float vRise;
+        ${HALL_LIGHT}
         void main() {
           float clap = uMove * step(0.5, iCell.z) * step(iCell.z, 1.5) * step(0.5, fract(uTime * 2.6 + iLook.z * 7.0));
           int c = int(mix(iCell.x, iCell.y, clap) + 0.5);
@@ -1116,48 +1158,65 @@ function buildStands(scene, { small, steel, atlas }) {
           vec3 right = vec3(toCam.y, 0.0, -toCam.x);
           float bob = uMove * step(1.5, iCell.z) * abs(sin(uTime * 4.2 + iLook.z * 40.0)) * 0.035;
           vec2 size = sa.xy * iLook.w;
-          vW = iPos + right * (position.x - sa.z) * size.x * iLook.y + vec3(0.0, (position.y - sa.w) * size.y + bob, 0.0);
+          vec3 w = iPos + right * (position.x - sa.z) * size.x * iLook.y + vec3(0.0, (position.y - sa.w) * size.y + bob, 0.0);
           vUv = mix(uvr.xy, uvr.zw, position.xy);
           vRight = right * iLook.y;
           vToCam = vec3(toCam.x, 0.0, toCam.y);
-          vTint = iLook.x;
           vDye = iDye;
-          vec4 mv = viewMatrix * vec4(vW, 1.0);
+          vVary = iVary;
+          // the light on this person, once for them all (the picture's normals shade it per pixel): the
+          // hall's, filtered through each half's colour (people lit red on the left and green on the
+          // right, their own colours still showing); the rig's lamps over the ring, from above and in
+          // front, brightest where the beams fall (patches that drift slowly round the hall), the half's
+          // colour in them; the front rows and the far stand most, the high corners least
+          float r = length(iPos.xz);
+          vec2 d = iPos.xz / r;
+          float redW = smoothstep(0.1, 0.65, -d.x);
+          float greenW = smoothstep(0.1, 0.65, d.x);
+          vec3 filt = mix(vec3(1.0), vec3(1.4, 0.56, 0.52), redW) * mix(vec3(1.0), vec3(0.56, 1.25, 0.64), greenW);
+          vFace = normalize(vec3(-d.x, 0.35, -d.y));
+          vec3 head = iPos + vec3(0.0, 1.1, 0.0);
+          vHall = hallLight(head, vFace) * 12.0 * filt * iLook.x;
+          float rise = smoothstep(1.0, 9.0, iPos.y);
+          vRise = rise;
+          vToRig = normalize(vec3(-d.x * max(r - 9.0, 1.0), 9.5 - head.y, -d.y * max(r - 9.0, 1.0)));
+          float ang = atan(iPos.z, iPos.x);
+          float pool = 0.5 + 0.5 * sin(ang * 11.0 + iPos.y * 0.45 + uTime * 0.12) * sin(ang * 5.0 - iPos.y * 0.6 + 1.7 - uTime * 0.09);
+          float far = smoothstep(0.2, 0.8, -d.y) * (1.0 - redW - greenW);
+          vec3 rigCol = mix(vec3(1.0, 0.95, 0.9), filt * vec3(0.72, 0.8, 0.8), 0.9 * (redW + greenW));
+          vRigL = rigCol * (0.2 + 1.1 * pool * pool) * uRig * (1.0 - rise * 0.45 + far * 0.6) * (0.75 + 0.5 * iVary.y) * iLook.x;
+          vWash = (uRed * redW + uGreen * greenW * 0.85) * uGain * (1.0 - rise * 0.5);
+          vec4 mv = viewMatrix * vec4(w, 1.0);
           vD = -mv.z;
           gl_Position = projectionMatrix * mv;
         }`,
-      fragmentShader: `uniform sampler2D uMap; uniform sampler2D uNormal; uniform vec3 fogColor; uniform float mirrorPass;
-        varying vec2 vUv; varying vec3 vW; flat varying vec3 vRight; flat varying vec3 vToCam; flat varying float vTint; flat varying vec3 vDye; varying float vD;
-        ${HALL_LIGHT}
+      fragmentShader: `uniform sampler2D uMap; uniform sampler2D uNormal; uniform vec3 fogColor; uniform float mirrorPass; uniform vec3 uRed; uniform vec3 uGreen;
+        varying vec2 vUv; varying float vD; flat varying vec3 vRight; flat varying vec3 vToCam; flat varying vec3 vDye; flat varying vec4 vVary;
+        flat varying vec3 vHall; flat varying vec3 vRigL; flat varying vec3 vToRig; flat varying vec3 vFace; flat varying vec3 vWash; flat varying float vRise;
         void main() {
           vec4 a = texture2D(uMap, vUv);
-          // light clothes go down to a mid grey; the clothes (neutral, unlike skin and the fans'
-          // colours) take this person's own dark hue; skin a shade down, so no face is a pale mask
-          a.rgb *= mix(1.0, 0.5, smoothstep(0.2, 0.6, dot(a.rgb, vec3(0.33))));
-          float cloth = 1.0 - smoothstep(0.2, 0.45, (a.r - a.b) / (a.r + 0.02));
-          a.rgb = mix(a.rgb, vDye * (0.4 + dot(a.rgb, vec3(1.6))), 0.35 * cloth);
-          a.rgb = min(a.rgb * mix(0.75, 1.0, cloth), vec3(mix(0.3, 1.0, cloth)));
           #if SOFT
           if (a.a < 0.1) discard;
           #else
           if (a.a < 0.5) discard;
           #endif
+          // most clothes go darker and take this person's own dark hue; now and then a light shirt
+          // stays light; skin (unlike the clothes and the fans' colours) a shade down, a little warmer or
+          // cooler from one to the next, so no face is a pale mask
+          float lum = dot(a.rgb, vec3(0.33));
+          float cloth = 1.0 - smoothstep(0.2, 0.45, (a.r - a.b) / (a.r + 0.02));
+          vec3 dark = mix(a.rgb * mix(1.0, 0.55, smoothstep(0.2, 0.6, lum)), vDye * (0.6 + lum * 2.2), 0.35) * 1.25;
+          vec3 c = mix(a.rgb * mix(vec3(1.04, 0.94, 0.88), vec3(0.86, 0.9, 0.98), vVary.z) * 0.46, mix(dark, a.rgb * 0.95, vVary.x), cloth);
+          c = min(c, vec3(mix(0.2, 1.0, cloth)));
           // the normal in the picture's frame: x along it, y up, z towards the camera
           vec3 n = texture2D(uNormal, vUv).xyz * 2.0 - 1.0;
           vec3 N = normalize(vRight * n.x + vec3(0.0, n.y, 0.0) + vToCam * n.z);
-          // the hall's light, filtered through each half's colour: the people (faces too) are lit red
-          // on the left and green on the right, as a stand under coloured light is, not painted over
-          vec2 d = normalize(vW.xz);
-          float redW = smoothstep(0.1, 0.65, -d.x);
-          float greenW = smoothstep(0.1, 0.65, d.x);
-          vec3 filt = mix(vec3(1.0), vec3(1.45, 0.5, 0.46), redW) * mix(vec3(1.0), vec3(0.5, 1.3, 0.62), greenW);
-          vec3 col = a.rgb * vTint * hallLight(vW, N) * 12.0 * filt;
+          float wrap = max(dot(N, vToRig) * 0.65 + 0.35, 0.0);
+          vec3 col = c * (vHall * (0.55 + 0.6 * max(dot(N, vFace), 0.0)) + vRigL * (wrap + max(N.y, 0.0) * 0.6));
           // the half's colour washing over them (the crowd is a red mass on the left, a green one on
-          // the right), most on the lower bowl; higher up they melt into the coloured haze
-          float rise = smoothstep(1.0, 9.0, vW.y);
-          vec3 wash = uRed * redW + uGreen * greenW * 0.85;
-          col += wash * (dot(a.rgb, vec3(0.33)) * 0.15 + 0.006) * (1.0 - rise * 0.5) * mix(0.35, 1.0, cloth) * uGain;
-          col = mix(col, wash * 0.02 + fogColor, rise * 0.45);
+          // the right); higher up they melt into the coloured haze
+          col += vWash * (lum * 0.12 + 0.005) * mix(0.35, 1.0, cloth);
+          col = mix(col, vWash * 0.02 + fogColor, vRise * 0.3);
           ${HAZE}
           gl_FragColor = vec4(col, a.a);
         }`,
@@ -1166,11 +1225,24 @@ function buildStands(scene, { small, steel, atlas }) {
     const off = new Float32Array(n * 2);
     const holds = new Uint8Array(n);
     let last = null;
+    // a change of mood is worked through a slice of the crowd a frame (thousands of people), so no frame
+    // carries it all; returns true when a pass is done
+    const SLICE = 3500;
+    let cursor = n;
+    let moodNow = null;
     const pose = (roar, exc, still) => {
-      const now = [roar, exc.red, exc.blue];
-      if (last && now.every((v, k) => Math.abs(v - last[k]) < (still ? 0.25 : 0.02))) return false;
-      last = now;
-      for (let i = 0; i < n; i++) {
+      if (cursor >= n) {
+        const now = [roar, exc.red, exc.blue];
+        if (last && now.every((v, k) => Math.abs(v - last[k]) < (still ? 0.25 : 0.02))) return false;
+        last = now;
+        moodNow = { roar, red: exc.red, blue: exc.blue };
+        cursor = 0;
+      }
+      ({ roar } = moodNow);
+      exc = { red: moodNow.red, blue: moodNow.blue };
+      const from = cursor;
+      const to = Math.min(n, cursor + (still ? n : SLICE));
+      for (let i = from; i < to; i++) {
         const s = full[i];
         const side = seats.side[s];
         const sideExc = side < 0 ? exc.red : side > 0 ? exc.blue : (exc.red + exc.blue) / 2;
@@ -1195,8 +1267,11 @@ function buildStands(scene, { small, steel, atlas }) {
         off[i * 2] = k.torch ? (k.torch[0] - k.anchor[0]) * k.size[0] * sz * look[i * 4 + 1] : 0;
         off[i * 2 + 1] = k.torch ? (k.torch[1] - k.anchor[1]) * k.size[1] * sz : (k.headTop - 0.2) * sz * stretch;
       }
-      geo.attributes.iCell.needsUpdate = true;
-      return true;
+      cursor = to;
+      const attr = geo.attributes.iCell;
+      attr.addUpdateRange(from * 3, (to - from) * 3);
+      attr.needsUpdate = true;
+      return cursor >= n;
     };
     return { mesh: new THREE.Mesh(geo, mat), pos, off, holds, pose, mayHold: (i) => draw[i * 4] < 0.1 };
   };
@@ -1306,8 +1381,7 @@ function buildStands(scene, { small, steel, atlas }) {
     return { mesh: new THREE.Mesh(crowdGeo, crowdMat), pos: iPos, data: iData };
   };
   const people = atlas ? atlasPeople() : cutOuts();
-  people.mesh.frustumCulled = false;
-  people.mesh.layers.enable(MIRROR);
+  people.mesh.frustumCulled = false; // (not in the floor's mirror: thousands of people there cost frames and show as a blur)
   scene.add(people.mesh);
 
   // the empty seats: a pan and a back of dark plastic
@@ -1589,12 +1663,19 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring, eye, kit = n
     // the dark strips' covers: brushed steel, flush with the bezels
     const cover = std({ color: 0x7a8088, map: brushed, metalness: 0.9, roughness: 0.3, envMapIntensity: 1.7 });
     const steelRing = add(kitRing(kit, { R, led: strip, panel, eye, cover }), { cast: heavy, mirror: true });
+    // the gold: polished, mirroring a sharper, more contrasted hall (bright lamps, dark gaps), so it reads
+    // as metal and its chamfers flash, not as yellow paint
+    const polished = polishedEnvironment(renderer);
+    const gold = steelRing.getObjectByName('GOLD')?.material;
+    if (gold) Object.assign(gold, { envMap: polished, envMapIntensity: 2.8, roughness: 0.6, emissiveIntensity: 0.03 });
+    // the canvas's plates mirror the same sharp hall: black with points of light, not a grey sheen
+    Object.assign(steelRing.getObjectByName('CANVAS').material, { envMap: polished, envMapIntensity: 1.1 });
     // the canvas's plates tile: grime over the whole of it, darker and duller in the blotches; the
     // ring's colour a breath in the steel; round each post its strips' colour on the polished plates
     const grime = { value: grimeTex(small ? 256 : 512) };
     const ringTint = { value: ring === 'green' ? new THREE.Color(0.95, 1.05, 0.99) : new THREE.Color(1.05, 0.96, 0.98) };
     const posts = { value: Array.from({ length: 6 }, (_, k) => new THREE.Vector2(Math.cos((k * Math.PI) / 3), Math.sin((k * Math.PI) / 3)).multiplyScalar(R - 0.08)) };
-    const postCol = { value: posts.value.map((p) => sideColor(p.x).clone().multiplyScalar(p.x < 0 ? 0.5 : 0.36)) };
+    const postCol = { value: posts.value.map((p) => sideColor(p.x).clone().multiplyScalar(p.x < 0 ? 0.52 : 0.38)) };
     steelRing.getObjectByName('CANVAS').material.onBeforeCompile = (sh) => {
       Object.assign(sh.uniforms, { tGrime: grime, uRingTint: ringTint, uPosts: posts, uPostCol: postCol });
       sh.vertexShader = sh.vertexShader
@@ -1604,15 +1685,19 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring, eye, kit = n
         .replace('#include <common>', '#include <common>\nuniform sampler2D tGrime;\nuniform vec3 uRingTint;\nuniform vec2 uPosts[6];\nuniform vec3 uPostCol[6];\nvarying vec2 vGrime;\nvarying vec2 vXZ;')
         .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
           float grime = texture2D(tGrime, vGrime).r;
-          diffuseColor.rgb *= (0.45 + grime * 0.6) * uRingTint;
-          roughnessFactor = clamp(roughnessFactor + (0.5 - grime) * 0.3, 0.22, 0.62);`)
+          diffuseColor.rgb *= (0.28 + grime * 0.42) * uRingTint;
+          // the middle, under the key, polished wet by the fighters' feet; the edges duller
+          float mid = exp(-dot(vXZ, vXZ) / 9.0);
+          roughnessFactor = clamp((roughnessFactor + (0.5 - grime) * 0.3) * mix(1.0, 0.55, mid), 0.12, 0.62);`)
         .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
           vec3 spill = vec3(0.0);
           for (int k = 0; k < 6; k++) {
             vec2 q = vXZ - uPosts[k];
-            spill += uPostCol[k] * exp(-dot(q, q) / 2.6);
+            spill += uPostCol[k] * exp(-dot(q, q) / 2.4);
           }
-          reflectedLight.indirectSpecular += spill * mix(0.5, 1.6, 1.0 - roughnessFactor);`);
+          reflectedLight.indirectSpecular += spill * mix(0.5, 1.6, 1.0 - roughnessFactor);
+          // the key's warm sheen on the wet middle
+          reflectedLight.indirectSpecular += vec3(1.0, 0.72, 0.45) * 0.15 * mid * (1.0 - roughnessFactor);`);
     };
     // the steps' noses: a polished steel rod on each tread's front edge and on the landing's, that the
     // lamps catch from anywhere in the hall
@@ -1625,6 +1710,27 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring, eye, kit = n
         return new THREE.CylinderGeometry(0.011, 0.011, 2.46, 8).rotateZ(Math.PI / 2).translate(0, y, z);
       });
       add(new THREE.Mesh(mergeGeometries(rods), std({ color: 0xe2e6ec, metalness: 1, roughness: 0.15, envMapIntensity: 2.2 })), { mirror: true });
+    }
+    // the posts' caps: polished faceted steel over the kit's dark ones, a lip, two chamfers and a low
+    // pyramid on top, each facet flat so it flashes as the lamps catch it; under the lip a thin ring of
+    // the corner's light
+    {
+      const A = 0.34; // the post's apothem
+      const rc = (ap) => ap / Math.cos(Math.PI / 8);
+      const prof = [[A + 0.052, 2.652], [A + 0.056, 2.66], [A + 0.056, 2.72], [A + 0.012, 2.79], [A - 0.04, 2.83], [A - 0.13, 2.865], [0.001, 2.885]].map(([ap, y]) => new THREE.Vector2(rc(ap), y));
+      const capGeo = new THREE.LatheGeometry(prof, 8).rotateY(Math.PI / 8).toNonIndexed();
+      capGeo.computeVertexNormals();
+      const ringGeo = new THREE.CylinderGeometry(rc(A + 0.05), rc(A + 0.05), 0.012, 8, 1, true).rotateY(Math.PI / 8).translate(0, 2.645, 0);
+      const caps = [];
+      const glowRing = { red: [], green: [] };
+      for (let k = 0; k < 6; k++) {
+        const p = new THREE.Vector3(Math.cos((k * Math.PI) / 3), 0, Math.sin((k * Math.PI) / 3)).multiplyScalar(R - 0.08);
+        const rot = Math.atan2(-p.x, -p.z);
+        caps.push(capGeo.clone().rotateY(rot).translate(p.x, 0, p.z));
+        glowRing[sideOf(p.x)].push(ringGeo.clone().rotateY(rot).translate(p.x, 0, p.z));
+      }
+      add(new THREE.Mesh(mergeGeometries(caps), std({ color: 0xa4aab2, metalness: 1, roughness: 0.16, flatShading: true, envMap: polished, envMapIntensity: 1.0 })), { cast: heavy, mirror: true });
+      for (const sd of ['red', 'green']) add(new THREE.Mesh(mergeGeometries(glowRing[sd]), glow(sd === 'red' ? RED : GREEN, sd === 'red' ? 1.3 : 0.95)), { mirror: true });
     }
   } else {
     // ---- the canvas: hex plates of dark steel, the emblem inlaid in gold
@@ -1837,7 +1943,9 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring, eye, kit = n
 
   // ---- the floor: black polished concrete, wet, mirroring the ring and the lights
   const fm = floorMaps(small ? 256 : 512);
-  const floorMat = std({ color: 0xffffff, map: fm.map, roughnessMap: fm.rough, normalMap: fm.normal, normalScale: new THREE.Vector2(small ? 0.08 : 0.25, small ? 0.08 : 0.25), roughness: 1, metalness: 0.2, envMapIntensity: small ? 0.25 : 0.5 });
+  // (a phone has no mirror: there the concrete is darker and its reflections fainter, so the puddles
+  // do not turn to a grey cloud)
+  const floorMat = std({ color: small ? 0x9a9a9a : 0xffffff, map: fm.map, roughnessMap: fm.rough, normalMap: fm.normal, normalScale: new THREE.Vector2(small ? 0.05 : 0.25, small ? 0.05 : 0.25), roughness: small ? 1.25 : 1, metalness: 0.2, envMapIntensity: small ? 0.1 : 0.5 });
   const mirror = heavy ? makeMirror(renderer, scene) : null;
   const floorU = { tMirror: { value: mirror?.texture ?? null }, mirrorMatrix: { value: mirror?.matrix ?? new THREE.Matrix4() }, mirrorK: { value: mirror ? 1 : 0 }, uRed: { value: RED }, uGreen: { value: GREEN } };
   floorMat.onBeforeCompile = (sh) => {
@@ -1958,63 +2066,71 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring, eye, kit = n
     add(new THREE.Mesh(mergeGeometries(parts.map((g) => (g.index ? g.toNonIndexed() : g))), railMat), { receive: false, mirror: true });
   }
 
-  // ---- the truss: two concentric rings of box truss over the ring, joined by six spokes, hung from the
-  // roof on chain motors
-  const trussMat = std({ color: 0x8c929c, metalness: 0.92, roughness: 0.36, envMapIntensity: 2.2 });
-  const H = 0.24; // half the truss's section
+  // ---- the truss: two true circles of segmented box truss over the ring, the inner one round the
+  // scoreboard's top, the outer one out over the light track, joined by six spokes and hung from the
+  // roof on chain motors; a coupler at every other joint between the segments
+  // (a phone's tall shot stands lower and looks up: there the rig hangs higher, clear of its picture)
+  const T = small ? { ...TRUSS, y: TRUSS.y + 0.7, yIn: TRUSS.yIn + 0.95 } : TRUSS;
+  const trussMat = std({ color: 0x9aa0aa, metalness: 0.95, roughness: 0.32, envMapIntensity: 2.0 });
+  const H = 0.21; // half the truss's section
+  const Y = new THREE.Vector3(0, 1, 0);
   {
     const parts = [];
-    const bar = (a, b, r) => {
+    const bar = (a, b, r, sides = 5) => {
       const d = new THREE.Vector3().subVectors(b, a);
-      const g = new THREE.CylinderGeometry(r, r, d.length(), 5, 1, true);
-      g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.clone().normalize()));
+      const g = new THREE.CylinderGeometry(r, r, d.length(), sides, 1, true);
+      g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(Y, d.clone().normalize()));
       g.translate(a.x + d.x / 2, a.y + d.y / 2, a.z + d.z / 2);
       parts.push(g);
     };
-    const up = new THREE.Vector3(0, 1, 0);
     const cs = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
-    /** A straight run of box truss from a to b (its section square, `n` the side direction). */
-    const run = (a, b, n, chordR = 0.03) => {
+    /** A straight run of box truss from a to b (its section square, `n` the side direction): four
+     *  chords, a zigzag of braces on each face, a coupler round the chords at its start. */
+    const run = (a, b, n, ends = true) => {
       const d = new THREE.Vector3().subVectors(b, a);
       const len = d.length();
-      const at = (s, cn, cu) => a.clone().addScaledVector(d, s / len).addScaledVector(n, cn * H).addScaledVector(up, cu * H);
-      for (const [cn, cu] of cs) bar(at(0, cn, cu), at(len, cn, cu), chordR);
-      const panels = Math.max(1, Math.round(len / 0.55));
+      const at = (s, cn, cu) => a.clone().addScaledVector(d, s / len).addScaledVector(n, cn * H).addScaledVector(Y, cu * H);
+      for (const [cn, cu] of cs) bar(at(0, cn, cu), at(len, cn, cu), 0.026, 6);
+      const panels = Math.max(1, Math.round(len / 0.5));
       for (let i = 0; i < panels; i++) {
         const s0 = (i / panels) * len;
         const s1 = ((i + 1) / panels) * len;
         for (let f = 0; f < 4; f++) {
           const [n0, u0] = cs[f];
           const [n1, u1] = cs[(f + 1) % 4];
-          if (i % 2) bar(at(s0, n0, u0), at(s1, n1, u1), 0.012);
-          else bar(at(s0, n1, u1), at(s1, n0, u0), 0.012);
+          if (i % 2) bar(at(s0, n0, u0), at(s1, n1, u1), 0.011, 4);
+          else bar(at(s0, n1, u1), at(s1, n0, u0), 0.011, 4);
         }
       }
+      if (ends) for (const [cn, cu] of cs) {
+        const c = new THREE.BoxGeometry(0.075, 0.075, 0.09);
+        c.lookAt(d);
+        const p = at(0.02, cn, cu);
+        parts.push(c.translate(p.x, p.y, p.z));
+      }
     };
+    /** A ring of `segs` straight segments, each its own piece of truss. */
     const circle = (r, y, segs) => {
       for (let i = 0; i < segs; i++) {
         const a0 = (i / segs) * Math.PI * 2;
         const a1 = ((i + 1) / segs) * Math.PI * 2;
-        const a = new THREE.Vector3(Math.cos(a0) * r, y, Math.sin(a0) * r);
-        const b = new THREE.Vector3(Math.cos(a1) * r, y, Math.sin(a1) * r);
         const n = new THREE.Vector3(Math.cos((a0 + a1) / 2), 0, Math.sin((a0 + a1) / 2));
-        run(a, b, n);
+        run(new THREE.Vector3(Math.cos(a0) * r, y, Math.sin(a0) * r), new THREE.Vector3(Math.cos(a1) * r, y, Math.sin(a1) * r), n, i % 2 === 0);
       }
     };
-    circle(TRUSS.r, TRUSS.y, small ? 36 : 56);
-    circle(TRUSS.rIn, TRUSS.yIn, small ? 24 : 36);
+    circle(T.r, T.y, small ? 40 : 60);
+    circle(T.rIn, T.yIn, small ? 28 : 40);
     for (let k = 0; k < 6; k++) {
-      const a = (k * Math.PI) / 3 + Math.PI / 6;
+      // the spokes at the corners' angles: none straight over the camera's head or behind the board
+      const a = (k * Math.PI) / 3;
       const dir = new THREE.Vector3(Math.cos(a), 0, Math.sin(a));
       const n = new THREE.Vector3(-dir.z, 0, dir.x);
-      run(dir.clone().multiplyScalar(TRUSS.rIn + H).setY(TRUSS.yIn), dir.clone().multiplyScalar(TRUSS.r - H).setY(TRUSS.y), n);
+      run(dir.clone().multiplyScalar(T.rIn + H).setY(T.yIn), dir.clone().multiplyScalar(T.r - H).setY(T.y), n, false);
       // chains to the roof and their motors
-      for (const [r, y] of [[TRUSS.r, TRUSS.y], [TRUSS.rIn, TRUSS.yIn]]) {
+      for (const [r, y] of [[T.r, T.y], [T.rIn, T.yIn]]) {
         const p = dir.clone().multiplyScalar(r);
-        bar(p.clone().setY(y + H), p.clone().setY(y + 9), 0.014);
-        const motor = new THREE.BoxGeometry(0.24, 0.36, 0.24);
-        motor.translate(p.x, y + 1.4, p.z);
-        parts.push(motor);
+        bar(p.clone().setY(y + H), p.clone().setY(y + 12), 0.012, 4);
+        parts.push(new THREE.BoxGeometry(0.26, 0.4, 0.26).translate(p.x, y + 1.6, p.z));
       }
     }
     const truss = new THREE.Mesh(mergeGeometries(parts.map((g) => (g.index ? g.toNonIndexed() : g)).map((g) => {
@@ -2024,64 +2140,139 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring, eye, kit = n
     add(truss, { receive: false, mirror: true });
   }
 
-  // ---- LED blocks along the truss: rows of four on each ring, red over the left half, green over the
-  // right, facing into the hall
+  // ---- LED blocks on the truss: panels of four cells, red over the left half and green over the right,
+  // on the inner ring's far side (over the board, in the main view) and round the outer ring
   {
+    const cells = canvas(256, 64);
+    const cg = cells.getContext('2d');
+    cg.fillStyle = '#000';
+    cg.fillRect(0, 0, 256, 64);
+    for (let i = 0; i < 4; i++) {
+      const gr = cg.createRadialGradient(32 + i * 64, 32, 2, 32 + i * 64, 32, 34);
+      gr.addColorStop(0, '#fff');
+      gr.addColorStop(0.45, '#d8d8d8');
+      gr.addColorStop(1, '#3a3a3a');
+      cg.fillStyle = gr;
+      cg.fillRect(5 + i * 64, 8, 54, 48);
+    }
+    const cellTex = tex(cells, { srgb: false, aniso: 4 });
     const blocks = { red: [], green: [] };
-    const place = (r, y, a, outward) => {
+    const place = (r, y, a) => {
       const dir = new THREE.Vector3(Math.cos(a), 0, Math.sin(a));
-      const side = sideOf(dir.x);
-      if (Math.abs(dir.x) < 0.25) return;
-      const face = outward ? dir.clone() : dir.clone().negate();
-      const t = new THREE.Vector3(-dir.z, 0, dir.x);
-      for (let i = 0; i < 4; i++) {
-        const g = new THREE.BoxGeometry(0.34, 0.15, 0.03);
-        g.lookAt(face);
-        const p = dir.clone().multiplyScalar(r + (outward ? H + 0.03 : -H - 0.03)).addScaledVector(t, (i - 1.5) * 0.42).setY(y - 0.02);
-        g.translate(p.x, p.y, p.z);
-        blocks[side].push(g);
+      if (Math.abs(dir.x) < 0.2) return;
+      for (const s of [-1, 1]) {
+        const g = new THREE.PlaneGeometry(1.25, 0.24);
+        g.lookAt(dir.clone().multiplyScalar(s)); // one face in across the ring, one out to the stands
+        const p = dir.clone().multiplyScalar(r + s * (H + 0.04)).setY(y - 0.04);
+        blocks[sideOf(dir.x)].push(g.translate(p.x, p.y, p.z));
       }
     };
-    // a few groups only: two on the inner ring over each half, three along each half of the outer
-    for (const a of [0.5, 0.8, 2.34, 2.64]) place(TRUSS.rIn, TRUSS.yIn, -a, true);
-    for (const a of [0.35, 0.8, 1.25, 1.9, 2.35, 2.8]) place(TRUSS.r, TRUSS.y, -a, false);
-    for (const side of ['red', 'green']) add(new THREE.Mesh(mergeGeometries(blocks[side]), glow(side === 'red' ? RED : GREEN, side === 'red' ? 1.4 : 1.0)), { receive: false, mirror: true });
+    for (const a of [0.42, 0.95]) for (const s of [1, -1]) place(T.rIn, T.yIn, s > 0 ? -a : Math.PI + a);
+    for (const a of [0.3, 0.78, 1.25, 1.9, 2.36, 2.84, 3.6, 4.1, 5.3, 5.8]) place(T.r, T.y, -a);
+    for (const side of ['red', 'green']) {
+      const k = side === 'red' ? 1.5 : 1.1;
+      add(new THREE.Mesh(mergeGeometries(blocks[side]), new THREE.MeshBasicMaterial({ map: cellTex, color: (side === 'red' ? RED : GREEN).clone().multiplyScalar(k).lerp(new THREE.Color(k, k, k), 0.12) })), { receive: false, mirror: true });
+    }
   }
 
-  // ---- moving heads under the truss: each a yoke, a head and a lens; some throw a beam. heads[0..17]
-  // are the outer ring's at the sides' places (headAt), the rest fill both rings
+  // ---- moving heads under the truss: each a yoke, a head and a lens, its glare in the haze; some throw
+  // a beam. heads[0..17] are the sides' places (headAt, scene3d's beams): on the inner ring, steep over
+  // the canvas, except those over the near side, which hang from the outer ring above the camera; the
+  // rest go round the outer ring
   const heads = [];
+  const hang = (r, y, a, side = -1, f = -1) => {
+    const h = { side, f, at: new THREE.Vector3(Math.cos(a) * r, y, Math.sin(a) * r), dir: new THREE.Vector3(0, -1, 0), color: new THREE.Color(1, 1, 1), k: 2 };
+    heads.push(h);
+    return h;
+  };
   for (let k = 0; k < 6; k++) for (const f of [0.22, 0.5, 0.78]) {
     const a = ((k + f) * Math.PI) / 3;
-    heads.push({ side: k, f, at: new THREE.Vector3(Math.cos(a) * TRUSS.r, TRUSS.y - 0.5, Math.sin(a) * TRUSS.r), dir: new THREE.Vector3(0, -1, 0), color: new THREE.Color(1, 1, 1), k: 3 });
+    if (k === 1) hang(T.r, T.y + 0.5, a, k, f); // stood on the truss, out of the main view
+    else hang(T.rIn, T.yIn - 0.5, a, k, f);
   }
   const extra = [];
-  for (let i = 0; i < 18; i++) {
-    const a = ((i + 0.5) / 18) * Math.PI * 2 + 0.07;
-    extra.push({ side: -1, f: -1, at: new THREE.Vector3(Math.cos(a) * TRUSS.r, TRUSS.y - 0.5, Math.sin(a) * TRUSS.r), dir: new THREE.Vector3(0, -1, 0), color: new THREE.Color(1, 1, 1), k: 2 });
+  for (let i = 0; i < 16; i++) {
+    const a = ((i + 0.5) / 16) * Math.PI * 2 + 0.11;
+    if (Math.abs(Math.atan2(Math.sin(a - Math.PI / 2), Math.cos(a - Math.PI / 2))) < 0.6) continue; // the near side's are headAt's
+    extra.push(hang(T.r, T.y - 0.5, a));
   }
-  for (let i = 0; i < 12; i++) {
-    const a = ((i + 0.5) / 12) * Math.PI * 2;
-    if (Math.abs(a - Math.PI / 2) < 0.5) continue; // the two before the scoreboard, seen from the main camera
-    extra.push({ side: -1, f: -1, at: new THREE.Vector3(Math.cos(a) * TRUSS.rIn, TRUSS.yIn - 0.5, Math.sin(a) * TRUSS.rIn), dir: new THREE.Vector3(0, -1, 0), color: new THREE.Color(1, 1, 1), k: 2 });
-  }
-  heads.push(...extra);
   const yokeGeo = mergeGeometries([
-    new THREE.BoxGeometry(0.3, 0.05, 0.12).translate(0, 0.28, 0),
-    new THREE.BoxGeometry(0.035, 0.25, 0.09).translate(0.15, 0.16, 0),
-    new THREE.BoxGeometry(0.035, 0.25, 0.09).translate(-0.15, 0.16, 0),
+    new THREE.BoxGeometry(0.36, 0.06, 0.16).translate(0, 0.34, 0),
+    new THREE.BoxGeometry(0.045, 0.32, 0.12).translate(0.18, 0.18, 0),
+    new THREE.BoxGeometry(0.045, 0.32, 0.12).translate(-0.18, 0.18, 0),
+    new THREE.CylinderGeometry(0.03, 0.03, 0.2, 6).translate(0, 0.46, 0), // the clamp up to the truss
   ]);
-  const headGeo = new THREE.CylinderGeometry(0.09, 0.12, 0.28, 14);
-  const lensGeo = new THREE.CircleGeometry(0.085, 18).rotateX(Math.PI / 2).translate(0, -0.142, 0);
+  const headGeo = mergeGeometries([
+    new THREE.CylinderGeometry(0.12, 0.15, 0.34, 16),
+    new THREE.CylinderGeometry(0.155, 0.155, 0.04, 16).translate(0, -0.15, 0), // the lens's bezel
+  ]);
+  const lensGeo = new THREE.CircleGeometry(0.125, 20).rotateX(Math.PI / 2).translate(0, -0.172, 0);
   const yokes = new THREE.InstancedMesh(yokeGeo, darkSteel, heads.length);
-  const bodies = new THREE.InstancedMesh(headGeo, std({ color: 0x1c1d21, metalness: 0.7, roughness: 0.35, envMapIntensity: 1.5 }), heads.length);
+  const bodies = new THREE.InstancedMesh(headGeo, std({ color: 0x2a2c31, metalness: 0.8, roughness: 0.3, envMapIntensity: 1.8 }), heads.length);
   const lenses = new THREE.InstancedMesh(lensGeo, new THREE.MeshBasicMaterial({ color: 0xffffff }), heads.length);
   const m4 = new THREE.Matrix4();
   const q = new THREE.Quaternion();
   const DOWN = new THREE.Vector3(0, -1, 0);
-  const Y = new THREE.Vector3(0, 1, 0);
   const one = new THREE.Vector3(1, 1, 1);
   const lensCol = new THREE.Color();
+  // the glare: a hot core, a soft halo and a faint six-point star, facing the camera, brightest when the
+  // lens looks towards it
+  const glare = (() => {
+    const S = 128;
+    const c = canvas(S);
+    const g = c.getContext('2d');
+    const img = g.createImageData(S, S);
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      const u = (x + 0.5) / S - 0.5;
+      const v = (y + 0.5) / S - 0.5;
+      const d = Math.hypot(u, v) * 2;
+      const a = Math.atan2(v, u);
+      const star = Math.pow(Math.abs(Math.cos(a * 3)), 60) * Math.max(0, 1 - d) ** 2.2;
+      const k = Math.min(1, Math.exp(-d * d * 90) + 0.35 * Math.exp(-d * 7) + 0.4 * star) * Math.max(0, 1 - d);
+      const i = (y * S + x) * 4;
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = k * 255;
+      img.data[i + 3] = 255;
+    }
+    g.putImageData(img, 0, 0);
+    return tex(c, { srgb: false, aniso: 1 });
+  })();
+  const gPos = new Float32Array(heads.length * 3);
+  const gDir = new Float32Array(heads.length * 3);
+  const gCol = new Float32Array(heads.length * 3);
+  const glareGeo = new THREE.InstancedBufferGeometry();
+  {
+    const quad = new THREE.PlaneGeometry(1, 1);
+    glareGeo.index = quad.index;
+    glareGeo.setAttribute('position', quad.attributes.position);
+    glareGeo.setAttribute('uv', quad.attributes.uv);
+  }
+  glareGeo.setAttribute('iPos', new THREE.InstancedBufferAttribute(gPos, 3));
+  glareGeo.setAttribute('iDir', new THREE.InstancedBufferAttribute(gDir, 3).setUsage(THREE.DynamicDrawUsage));
+  glareGeo.setAttribute('iCol', new THREE.InstancedBufferAttribute(gCol, 3).setUsage(THREE.DynamicDrawUsage));
+  glareGeo.instanceCount = heads.length;
+  const glares = new THREE.Mesh(glareGeo, new THREE.ShaderMaterial({
+    uniforms: { map: { value: glare }, uSize: { value: small ? 1.7 : 2.2 }, mirrorPass: MIRROR_PASS },
+    vertexShader: `attribute vec3 iPos; attribute vec3 iDir; attribute vec3 iCol; uniform float uSize; varying vec2 vUv; varying vec3 vCol;
+      void main() {
+        vec3 toCam = normalize(cameraPosition - iPos);
+        float k = 0.28 + 0.72 * smoothstep(-0.35, 0.9, dot(toCam, iDir));
+        vCol = iCol * k;
+        vec4 mv = viewMatrix * vec4(iPos + toCam * 0.35, 1.0);
+        mv.xy += position.xy * uSize * (0.55 + 0.6 * k);
+        vUv = uv;
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: `uniform sampler2D map; uniform float mirrorPass; varying vec2 vUv; varying vec3 vCol;
+      void main() {
+        gl_FragColor = vec4(texture2D(map, vUv).rgb * vCol * (1.0 - mirrorPass * 0.5), 1.0);
+      }`,
+    blending: THREE.AdditiveBlending,
+    transparent: true,
+    depthWrite: false,
+  }));
+  glares.frustumCulled = false;
+  glares.layers.enable(MIRROR);
+  scene.add(glares);
   const placeHeads = () => {
     heads.forEach((h, i) => {
       // the yoke turns about the vertical, the head tilts in it
@@ -2092,43 +2283,42 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring, eye, kit = n
       m4.compose(h.at, q, one);
       bodies.setMatrixAt(i, m4);
       lenses.setMatrixAt(i, m4);
-      lenses.setColorAt(i, lensCol.copy(h.color).multiplyScalar(h.k));
+      lenses.setColorAt(i, lensCol.copy(h.color).multiplyScalar(h.k * 1.4));
+      gDir.set([h.dir.x, h.dir.y, h.dir.z], i * 3);
     });
     yokes.instanceMatrix.needsUpdate = true;
     bodies.instanceMatrix.needsUpdate = true;
     lenses.instanceMatrix.needsUpdate = true;
     if (lenses.instanceColor) lenses.instanceColor.needsUpdate = true;
+    glareGeo.attributes.iDir.needsUpdate = true;
   };
   // the idle heads look down at the ring, a little apart
-  for (const h of heads) h.dir.set(-h.at.x * 0.3, -TRUSS.y, -h.at.z * 0.3).normalize();
+  for (const h of heads) h.dir.set(-h.at.x * 0.3, -T.y, -h.at.z * 0.3).normalize();
   for (const m of [yokes, bodies]) add(m, { receive: false, mirror: true });
-  add(lenses, { receive: false });
+  add(lenses, { receive: false, mirror: true });
   /** The head at side k (0..5, the side from corner k to corner k+1), place f (0.22, 0.5 or 0.78). */
   const headAt = (k, f) => heads.find((h) => h.side === k && Math.abs(h.f - f) < 0.01);
 
-  // ---- the hall's own beams: soft white cones falling steeply from the outer ring onto the floor and
-  // the first rows of the stands, swaying slowly in the haze
+  // ---- the hall's own beams: soft white cones falling steeply from the outer ring onto the floor round
+  // the ring and the first rows of the stands, swaying slowly in the haze
   const fan = [];
   if (heavy) {
-    const pick = [0, 2, 4, 5, 7, 9, 11, 13, 14, 16, 1, 3, 6, 8, 10, 12, 15, 17];
-    pick.forEach((idx, n) => {
-      const h = extra[idx];
+    extra.forEach((h, n) => {
       if (h.at.z > 2.5) return; // over the camera's own stand a beam would cross the whole picture
       const color = new THREE.Color(0xf3f1ec);
-      const m = new THREE.Mesh(new THREE.ConeGeometry(1.8, 1, 24, 1, true), volumeMaterial(color, 0.022, 0.9));
+      const m = new THREE.Mesh(new THREE.ConeGeometry(1.35, 1, 24, 1, true), volumeMaterial(color, 0.034, 0.92));
       scene.add(m);
       h.color.copy(color);
       h.k = 5;
-      // where it lands: the floor between the ring and the stands, or the stands themselves
-      // (outwards from the truss, as the target's fans: none crosses the ring)
-      const a = Math.atan2(h.at.z, h.at.x) + (n % 2 ? 0.22 : -0.22);
-      const r = [12, 13.5, 15][n % 3];
+      // where it lands: out from under the truss, on the floor before the stands or their first rows
+      const a = Math.atan2(h.at.z, h.at.x) + (n % 2 ? 0.12 : -0.12);
+      const r = [11.5, 13.2, 14.6][n % 3];
       fan.push({ m, h, a, r, y: standHeight(r), ph: n * 1.7, to: new THREE.Vector3() });
     });
   }
   const aimFan = (b, t) => {
-    const a = b.a + Math.sin(t * 0.17 + b.ph) * 0.22;
-    const r = b.r + Math.sin(t * 0.13 + b.ph * 2) * 1.2;
+    const a = b.a + Math.sin(t * 0.17 + b.ph) * 0.14;
+    const r = b.r + Math.sin(t * 0.13 + b.ph * 2) * 0.9;
     b.to.set(Math.cos(a) * r, b.y, Math.sin(a) * r);
     const d = new THREE.Vector3().subVectors(b.h.at, b.to);
     const len = d.length();
@@ -2139,22 +2329,16 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring, eye, kit = n
   };
   fan.forEach((b) => aimFan(b, 0));
   const pools = fan.filter((b) => b.r >= STANDS_R).map((b) => ({ at: b.to, color: b.h.color }));
+  heads.forEach((h, i) => gPos.set([h.at.x, h.at.y - 0.2, h.at.z], i * 3));
   placeHeads();
-  // each lamp's glow in the haze, seen from any side (a lens only shows from below)
-  const flareGeo = new THREE.BufferGeometry();
-  const flarePos = new Float32Array(heads.length * 3);
-  const flareCol = new Float32Array(heads.length * 3);
-  heads.forEach((h, i) => flarePos.set([h.at.x, h.at.y - 0.18, h.at.z], i * 3));
-  flareGeo.setAttribute('position', new THREE.BufferAttribute(flarePos, 3));
-  flareGeo.setAttribute('color', new THREE.BufferAttribute(flareCol, 3));
-  const flares = new THREE.Points(flareGeo, new THREE.PointsMaterial({ size: 1.8, sizeAttenuation: true, map: softSpot(64, 2.6), vertexColors: true, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
-  scene.add(flares);
   const lightFlares = () => {
     heads.forEach((h, i) => {
-      const k = Math.min(2, 0.3 + h.k * 0.3); // the lamps that throw a beam burn brighter than those that glow
-      flareCol.set([h.color.r * k, h.color.g * k, h.color.b * k], i * 3);
+      const k = Math.min(2.4, 0.5 + h.k * 0.38); // the lamps that throw a beam burn brighter than those that glow
+      gCol.set([h.color.r * k, h.color.g * k, h.color.b * k], i * 3);
+      gDir.set([h.dir.x, h.dir.y, h.dir.z], i * 3);
     });
-    flareGeo.attributes.color.needsUpdate = true;
+    glareGeo.attributes.iCol.needsUpdate = true;
+    glareGeo.attributes.iDir.needsUpdate = true;
   };
   lightFlares();
 
