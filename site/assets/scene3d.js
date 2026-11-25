@@ -1771,44 +1771,25 @@ export async function createScene(root) {
     rig.twist = 0;
     rig.look = null;
     rig.lookW = 1;
-    rig.breath = reduced ? 0 : 0.5;
-    rig.breathRate = 0.9;
+    rig.breath = 0; // stock-still
     rig.wide = 0.09; // the feet a shoulder's width apart
     rig.toeOut = 0.05;
     rig.planted = walking ? 0.07 : 0.16; // no shuffling on the spot: a step only when it really must
-    // where it faces: the way it walks; at the raise the way the winner faces, turned a little to it;
-    // else straight ahead
+    // where it faces: the way it walks; standing, always straight ahead (to the front of the ring), also
+    // beside the winner at the raise: it does not turn with the winner's dance
     let face = 0;
     const raise = raiseOf();
     if (walking && dist > 0.2) face = Math.atan2(d.x, d.y);
-    else if (r.pose === 'refRaise' && state.winner) {
-      const w = fighters[state.winner];
-      const wq = w.bot.root.getWorldQuaternion(new THREE.Quaternion());
-      const fw = new THREE.Vector3(0, 0, 1).applyQuaternion(wq);
-      const to = w.bot.root.getWorldPosition(new THREE.Vector3()).sub(r.bot.root.getWorldPosition(new THREE.Vector3()));
-      face = Math.atan2(fw.x, fw.z) + 0.3 * Math.sign(fw.x * to.z - fw.z * to.x) * -1;
-    }
     r.bot.yaw = turnTo(r.bot.yaw ?? 0, face, Math.min(1, dt * (walking ? 2.6 : 1.6)));
     r.bot.root.rotation.y = r.bot.yaw;
-    // the gaze: straight ahead, always; only at the raise does it look at the winner
-    r.gaze ??= { at: null, mid: null };
-    const gz = r.gaze;
-    const head = r.bot.bones?.Head?.getWorldPosition(new THREE.Vector3());
-    let want = null;
-    if (r.pose === 'refRaise' && state.winner) want = fighters[state.winner].bot.bones?.Head?.getWorldPosition(new THREE.Vector3()) ?? null;
-    const ahead = head ? head.clone().add(new THREE.Vector3(Math.sin(r.bot.yaw), -0.06, Math.cos(r.bot.yaw)).multiplyScalar(6)) : null;
-    const aim = want ?? ahead;
-    if (aim) {
-      // two damped stages (a critically damped follow): the head never snaps, it eases on and off
-      const k = 1 - Math.exp(-dt * 2.4);
-      gz.mid = gz.mid ? gz.mid.lerp(aim, k) : aim.clone();
-      gz.at = gz.at ? gz.at.lerp(gz.mid, k) : gz.mid.clone();
-      rig.look = gz.at.clone();
-      rig.lookW = 1;
-    }
+    // the gaze: straight ahead, level, locked to the body (it never turns its head, not even at the raise)
+    const base = r.bot.root.getWorldPosition(new THREE.Vector3());
+    const eye = r.bot.bones?.Head?.getWorldPosition(new THREE.Vector3()).y ?? FLOOR + 2.8;
+    rig.look = base.set(base.x + Math.sin(r.bot.yaw) * 8, eye, base.z + Math.cos(r.bot.yaw) * 8);
+    rig.lookW = 1;
     const q = r.bot.root.getWorldQuaternion(new THREE.Quaternion());
     const me = r.bot.root.getWorldPosition(new THREE.Vector3()).setY(FLOOR);
-    // the raise: its near hand on the winner's wrist, up together and held, then it lets go and nods once
+    // the raise: its near hand on the winner's wrist, up together and held, then it lets go
     if (raise && raise.grip + raise.off > 0.001 && state.winner) {
       const w = fighters[state.winner];
       const wi = w.raiseArm ?? 1;
@@ -1821,9 +1802,6 @@ export async function createScene(root) {
         rig.hands[i].pole.set(i ? 0.7 : -0.7, raise.up > 0.5 ? -0.3 : -1, -0.3);
         r.gripArm = i;
       }
-      // the nod: once, firmly, after it lets go
-      const nod = Math.sin(Math.PI * smooth((raise.tt - 4.55) / 0.7));
-      if (rig.look && nod > 0.001) rig.look.y -= 0.5 * nod;
     }
     rig.ground = FLOOR;
     r.bot.pose(c, p, t, walking, dt, null, rig);
