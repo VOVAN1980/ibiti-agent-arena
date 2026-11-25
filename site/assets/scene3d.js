@@ -2043,7 +2043,7 @@ export async function createScene(root) {
       f.bot.root.getWorldPosition(v3);
       // from the near stand's side, turned a little to the winner's own corner (the loser out of the
       // picture, the referee beside the winner)
-      const turn = state.winner === 'red' ? -0.32 : 0.32;
+      const turn = (f.winAt ? 0.24 : -0.32) * (state.winner === 'red' ? 1 : -1); // after its flip: from the middle of the near side, clear of the posts
       camFront.set(Math.sin(turn), 0, Math.cos(turn));
       referee.bot.root.getWorldPosition(camLook);
       const withRef = referee.pose === 'refRaise' && camLook.distanceTo(v3) < 2.2 ? 0.35 : 0;
