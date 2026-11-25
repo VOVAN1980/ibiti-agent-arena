@@ -1789,6 +1789,14 @@ export async function createScene(root) {
     rig.lookW = 1;
     const q = r.bot.root.getWorldQuaternion(new THREE.Quaternion());
     const me = r.bot.root.getWorldPosition(new THREE.Vector3()).setY(FLOOR);
+    // the arms straight down at its sides, the hands by the thighs (the one at the winner's wrist aside)
+    const s = r.bot.root.scale.x;
+    for (const i of [0, 1]) {
+      const o = i ? 1 : -1;
+      rig.hands[i].at.set(o * 0.31 * s, 0.86 * s, 0.01 * s).applyQuaternion(q).add(me);
+      rig.hands[i].w = 1;
+      rig.hands[i].pole.set(o * 0.3, 0, -1);
+    }
     // the raise: its near hand on the winner's wrist, up together and held, then it lets go
     if (raise && raise.grip + raise.off > 0.001 && state.winner) {
       const w = fighters[state.winner];
@@ -1797,9 +1805,8 @@ export async function createScene(root) {
       if (wrist && raise.grip > 0.001) {
         const leftW = new THREE.Vector3(1, 0, 0).applyQuaternion(q);
         const i = leftW.dot(wrist.clone().sub(me)) > 0 ? 1 : 0;
-        rig.hands[i].at.copy(wrist).addScaledVector(UPV, -0.05);
-        rig.hands[i].w = raise.grip;
-        rig.hands[i].pole.set(i ? 0.7 : -0.7, raise.up > 0.5 ? -0.3 : -1, -0.3);
+        rig.hands[i].at.lerp(wrist.addScaledVector(UPV, -0.05), raise.grip);
+        if (raise.grip > 0.5) rig.hands[i].pole.set(i ? 0.7 : -0.7, raise.up > 0.5 ? -0.3 : -1, -0.3);
         r.gripArm = i;
       }
     }
