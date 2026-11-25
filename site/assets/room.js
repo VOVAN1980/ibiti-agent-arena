@@ -1144,7 +1144,7 @@ function buildStands(scene, { small, steel, atlas }) {
     geo.instanceCount = n;
     const mat = new THREE.ShaderMaterial({
       defines: { POOLS, SOFT: small ? 0 : 1 },
-      uniforms: { ...light, ...common, ...mood, uRig: { value: 1.25 }, uCells: { value: cellTex }, uMap: { value: atlas.map }, uNormal: { value: atlas.normal } },
+      uniforms: { ...light, ...common, ...mood, uRig: { value: 1.05 }, uCells: { value: cellTex }, uMap: { value: atlas.map }, uNormal: { value: atlas.normal } },
       alphaToCoverage: !small,
       side: THREE.DoubleSide, // a mirrored one turns its back
       vertexShader: `attribute vec3 iPos; attribute vec4 iLook; attribute vec3 iCell; attribute vec3 iDye; attribute vec4 iVary; uniform sampler2D uCells; uniform float uTime; uniform float uMove; uniform float uRig;
@@ -1175,7 +1175,7 @@ function buildStands(scene, { small, steel, atlas }) {
           vec2 d = iPos.xz / r;
           float redW = smoothstep(0.1, 0.65, -d.x);
           float greenW = smoothstep(0.1, 0.65, d.x);
-          vec3 filt = mix(vec3(1.0), vec3(1.4, 0.56, 0.52), redW) * mix(vec3(1.0), vec3(0.56, 1.25, 0.64), greenW);
+          vec3 filt = mix(vec3(1.0), vec3(1.4, 0.56, 0.52), redW) * mix(vec3(1.0), vec3(0.52, 1.06, 0.6), greenW);
           vFace = normalize(vec3(-d.x, 0.35, -d.y));
           vec3 head = iPos + vec3(0.0, 1.1, 0.0);
           vHall = hallLight(head, vFace) * 12.0 * filt * iLook.x;
@@ -2254,7 +2254,7 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring, eye, kit = n
   glareGeo.setAttribute('iCol', new THREE.InstancedBufferAttribute(gCol, 3).setUsage(THREE.DynamicDrawUsage));
   glareGeo.instanceCount = heads.length;
   const glares = new THREE.Mesh(glareGeo, new THREE.ShaderMaterial({
-    uniforms: { map: { value: glare }, uSize: { value: small ? 1.7 : 2.2 }, mirrorPass: MIRROR_PASS },
+    uniforms: { map: { value: glare }, uSize: { value: small ? 1.8 : 2.4 }, mirrorPass: MIRROR_PASS },
     vertexShader: `attribute vec3 iPos; attribute vec3 iDir; attribute vec3 iCol; uniform float uSize; varying vec2 vUv; varying vec3 vCol;
       void main() {
         vec3 toCam = normalize(cameraPosition - iPos);
@@ -2318,6 +2318,20 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring, eye, kit = n
       const a = Math.atan2(h.at.z, h.at.x) + (n % 2 ? 0.12 : -0.12);
       const r = [11.5, 13.2, 14.6][n % 3];
       fan.push({ m, h, a, r, y: standHeight(r), ph: n * 1.7, to: new THREE.Vector3() });
+    });
+  }
+  // and from the inner ring's heads the board's beams leave free, a fan outwards over the floor towards
+  // the lower bowl's first rows, as a rig over a ring throws them, fading out in the haze on the way
+  if (heavy) {
+    [[0, 0.22], [0, 0.78], [2, 0.22], [2, 0.78], [3, 0.78], [5, 0.22], [4, 0.5]].forEach(([k, f], n) => {
+      const h = headAt(k, f);
+      const color = new THREE.Color(0xf3f1ec).lerp(h.at.x < 0 ? new THREE.Color(1, 0.35, 0.33) : new THREE.Color(0.4, 1, 0.5), THREE.MathUtils.smoothstep(Math.abs(h.at.x) / T.rIn, 0.3, 0.9) * 0.35);
+      const m = new THREE.Mesh(new THREE.ConeGeometry(1.1, 1, 24, 1, true), volumeMaterial(color, 0.024, 0.45)); // bright at the lamp, gone before the crowd
+      scene.add(m);
+      h.color.copy(color);
+      h.k = 5;
+      const r = [STANDS_R + 1.2, STANDS_R + 2.6, STANDS_R + 0.4][n % 3];
+      fan.push({ m, h, a: Math.atan2(h.at.z, h.at.x) + (n % 2 ? 0.08 : -0.08), r, y: standHeight(r), ph: 3 + n * 2.3, to: new THREE.Vector3() });
     });
   }
   const aimFan = (b, t) => {
