@@ -762,7 +762,7 @@ export async function createScene(root) {
     focus[side].to.set(SEAT[side].x, FLOOR, SEAT[side].z);
   }
   const refBot = xg ? makeXRobot('ref', xg, COLOR) : buildRobot('ref', M);
-  refBot.root.scale.setScalar(SIZE * (xg?.robots ? 1.1 : 1)); // the armoured referee a little larger: it stands among the fighters, not under them
+  refBot.root.scale.setScalar(SIZE * (xg?.robots ? 1.03 : 1)); // the referee as tall as the fighters (slim beside their bulk)
   refBot.root.position.set(0, FLOOR, -0.35);
   scene.add(refBot.root);
   const referee = { bot: refBot, pose: 'ref', since: 0, side: null, pos: new THREE.Vector2(0, -0.35), target: new THREE.Vector2(0, -0.35), cur: {} };

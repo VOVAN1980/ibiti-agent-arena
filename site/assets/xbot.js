@@ -1,5 +1,7 @@
-// The fighters and the referee as humanoid robots. Our own armoured robots (built in Blender for the
-// arena: hard-surface plates over a flexible under-suit, baked PBR maps) ride the skeleton of the X
+// The fighters and the referee as humanoid robots. Our own robots (built in Blender for the arena,
+// baked PBR maps): the fighters are heavy boxer robots (riveted steel plates over a flexible under-suit,
+// boxing gloves, cloth shorts), the referee a slim glossy black android with gold piping and a bow tie.
+// They ride the skeleton of the X
 // Bot model from Mixamo (Adobe; free to use in one's own projects, commercial ones included): the same
 // bones, rest pose and clips, so they walk and stand with its animations. If they cannot be loaded,
 // the X Bot itself stands in, with a visor face and glowing eyes added, the joints in the corner's
@@ -18,10 +20,12 @@ const SCALE = 1.12;
 // the eyes on the armoured robots' visors: centre, outward normal and the slit's direction, in the
 // model's own metres at rest (a fighter's helmet is a little larger than the referee's)
 const EYES = {
-  fighter: [[[0.0571, 1.6681, 0.1261], [0.3682, -0.0911, 0.9253], [-0.9255, 0, 0.3787]], [[-0.0571, 1.6681, 0.1261], [-0.3868, -0.0915, 0.9176], [-0.9255, 0, -0.3787]]],
-  ref: [[[0.055, 1.6681, 0.1218], [0.3683, -0.0862, 0.9257], [-0.9255, 0, 0.3787]], [[-0.055, 1.6681, 0.1218], [-0.3869, -0.0866, 0.918], [-0.9255, 0, -0.3787]]],
+  fighter: [[[0.0523, 1.6722, 0.1254], [0.4015, 0.0744, 0.9128], [-0.8862, -0.2025, 0.4167]], [[-0.0523, 1.6722, 0.1254], [-0.4208, 0.0739, 0.9041], [-0.8862, 0.2025, -0.4167]]],
+  ref: [[[0.0414, 1.6735, 0.1197], [0.4102, 0.0149, 0.9119], [-0.9078, 0, 0.4195]], [[-0.0414, 1.6735, 0.1197], [-0.4292, 0.0145, 0.9031], [-0.9078, 0, -0.4195]]],
 };
-const GLOW = { red: 0xff1206, blue: 0x12ff48, ref: 0xf2cf6e };
+const GLOW = { red: 0xff0a12, blue: 0x00e62e, ref: 0xf2cf6e }; // a deep red and a pure green: never orange
+const EYE_SIZE = { fighter: [0.03, 0.0095], ref: [0.022, 0.006] };
+const SPREAD = 0.2; // a fighter's arms hang a little out from its bulk (radians, outwards), less as they rise
 
 function timed(p, what) {
   return Promise.race([p, new Promise((_, reject) => setTimeout(() => reject(new Error(`${what} took too long`)), 15000))]);
@@ -86,13 +90,15 @@ export function makeXRobot(kind, models, colors) {
   const model = SkeletonUtils.clone(gltf.scene);
   model.scale.setScalar(SCALE);
   const color = kind === 'ref' ? (armoured ? GLOW.ref : 0xf5b301) : armoured ? GLOW[kind] : colors[kind];
+  const parts = {}; // a fighter's boxing gloves, and its bare armoured hands for typing at the desk
   model.traverse((o) => {
     if (!o.isMesh) return;
     o.castShadow = true;
     o.receiveShadow = true;
     o.frustumCulled = false; // a posed skinned mesh can leave its bind-pose box
     if (armoured) {
-      // the baked plates as they are; the small lights (chest core, back pack) in the corner's colour
+      if (o.name === 'Gloves' || o.name === 'Hands') parts[o.name] = o;
+      // the baked plates as they are; the small lights (the back pack's) in the corner's colour
       if (o.material.name === 'Glow') {
         o.material = o.material.clone();
         o.material.color.setHex(0x000000);
@@ -133,18 +139,19 @@ export function makeXRobot(kind, models, colors) {
   const L1 = wp(B.LeftArm).distanceTo(wp(B.LeftForeArm));
   const L2 = wp(B.LeftForeArm).distanceTo(wp(B.LeftHand)) + 0.06;
 
-  const eyeMat = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: color, emissiveIntensity: armoured ? 1.1 : 3 });
+  const eyeMat = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: color, emissiveIntensity: armoured ? 0.9 : 3 });
   let eyes;
   if (armoured) {
-    // two slits of light on the visor, on the head bone, where the helmet's glass is
+    // two angular slits of light in the faceplate's eye holes (the referee's: glints in its gold T), on the head bone
     const hs = 1 / B.Head.getWorldScale(new THREE.Vector3()).x;
     const toHead = (v) => B.Head.worldToLocal(model.localToWorld(new THREE.Vector3(...v)));
-    eyes = EYES[kind === 'ref' ? 'ref' : 'fighter'].map(([c, n, a]) => {
+    const look = kind === 'ref' ? 'ref' : 'fighter';
+    eyes = EYES[look].map(([c, n, a]) => {
       const at = toHead(c);
       const nz = toHead(c.map((x, i) => x + n[i])).sub(at).normalize();
       const ax = toHead(c.map((x, i) => x + a[i])).sub(at);
       ax.addScaledVector(nz, -ax.dot(nz)).normalize();
-      const e = new THREE.Mesh(new THREE.BoxGeometry(0.036, 0.0085, 0.004), eyeMat);
+      const e = new THREE.Mesh(new THREE.BoxGeometry(EYE_SIZE[look][0], EYE_SIZE[look][1], 0.004), eyeMat);
       e.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(ax, new THREE.Vector3().crossVectors(nz, ax), nz));
       e.position.copy(at);
       e.scale.setScalar(hs);
@@ -189,6 +196,8 @@ export function makeXRobot(kind, models, colors) {
   const target = new THREE.Vector3();
   const shoulderAt = new THREE.Vector3();
   let sitW = 0;
+  const bulky = armoured && kind !== 'ref';
+  if (parts.Hands) parts.Hands.visible = false;
 
   /** Pose the robot for this frame (c: the smoothed pose values; p: the pose; reach: where the hands go). */
   function pose(c, p, t, walking, dt, reach) {
@@ -198,6 +207,12 @@ export function makeXRobot(kind, models, colors) {
     mixer.update(dt);
 
     sitW += ((p.seat && !walking ? 1 : 0) - sitW) * Math.min(1, dt * 7);
+    if (parts.Gloves && parts.Hands) {
+      // gloves on, except at the keyboard: there the armoured fingers type
+      const bare = sitW > 0.5 && Array.isArray(reach);
+      parts.Gloves.visible = !bare;
+      parts.Hands.visible = bare;
+    }
     const floor = c.floor || 0;
     const legsW = Math.max(sitW, floor, c.tuck || 0); // seated, on the floor, or tucked in the air
     lift.position.y = (shin + 0.03 - hipsY) * sitW + (0.2 - hipsY) * floor * (1 - sitW) + (p.seat ? 0 : c.bounce);
@@ -225,7 +240,8 @@ export function makeXRobot(kind, models, colors) {
         solveArm(shoulderAt, target, L1, L2, pole, dirs.u, dirs.f);
       } else {
         const ax = i ? c.a1x : c.a0x;
-        const az = i ? c.a1z : c.a0z;
+        let az = i ? c.a1z : c.a0z;
+        if (bulky) az += (i ? 1 : -1) * SPREAD * Math.max(0, Math.cos(az));
         const el = i ? c.e1 : c.e0;
         dirs.u.copy(DOWN).applyEuler(_e.set(ax, 0, az));
         dirs.f.copy(DOWN).applyEuler(_e.set(el, 0, 0)).applyEuler(_e.set(ax, 0, az));
