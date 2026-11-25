@@ -911,14 +911,14 @@ const HALL_LIGHT = `
   }`;
 const HASH = 'float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }';
 
-// The crowd atlas's 24 people (cell = person * 10 + frame): their frames, who wears a corner's colour
-// (a red jersey, scarves, a maroon hoodie and top, a red cap and beanie; green scarves, a green jersey,
-// top and cap), and the share of each on the red half's seats, the ends' and the green half's
-const F = { seated: 0, seated2: 1, clap: 2, lean: 3, seatedCheer: 4, seatedPhone: 5, standing: 6, cheer: 7, fist: 8, standingPhone: 9 };
+// The crowd atlas's people (28: the rest wear dark clothes and neutrals): who wears a corner's colour (a
+// red jersey, scarves, a maroon hoodie and top, a red cap and beanie; green scarves, a green jersey, top
+// and cap), and the share of each on the red half's seats, the ends' and the green half's
 const FANS = { red: [2, 7, 11, 12, 16, 19, 23], green: [5, 10, 15, 20, 21], none: [0, 1, 3, 4, 6, 8, 9, 13, 14, 17, 18, 22] };
 const FAN_SHARE = [[0.2, 0.02], [0.04, 0.04], [0.02, 0.2]];
-// the dark hues the clothes take on (linear): navy, maroon, olive, brown, charcoal, plum, slate
-const DYES = [[0.02, 0.03, 0.07], [0.07, 0.015, 0.02], [0.04, 0.045, 0.02], [0.06, 0.035, 0.02], [0.03, 0.03, 0.032], [0.05, 0.02, 0.05], [0.03, 0.04, 0.05]];
+// the dark hues the clothes take on (linear): black and charcoal most, a muted navy, maroon, olive,
+// brown and slate
+const DYES = [[0.018, 0.018, 0.02], [0.03, 0.03, 0.032], [0.045, 0.044, 0.042], [0.025, 0.03, 0.048], [0.055, 0.022, 0.024], [0.04, 0.042, 0.026], [0.05, 0.036, 0.026], [0.032, 0.038, 0.044]];
 
 /**
  * The stands round the hall (TIERS): stepped rows of concrete, stair aisles with a light on every
@@ -1167,19 +1167,36 @@ function buildStands(scene, { small, steel, atlas }) {
     const [x, z] = [seats.pos[i * 3], seats.pos[i * 3 + 2]];
     const far = (farness[i] = farOf(x, z));
     const block = Math.floor((Math.atan2(z, x) * Math.hypot(x, z)) / 1.6); // stretches of four seats
-    const gap = far > 0 && seed(seats.tier[i], seats.row[i] >> 1, block) < 0.12 ? 0.6 : 0;
-    if (Math.random() < 0.1 + far * (0.05 + gap)) empty.push(i);
+    const gap = far > 0 && seed(seats.tier[i], seats.row[i] >> 1, block) < 0.08 ? 0.4 : 0;
+    if (Math.random() < 0.07 + far * (0.03 + gap)) empty.push(i);
     else if (Math.random() < shown[seats.tier[i]]) full.push(i);
   }
   const mood = { uRoar: { value: 0.3 }, uMove: { value: 1 } };
 
   /** The people from the atlas: a billboard each, turned round the vertical to the camera, lit through
-   *  its normal map by the hall's light; red fans mostly on the left, green on the right. pose() sets
-   *  each one's pose from the hall's mood (each has its own draws, so they change one by one as the mood
-   *  does); clapping (two cells in turn) and cheering (a little bob) move in the shader. */
+   *  its normal map by the hall's light; red fans mostly on the left, green on the right, no one next to
+   *  their own copy. Each sits in one pose and changes it only when their side's mood does (see pose()),
+   *  over half a second to a second, one after another; the shader blends the old picture into the new
+   *  one and moves it up or down as they rise or sit. At rest they live a little: they breathe, sway,
+   *  now and then lean in, turn to a neighbour or look at a phone. */
   const atlasPeople = () => {
     const { cells } = atlas;
     const n = full.length;
+    // the atlas's people and frames (cell = person * FR + frame); a pose's frame by its name
+    const kinds = cells.filter((c) => c.person != null);
+    const PEOPLE = Math.max(...kinds.map((c) => c.person)) + 1;
+    const FR = Math.max(...kinds.map((c) => c.frame)) + 1;
+    const cellOf = new Int16Array(PEOPLE * FR).fill(-1);
+    cells.forEach((c, i) => c.person != null && (cellOf[c.person * FR + c.frame] = i));
+    const fr = (pose, k = 0, or = 0) => kinds.filter((c) => c.person === 0 && c.pose === pose)[k]?.frame ?? or;
+    const F = {
+      seated: fr('seated'), seated2: fr('seated', 1), clap: fr('seated_clap'), lean: fr('seated_lean'), seatedCheer: fr('seated_cheer'),
+      seatedPhone: fr('seated_phone'), standing: fr('standing'), cheer: fr('standing_cheer'), fist: fr('standing_fist'),
+      standingPhone: fr('standing_phone'), talk: fr('seated_talk', 0, fr('seated', 1)), dejected: fr('seated_dejected', 0, fr('seated_lean')),
+      standClap: fr('standing_clap', 0, fr('standing')),
+    };
+    const fanOf = (k) => FANS[k].filter((p) => p < PEOPLE);
+    const fans = { red: fanOf('red'), green: fanOf('green'), none: Array.from({ length: PEOPLE }, (_, p) => p).filter((p) => !FANS.red.includes(p) && !FANS.green.includes(p)) };
     // the cells for the shader: row 0 the uv rect, row 1 the size in metres and the anchor
     const table = new Float32Array(cells.length * 8);
     cells.forEach((c, i) => {
@@ -1191,11 +1208,18 @@ function buildStands(scene, { small, steel, atlas }) {
     const pos = new Float32Array(n * 3);
     const look = new Float32Array(n * 4); // brightness, mirrored (-1) or not, a phase, a size
     const dye = new Float32Array(n * 3); // a dark hue their clothes take on, so no two copies match
-    const vary = new Float32Array(n * 4); // a light shirt (1) or not, the light where they sit, a hue for the skin, standing out
-    const cell = new Float32Array(n * 3); // the pose's cell, the one it swaps with (clapping), 1 clapping or 2 cheering
+    const vary = new Float32Array(n * 4); // a light shirt (1) or not, the light where they sit, a hue for the skin, a hue for the hair
+    const act = new Float32Array(n * 4); // the cell they come from, the one they go to, when the change starts, how they move (1 clapping, 2 cheering)
     const who = new Uint8Array(n);
     const draw = new Float32Array(n * 4);
+    const idle = new Uint8Array(n); // their pose at rest
+    const frame = new Uint8Array(n); // the frame they are in (or going to)
+    const side = new Int8Array(n);
     const any = (l) => l[Math.floor(Math.random() * l.length)];
+    // no one beside or straight behind their own copy: the last few people along the row and the row in
+    // front, by stretches of the row
+    const near = new Map();
+    const key = (s, dr, a) => `${seats.tier[s]}:${seats.row[s] + dr}:${a}`;
     full.forEach((s, i) => {
       // a little off the seat's middle, so the rows do not read as a grid; in the far stand more so,
       // each row slid along a little against the next
@@ -1203,23 +1227,36 @@ function buildStands(scene, { small, steel, atlas }) {
       const rad = Math.hypot(x, z);
       const far = farness[s];
       const along = (Math.random() - 0.5) * (0.2 + 0.14 * far) + (seed(seats.tier[s], seats.row[s], 7) - 0.5) * 0.3 * far;
-      const out = 1 + (Math.random() - 0.5) * 0.2 / rad;
-      pos.set([(x - (z / rad) * along) * out, y - Math.random() * (0.06 + 0.06 * far), (z + (x / rad) * along) * out], i * 3);
+      const out = 1 + ((Math.random() - 0.5) * 0.16) / rad;
+      pos.set([(x - (z / rad) * along) * out, y - Math.random() * (0.05 + 0.06 * far), (z + (x / rad) * along) * out], i * 3);
+      side[i] = seats.side[s];
       const [red, green] = FAN_SHARE[seats.side[s] + 1];
-      const r = Math.random();
-      who[i] = r < red ? any(FANS.red) : r < red + green ? any(FANS.green) : any(FANS.none);
-      // life size and a little over (the hall is built big), each a touch different; most a dark mass,
-      // some caught bright by the lamps
+      const a = Math.round((Math.atan2(z, x) * rad) / 0.5);
+      const taken = new Set([-2, -1, 0, 1, 2].flatMap((da) => [near.get(key(s, 0, a + da)), near.get(key(s, -1, a + da))]));
+      for (let tries = 0; tries < 12; tries++) {
+        const r = Math.random();
+        who[i] = r < red ? any(fans.red) : r < red + green ? any(fans.green) : any(fans.none);
+        if (!taken.has(who[i])) break;
+      }
+      near.set(key(s, 0, a), who[i]);
+      // a touch under life size (the seats are tight), each a little different; most a dark mass, some
+      // caught bright by the lamps; in the far stand children and tall ones too
       const lit = Math.random();
-      const bright = 0.5 + 0.75 * lit * lit + Math.random() * 0.12;
-      // the far stand: more people in the dark, a few caught bright, children and tall ones
-      const size = far ? 0.74 + Math.random() * 0.22 + (Math.random() - 0.5) * 0.24 * far : 0.74 + Math.random() * 0.22;
-      look.set([THREE.MathUtils.lerp(bright, 0.3 + 1.1 * lit * lit * lit + Math.random() * 0.1, far), Math.random() < 0.5 ? 1 : -1, Math.random(), size], i * 4);
+      const bright = 0.55 + 0.7 * lit * lit + Math.random() * 0.1;
+      const size = 0.76 + Math.random() * 0.2 + (Math.random() - 0.5) * 0.2 * far;
+      look.set([THREE.MathUtils.lerp(bright, 0.5 + 0.9 * lit * lit * lit + Math.random() * 0.1, far), Math.random() < 0.5 ? 1 : -1, Math.random(), size], i * 4);
       dye.set(DYES[Math.floor(Math.random() * DYES.length)], i * 3);
-      vary.set([Math.random() < 0.24 + 0.1 * far ? 1 : 0, Math.random(), Math.random(), Math.random()], i * 4);
-      // some in the far stand are on their feet whatever the hall does
-      draw.set([Math.random(), Math.random() < 0.08 * far ? Math.random() * 0.03 : Math.random(), Math.random(), Math.random()], i * 4);
+      vary.set([Math.random() < 0.22 + 0.1 * far ? 1 : 0, Math.random(), Math.random(), Math.random()], i * 4);
+      draw.set([Math.random(), Math.random(), Math.random(), Math.random()], i * 4);
+      idle[i] = restPose(draw[i * 4], Math.random(), draw[i * 4 + 3]);
     });
+    /** A pose at rest: mostly sitting back, some leaning in, turned to a neighbour, or on a phone. */
+    function restPose(a, r, d) {
+      if (a < 0.03) return F.seatedPhone;
+      if (r < 0.08) return F.lean;
+      if (r < 0.15) return F.talk;
+      return d < 0.5 ? F.seated : F.seated2;
+    }
     const quad = new THREE.PlaneGeometry(1, 1).translate(0.5, 0.5, 0);
     const geo = new THREE.InstancedBufferGeometry();
     geo.index = quad.index;
@@ -1228,95 +1265,131 @@ function buildStands(scene, { small, steel, atlas }) {
     geo.setAttribute('iLook', new THREE.InstancedBufferAttribute(look, 4));
     geo.setAttribute('iDye', new THREE.InstancedBufferAttribute(dye, 3));
     geo.setAttribute('iVary', new THREE.InstancedBufferAttribute(vary, 4));
-    geo.setAttribute('iCell', new THREE.InstancedBufferAttribute(cell, 3).setUsage(THREE.DynamicDrawUsage));
+    geo.setAttribute('iAct', new THREE.InstancedBufferAttribute(act, 4).setUsage(THREE.DynamicDrawUsage));
     geo.instanceCount = n;
     const mat = new THREE.ShaderMaterial({
       defines: { POOLS, SOFT: small ? 0 : 1 },
-      uniforms: { ...light, ...common, ...mood, uRig: { value: 1.05 }, uCells: { value: cellTex }, uMap: { value: atlas.map }, uNormal: { value: atlas.normal } },
+      uniforms: { ...light, ...common, ...mood, uCells: { value: cellTex }, uMap: { value: atlas.map }, uNormal: { value: atlas.normal } },
       alphaToCoverage: !small,
       side: THREE.DoubleSide, // a mirrored one turns its back
-      vertexShader: `attribute vec3 iPos; attribute vec4 iLook; attribute vec3 iCell; attribute vec3 iDye; attribute vec4 iVary; uniform sampler2D uCells; uniform float uTime; uniform float uMove; uniform float uRig;
-        varying vec2 vUv; varying float vD; flat varying vec3 vRight; flat varying vec3 vToCam; flat varying vec3 vDye; flat varying vec4 vVary;
-        flat varying vec3 vHall; flat varying vec3 vRigL; flat varying vec3 vToRig; flat varying vec3 vFace; flat varying vec3 vWash; flat varying float vRise; flat varying vec2 vHaze;
+      vertexShader: `attribute vec3 iPos; attribute vec4 iLook; attribute vec4 iAct; attribute vec3 iDye; attribute vec4 iVary; uniform sampler2D uCells; uniform float uTime; uniform float uMove;
+        varying vec4 vUv; varying vec4 vLoc; varying float vD; flat varying float vK; flat varying vec3 vRight; flat varying vec3 vToCam; flat varying vec3 vDye; flat varying vec4 vVary;
+        flat varying vec3 vKey; flat varying vec3 vAmb; flat varying vec3 vRim; flat varying vec3 vToRig; flat varying vec3 vFace; flat varying vec4 vHaze;
         ${HALL_LIGHT}
         void main() {
-          float clap = uMove * step(0.5, iCell.z) * step(iCell.z, 1.5) * step(0.5, fract(uTime * 1.7 + iLook.z * 7.0));
-          int c = int(mix(iCell.x, iCell.y, clap) + 0.5);
-          vec4 uvr = texelFetch(uCells, ivec2(c, 0), 0);
-          vec4 sa = texelFetch(uCells, ivec2(c, 1), 0);
+          // the change of pose: the old picture fades into the new one while both slide towards the new
+          // height (rising or sitting down); the quad covers both
+          float ph = iLook.z;
+          float k = smoothstep(iAct.z, iAct.z + 0.55 + 0.45 * ph, uTime);
+          vec4 uv0 = texelFetch(uCells, ivec2(int(iAct.x + 0.5), 0), 0);
+          vec4 sa0 = texelFetch(uCells, ivec2(int(iAct.x + 0.5), 1), 0);
+          vec4 uv1 = texelFetch(uCells, ivec2(int(iAct.y + 0.5), 0), 0);
+          vec4 sa1 = texelFetch(uCells, ivec2(int(iAct.y + 0.5), 1), 0);
+          vec2 s0 = sa0.xy * iLook.w;
+          vec2 s1 = sa1.xy * iLook.w;
+          vec2 lo0 = -sa0.zw * s0, hi0 = (1.0 - sa0.zw) * s0;
+          vec2 lo1 = -sa1.zw * s1, hi1 = (1.0 - sa1.zw) * s1;
+          float dy0 = k * (hi1.y - hi0.y) * 0.35;
+          float dy1 = (1.0 - k) * (hi0.y - hi1.y) * 0.35;
+          float mid = step(0.0001, k) * step(k, 0.9999);
+          vec2 lo = mix(k < 0.5 ? lo0 : lo1, min(lo0 + vec2(0.0, dy0), lo1 + vec2(0.0, dy1)), mid);
+          vec2 hi = mix(k < 0.5 ? hi0 : hi1, max(hi0 + vec2(0.0, dy0), hi1 + vec2(0.0, dy1)), mid);
+          vec2 q = mix(lo, hi, position.xy); // metres from the anchor
+          vec2 l0 = (q - vec2(0.0, dy0 * mid)) / s0 + sa0.zw;
+          vec2 l1 = (q - vec2(0.0, dy1 * mid)) / s1 + sa1.zw;
+          vUv = vec4(mix(uv0.xy, uv0.zw, l0), mix(uv1.xy, uv1.zw, l1));
+          vLoc = vec4(l0, l1);
+          vK = mid > 0.5 ? k : step(0.5, k) * 2.0; // 2: only the new picture, 0: only the old
+          // alive: breathing, a slow sway of their own; clapping a small quick bounce, cheering a bob
+          float t = uTime + ph * 60.0;
+          float mv = iAct.w;
+          float bob = uMove * (0.006 * sin(t * 1.5) + step(0.5, mv) * step(mv, 1.5) * 0.012 * abs(sin(t * 6.0)) + step(1.5, mv) * 0.03 * (0.5 + 0.5 * sin(t * 2.3)));
+          float sway = uMove * 0.012 * sin(t * 0.37) * smoothstep(0.3, 1.0, q.y);
           vec2 toCam = normalize(cameraPosition.xz - iPos.xz + vec2(0.0001));
           vec3 right = vec3(toCam.y, 0.0, -toCam.x);
-          float bob = uMove * step(1.5, iCell.z) * (0.5 + 0.5 * sin(uTime * 2.2 + iLook.z * 40.0)) * 0.03;
-          vec2 size = sa.xy * iLook.w;
-          vec3 w = iPos + right * (position.x - sa.z) * size.x * iLook.y + vec3(0.0, (position.y - sa.w) * size.y + bob, 0.0);
-          vUv = mix(uvr.xy, uvr.zw, position.xy);
+          vec3 w = iPos + right * (q.x + sway) * iLook.y + vec3(0.0, q.y * (1.0 + 0.004 * uMove * sin(t * 1.5)) + bob, 0.0);
           vRight = right * iLook.y;
           vToCam = vec3(toCam.x, 0.0, toCam.y);
           vDye = iDye;
           vVary = iVary;
-          // the light on this person, once for them all (the picture's normals shade it per pixel): the
-          // hall's, filtered through each half's colour (people lit red on the left and green on the
-          // right, their own colours still showing); the rig's lamps over the ring, from above and in
-          // front, brightest where the beams fall (patches that drift slowly round the hall), the half's
-          // colour in them; the front rows and the far stand most, the high corners least
+          // the light on this person, once for them all (the picture's normals shade it per pixel):
+          // the truss's white from above and in front, brightest in the pools the lamps leave on the
+          // stands (patches that drift slowly round the hall) and on the first rows; the half's colour
+          // (red left, green right) as a wash and on their edges, not dyed into skin and clothes; the far
+          // stand dark between its pools; higher up, everything sinks into the coloured haze
           float r = length(iPos.xz);
           vec2 d = iPos.xz / r;
           float redW = smoothstep(0.1, 0.65, -d.x);
           float greenW = smoothstep(0.1, 0.65, d.x);
-          vec3 filt = mix(vec3(1.0), vec3(1.4, 0.56, 0.52), redW) * mix(vec3(1.0), vec3(0.52, 1.06, 0.6), greenW);
+          float far = smoothstep(0.2, 0.8, -d.y) * (1.0 - redW - greenW);
+          vec3 sideCol = uRed * redW * (0.55 + uExc.x) + uGreen * greenW * (0.45 + uExc.y) * 0.75 + vec3(0.55, 0.58, 0.7) * (1.0 - redW - greenW) * 0.35;
           vFace = normalize(vec3(-d.x, 0.35, -d.y));
-          vec3 head = iPos + vec3(0.0, 1.1, 0.0);
-          vHall = hallLight(head, vFace) * 12.0 * filt * iLook.x;
-          float rise = smoothstep(1.0, 9.0, iPos.y);
-          vRise = rise;
+          vec3 head = iPos + vec3(0.0, 1.0, 0.0);
+          float rise = smoothstep(1.0, 17.0, iPos.y);
           vToRig = normalize(vec3(-d.x * max(r - 9.0, 1.0), 9.5 - head.y, -d.y * max(r - 9.0, 1.0)));
           float ang = atan(iPos.z, iPos.x);
           float pool = 0.5 + 0.5 * sin(ang * 11.0 + iPos.y * 0.45 + uTime * 0.12) * sin(ang * 5.0 - iPos.y * 0.6 + 1.7 - uTime * 0.09);
-          float far = smoothstep(0.2, 0.8, -d.y) * (1.0 - redW - greenW);
-          vec3 rigCol = mix(vec3(1.0, 0.95, 0.9), filt * vec3(0.72, 0.8, 0.8), 0.9 * (redW + greenW));
-          float front = exp(-max(r - ${STANDS_R.toFixed(2)}, 0.0) * 0.35) * (1.0 - far); // the first rows, in the ring's spill
-          // the far stand, behind the board: dark between the pools the lamps leave on it, a few people
-          // caught bright, darker and lost in the haze the further back they sit
+          float front = exp(-max(r - ${STANDS_R.toFixed(2)}, 0.0) * 0.32) * (1.0 - far);
           float deep = smoothstep(${STANDS_R.toFixed(2)}, ${(STANDS_R + 14).toFixed(2)}, r);
-          float rigK = mix(0.2 + 1.1 * pool * pool + front * 0.9, 0.18 + 1.9 * pool * pool * pool, far);
-          float each = mix(0.75 + 0.5 * iVary.y, 0.35 + 1.3 * iVary.y * iVary.y, far);
-          vRigL = rigCol * rigK * uRig * (1.0 - rise * 0.45 + far * 0.2) * each * iLook.x * (1.0 - 0.5 * far * deep);
-          vHall *= 1.0 - 0.45 * far * deep;
-          vHaze = vec2(far * (0.22 + 0.4 * deep), pool);
-          vWash = (uRed * redW + uGreen * greenW * 0.85) * uGain * (1.0 - rise * 0.5);
-          vec4 mv = viewMatrix * vec4(w, 1.0);
-          vD = -mv.z;
-          gl_Position = projectionMatrix * mv;
+          float each = mix(0.7 + 0.6 * iVary.y, 0.5 + 1.1 * iVary.y * iVary.y, far);
+          float keyK = (0.34 + 1.0 * pool * pool + front * 0.8) * (1.0 - rise * 0.3) * mix(1.0, 0.8 + 0.6 * pool, far) * each * iLook.x;
+          vec3 hall = hallLight(head, vFace); // the dim ambient, the half's light low down, the fans' pools
+          float hl = dot(hall, vec3(0.3333));
+          vKey = vec3(1.0, 0.93, 0.85) * keyK * 1.05 + mix(vec3(hl), hall, 0.45) * 9.0 * iLook.x;
+          vAmb = (vec3(0.022, 0.023, 0.03) + sideCol * 0.05 * (1.0 - rise * 0.3)) * iLook.x;
+          vRim = sideCol * (0.3 + 0.35 * front + 0.25 * pool) * (1.0 - far * 0.5) * iLook.x;
+          // the haze: how much (the far stand and the upper tiers most), and its colour (the half's,
+          // lighter where a lamp's beam goes through)
+          float hz = clamp(0.05 + rise * 0.24 + far * (0.08 + 0.16 * deep) + deep * 0.08, 0.0, 0.55);
+          vHaze = vec4((vec3(0.024, 0.026, 0.034) + sideCol * 0.045) * (0.45 + 1.5 * pool), hz);
+          vec4 mv4 = viewMatrix * vec4(w, 1.0);
+          vD = -mv4.z;
+          gl_Position = projectionMatrix * mv4;
         }`,
-      fragmentShader: `uniform sampler2D uMap; uniform sampler2D uNormal; uniform vec3 fogColor; uniform float mirrorPass; uniform vec3 uRed; uniform vec3 uGreen;
-        varying vec2 vUv; varying float vD; flat varying vec3 vRight; flat varying vec3 vToCam; flat varying vec3 vDye; flat varying vec4 vVary;
-        flat varying vec3 vHall; flat varying vec3 vRigL; flat varying vec3 vToRig; flat varying vec3 vFace; flat varying vec3 vWash; flat varying float vRise; flat varying vec2 vHaze;
+      fragmentShader: `uniform sampler2D uMap; uniform sampler2D uNormal; uniform vec3 fogColor; uniform float mirrorPass;
+        varying vec4 vUv; varying vec4 vLoc; varying float vD; flat varying float vK; flat varying vec3 vRight; flat varying vec3 vToCam; flat varying vec3 vDye; flat varying vec4 vVary;
+        flat varying vec3 vKey; flat varying vec3 vAmb; flat varying vec3 vRim; flat varying vec3 vToRig; flat varying vec3 vFace; flat varying vec4 vHaze;
+        float inside(vec2 l) { return step(0.0, l.x) * step(l.x, 1.0) * step(0.0, l.y) * step(l.y, 1.0); }
         void main() {
-          vec4 a = texture2D(uMap, vUv);
+          vec4 a;
+          vec3 nt;
+          if (vK > 1.5) {
+            a = texture2D(uMap, vUv.zw);
+            nt = texture2D(uNormal, vUv.zw).xyz;
+          } else if (vK < 0.0001) {
+            a = texture2D(uMap, vUv.xy);
+            nt = texture2D(uNormal, vUv.xy).xyz;
+          } else {
+            // between two poses: both pictures, each only inside its own cell
+            vec4 a0 = texture2D(uMap, vUv.xy);
+            vec4 a1 = texture2D(uMap, vUv.zw);
+            a0.a *= inside(vLoc.xy) * (1.0 - vK);
+            a1.a *= inside(vLoc.zw) * vK;
+            float t = a1.a / max(a0.a + a1.a, 0.0001);
+            a = vec4(mix(a0.rgb, a1.rgb, t), min(1.0, a0.a + a1.a));
+            nt = mix(texture2D(uNormal, vUv.xy).xyz, texture2D(uNormal, vUv.zw).xyz, t);
+          }
           #if SOFT
           if (a.a < 0.1) discard;
           #else
           if (a.a < 0.5) discard;
           #endif
-          // most clothes go darker and take this person's own dark hue; now and then a light shirt
-          // stays light; skin (unlike the clothes and the fans' colours) a shade down, a little warmer or
+          // most clothes go darker and take this person's own dark hue; now and then a light shirt stays
+          // light; skin (unlike the clothes and the fans' colours) a shade down, a little warmer or
           // cooler from one to the next, so no face is a pale mask
           float lum = dot(a.rgb, vec3(0.33));
           float cloth = 1.0 - smoothstep(0.2, 0.45, (a.r - a.b) / (a.r + 0.02));
-          vec3 dark = mix(a.rgb * mix(1.0, 0.55, smoothstep(0.2, 0.6, lum)), vDye * (0.6 + lum * 2.2), 0.35) * 1.25;
-          vec3 c = mix(a.rgb * mix(vec3(1.04, 0.94, 0.88), vec3(0.86, 0.9, 0.98), vVary.z) * 0.46, mix(dark, a.rgb * 0.95, vVary.x), cloth);
-          c = min(c, vec3(mix(0.2, 1.0, cloth)));
+          vec3 dark = mix(a.rgb * mix(1.0, 0.6, smoothstep(0.2, 0.6, lum)), vDye * (0.6 + lum * 2.2), 0.35) * 1.5;
+          vec3 c = mix(a.rgb * mix(vec3(1.0, 0.86, 0.78), vec3(0.82, 0.8, 0.84), vVary.z) * 0.3, mix(dark, a.rgb * 0.9, vVary.x), cloth);
+          c = mix(vec3(dot(c, vec3(0.3333))), c, mix(1.0, 0.72, cloth)); // the fans' colours muted, as cloth in a dark hall
+          c = min(c, vec3(mix(0.24, 1.0, cloth)));
           // the normal in the picture's frame: x along it, y up, z towards the camera
-          vec3 n = texture2D(uNormal, vUv).xyz * 2.0 - 1.0;
+          vec3 n = nt * 2.0 - 1.0;
           vec3 N = normalize(vRight * n.x + vec3(0.0, n.y, 0.0) + vToCam * n.z);
-          float wrap = max(dot(N, vToRig) * 0.65 + 0.35, 0.0);
-          vec3 col = c * (vHall * (0.55 + 0.6 * max(dot(N, vFace), 0.0)) + vRigL * (wrap + max(N.y, 0.0) * 0.6));
-          // the half's colour washing over them (the crowd is a red mass on the left, a green one on
-          // the right); higher up they melt into the coloured haze
-          col += vWash * (lum * 0.12 + 0.005) * mix(0.35, 1.0, cloth);
-          col = mix(col, vWash * 0.02 + fogColor, vRise * 0.3);
-          // the far stand seen through the hall's haze: a cool grey veil, lighter where a lamp falls
-          col = mix(col, vec3(0.026, 0.03, 0.042) * (0.6 + 1.4 * vHaze.y), vHaze.x);
+          float wrap = max(dot(N, vToRig) * 0.6 + 0.4, 0.0);
+          float edge = pow(clamp(1.0 - abs(n.z), 0.0, 1.0), 2.0);
+          vec3 col = c * (vAmb + vKey * (wrap + max(N.y, 0.0) * 0.35)) + vRim * (edge * (0.4 + 0.6 * max(dot(N, vFace), 0.0)) + 0.06) * (0.5 + lum);
+          col = mix(col, vHaze.rgb, vHaze.a);
           ${HAZE}
           gl_FragColor = vec4(col, a.a);
         }`,
@@ -1324,60 +1397,105 @@ function buildStands(scene, { small, steel, atlas }) {
     const stretch = 1 / Math.cos(THREE.MathUtils.degToRad(atlas.elev)); // the pictures are seen from above
     const off = new Float32Array(n * 2);
     const holds = new Uint8Array(n);
-    let last = null;
-    // a change of mood is worked through a slice of the crowd a frame (thousands of people), so no frame
-    // carries it all; returns true when a pass is done
-    const SLICE = 3500;
-    let cursor = n;
-    let moodNow = null;
-    // the mood is read in steps, and once people have changed they hold their poses a while: a hall
-    // that followed every flicker of the roar would sit down and stand up again all the time
-    const STEP = 0.2;
-    const HOLD = 6000;
-    let lastAt = -Infinity;
-    const pose = (roar, exc, still) => {
-      if (cursor >= n) {
-        const now = [roar, exc.red, exc.blue].map((v) => Math.round(v / STEP) * STEP);
-        if (last && (now.every((v, k) => v === last[k]) || performance.now() - lastAt < HOLD)) return false;
-        last = now;
-        lastAt = performance.now();
-        moodNow = { roar: now[0], red: now[1], blue: now[2] };
-        cursor = 0;
-      }
-      ({ roar } = moodNow);
-      exc = { red: moodNow.red, blue: moodNow.blue };
-      const from = cursor;
-      const to = Math.min(n, cursor + (still ? n : SLICE));
-      for (let i = from; i < to; i++) {
-        const s = full[i];
-        const side = seats.side[s];
-        const sideExc = side < 0 ? exc.red : side > 0 ? exc.blue : (exc.red + exc.blue) / 2;
-        const up = THREE.MathUtils.clamp(roar * (1 - seats.tier[s] * 0.25) + sideExc * 0.3 - 0.1, 0, 1);
-        const [a, b, c, d] = draw.subarray(i * 4, i * 4 + 4);
-        const phone = a < 0.03 + up * 0.07;
-        const sit = d < 0.5 ? F.seated : F.seated2;
-        let f = sit;
-        let swap = f;
-        if (b < 0.03 + up * 0.45) f = phone ? F.standingPhone : c < up * 0.6 ? (d < 0.5 ? F.cheer : F.fist) : F.standing;
-        else if (phone) f = F.seatedPhone;
-        else if (c < 0.08) f = F.lean;
-        else if (c < 0.08 + up * 0.6) swap = F.clap;
-        else if (c < 0.08 + up * 0.75) f = F.seatedCheer;
-        const base = who[i] * 10;
-        const move = swap !== f ? 1 : f === F.cheer || f === F.fist || f === F.seatedCheer ? 2 : 0;
-        cell.set([base + f, base + swap, move], i * 3);
-        holds[i] = +phone;
-        // the phone: in the hand in the picture, or (a flash from someone with none drawn) before the face
-        const k = cells[base + f];
+    /** Person i to `f` (with its move), from `at` on; returns true if anything changed. */
+    const placed = new Uint8Array(n);
+    const set = (i, f, move, at, reduced) => {
+      const to = cellOf[who[i] * FR + f];
+      const was = act[i * 4 + 1];
+      if (placed[i] && to === was && act[i * 4 + 3] === move) return false;
+      act.set([reduced || !placed[i] ? to : was, to, reduced || !placed[i] ? -1 : at, move], i * 4);
+      placed[i] = 1;
+      frame[i] = f;
+      // the phone: in the hand in the picture (a pose without one leaves its light where it was, to fade)
+      const k = cells[to];
+      holds[i] = k.torch ? 1 : 0;
+      if (k.torch) {
         const sz = look[i * 4 + 3];
-        off[i * 2] = k.torch ? (k.torch[0] - k.anchor[0]) * k.size[0] * sz * look[i * 4 + 1] : 0;
-        off[i * 2 + 1] = k.torch ? (k.torch[1] - k.anchor[1]) * k.size[1] * sz : (k.headTop - 0.2) * sz * stretch;
+        off[i * 2] = (k.torch[0] - k.anchor[0]) * k.size[0] * sz * look[i * 4 + 1];
+        off[i * 2 + 1] = (k.torch[1] - k.anchor[1]) * k.size[1] * sz;
+      } else if (!off[i * 2 + 1]) off[i * 2 + 1] = (k.headTop - 0.2) * look[i * 4 + 3] * stretch;
+      return true;
+    };
+    /** Person i's pose for their side's mood: `lvl` 0 calm .. 1 on its feet, `mode` 'win' | 'lose' | ''. */
+    const choose = (i, lvl, mode) => {
+      const [a, b, c, d] = draw.subarray(i * 4, i * 4 + 4);
+      const sit = d < 0.5 ? F.seated : F.seated2;
+      const rest = idle[i];
+      // a few in the back rows and the far stand stand the whole time (not on the losing side)
+      const s = full[i];
+      const stander = b < 0.006 + 0.02 * farness[s] + 0.0012 * seats.row[s];
+      if (mode === 'lose') {
+        // seated, nobody cheers: hands on heads, leaning in, talking it over
+        if (c < 0.16) return [F.dejected, 0];
+        if (c < 0.26) return [F.lean, 0];
+        if (c < 0.33) return [F.talk, 0];
+        return [rest === F.seatedPhone || rest === F.talk ? sit : rest, 0];
       }
-      cursor = to;
-      const attr = geo.attributes.iCell;
-      attr.addUpdateRange(from * 3, (to - from) * 3);
-      attr.needsUpdate = true;
-      return cursor >= n;
+      const up = mode === 'win' ? 1 : lvl;
+      const standShare = mode === 'win' ? 0.72 : up * 0.3;
+      if (b < standShare || stander) {
+        if (!(b < standShare)) return [F.standing, 0];
+        if (a < 0.08) return [F.standingPhone, 0];
+        if (c < 0.5 * up) return [d < 0.5 ? F.cheer : F.fist, 2];
+        if (c < 0.8 * up) return [F.standClap, 1];
+        return [F.standing, 0];
+      }
+      if (c < up * 0.5) return [F.clap, 1];
+      if (c < up * 0.68) return [F.seatedCheer, 2];
+      if (a < 0.03 + up * 0.06) return [F.seatedPhone, 0];
+      return [rest, 0];
+    };
+    // the mood of each half (red, the ends and the far stand, green), read in steps: a half reacts soon
+    // when its mood rises and settles down slowly; between changes people hold their poses
+    const STEP = 0.2;
+    const RISE_HOLD = 1500;
+    const HOLD = 6000;
+    const halves = [-1, 0, 1].map((s) => ({ s, lvl: -1, mode: null, at: -Infinity }));
+    let winLatch = null;
+    let lifeAt = 0;
+    const pose = (t, roar, exc, reduced, winner) => {
+      // who won: as the scene says, or (until it does) the half that roars when the hall is on its feet
+      if (roar < 0.95) winLatch = null;
+      else if (winner) winLatch = winner;
+      else if (!winLatch && Math.abs(exc.red - exc.blue) > 0.2) winLatch = exc.red > exc.blue ? 'red' : 'blue';
+      const lvlOf = (e) => THREE.MathUtils.clamp((e - 0.4) / 0.6, 0, 1) * (roar < 0.25 ? 0.8 : 1) + (roar > 0.6 && roar < 0.95 ? 0.12 : 0);
+      const red = lvlOf(exc.red);
+      const green = lvlOf(exc.blue);
+      const now = performance.now();
+      let changed = false;
+      for (const h of halves) {
+        const raw = h.s < 0 ? red : h.s > 0 ? green : 0.5 * Math.max(red, green);
+        const win = winLatch ? (h.s === 0 ? '' : (h.s < 0) === (winLatch === 'red') ? 'win' : 'lose') : '';
+        const lvl = Math.min(1, Math.round((winLatch && h.s === 0 ? Math.max(raw, 0.35) : raw) / STEP) * STEP);
+        const modeChanged = win !== h.mode;
+        if (!modeChanged && lvl === h.lvl) continue;
+        if (!modeChanged && now - h.at < (lvl > h.lvl ? RISE_HOLD : HOLD)) continue;
+        const rising = modeChanged ? win === 'win' : lvl > h.lvl;
+        h.lvl = lvl;
+        h.mode = win;
+        h.at = now;
+        for (let i = 0; i < n; i++) {
+          if (side[i] !== h.s) continue;
+          const [f, move] = choose(i, lvl, win);
+          // each in their own time: on their feet within a second or so, back down more slowly
+          const late = look[i * 4 + 2];
+          changed = set(i, f, move, t + (rising ? 0.1 + 1.1 * late * late : 0.4 + 2.6 * late), reduced) || changed;
+        }
+      }
+      // at rest, now and then someone leans in, turns to a neighbour, sits back or checks a phone
+      if (!reduced && t - lifeAt > 0.5) {
+        lifeAt = t;
+        const calm = new Set([F.seated, F.seated2, F.lean, F.talk, F.seatedPhone]);
+        for (let j = 0; j < n / 150; j++) {
+          const i = Math.floor(Math.random() * n);
+          const h = halves[side[i] + 1];
+          if (h.mode || h.lvl > 0.2 || !calm.has(frame[i])) continue;
+          idle[i] = restPose(draw[i * 4] < 0.1 && Math.random() < 0.3 ? 0 : 1, Math.random(), Math.random());
+          changed = set(i, idle[i], 0, t + Math.random(), reduced) || changed;
+        }
+      }
+      if (changed) geo.attributes.iAct.needsUpdate = true;
+      return changed;
     };
     return { mesh: new THREE.Mesh(geo, mat), pos, off, holds, pose, mayHold: (i) => draw[i * 4] < 0.1 };
   };
@@ -1506,8 +1624,8 @@ function buildStands(scene, { small, steel, atlas }) {
   seatMesh.layers.enable(MIRROR);
   scene.add(seatMesh);
 
-  // phones: some held up steady (filming), more that flash now and then, most when the hall roars.
-  // From the atlas, the steady ones are the people holding one up, at the phone in their picture
+  // phones: screens held up, lit and steady (filming), never blinking; they come on and go out slowly.
+  // From the atlas, they are the people holding one up, at the phone in their picture
   const phoneN = Math.min(full.length, small ? 300 : 1200);
   const order = full.map((_, i) => i).sort(() => Math.random() - 0.5);
   const pick = [...new Set([...order.filter((i) => people.mayHold?.(i)), ...order])].slice(0, phoneN);
@@ -1563,7 +1681,8 @@ function buildStands(scene, { small, steel, atlas }) {
   scene.add(phones);
   const steady = pick.map(() => !atlas && Math.random() < 0.4);
   // and in the far stand, a few held up the whole time, little points in its dark
-  const keep = pick.map((i) => farness[full[i]] > 0.5 && Math.random() < 0.12);
+  const keep = pick.map((i) => Math.random() < 0.07 + 0.12 * farness[full[i]]);
+  const shine = pick.map(() => 0.8 + Math.random() * 0.5); // each screen its own brightness
 
   return {
     seats: { count, pos: Float32Array.from(seats.pos), side: Int8Array.from(seats.side), tier: Uint8Array.from(seats.tier), row: Uint8Array.from(seats.row) },
@@ -1580,11 +1699,11 @@ function buildStands(scene, { small, steel, atlas }) {
     setPhoneSize(px) {
       phones.material.uniforms.uSize.value = px;
     },
-    update(t, dt, exc, roar, reduced) {
+    update(t, dt, exc, roar, reduced, winner) {
       light.uExc.value.set(exc.red, exc.blue);
       mood.uRoar.value = roar;
       mood.uMove.value = reduced ? 0 : 1;
-      if (people.pose?.(roar, exc, reduced)) {
+      if (people.pose?.(t, roar, exc, reduced, winner)) {
         // new poses: the phones follow the people holding one
         pick.forEach((i, n) => {
           pOff.set(people.off.subarray(i * 2, i * 2 + 2), n * 2);
@@ -1592,16 +1711,10 @@ function buildStands(scene, { small, steel, atlas }) {
         });
         phoneGeo.attributes.aOff.needsUpdate = true;
       }
-      const fade = Math.exp(-dt * 20); // a flash dies fast
-      const often = dt * (0.12 + roar * 1.1); // the chance of a flash this frame
+      const k = reduced ? 1 : Math.min(1, dt * 1.2);
       for (let i = 0; i < phoneN; i++) {
-        if (steady[i]) glow[i] = 1.4 + (reduced ? 0 : 0.3 * Math.sin(t * 0.7 + i));
-        else if (keep[i]) glow[i] = 2.3 + (reduced ? 0 : 0.4 * Math.sin(t * 0.5 + i));
-        else if (reduced) glow[i] = i % 40 ? 0 : 9; // no flashing: a few phones held up with their light on
-        else {
-          glow[i] *= fade;
-          if (Math.random() < often) glow[i] = 15;
-        }
+        const want = (steady[i] ? 2.0 : keep[i] ? 2.6 : 0) * shine[i];
+        glow[i] += (want - glow[i]) * k;
       }
       phoneGeo.attributes.aGlow.needsUpdate = true;
     },
@@ -2558,15 +2671,16 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring, eye, kit = n
       mirror.render(camera);
       MIRROR_PASS.value = 0;
     },
-    /** Each frame: `exc` each side's excitement, `roar` the hall's (0 calm, 1 on its feet). */
-    update(t, dt, exc, roar, reduced) {
+    /** Each frame: `exc` each side's excitement, `roar` the hall's (0 calm, 1 on its feet), `winner`
+     *  ('red' | 'blue' at the verdict): its half jumps up, the other stays seated. */
+    update(t, dt, exc, roar, reduced, winner = null) {
       TIME.value = reduced ? 0 : t; // the haze, the clapping, the phones' sway hold still
       if (!reduced) {
         fan.forEach((b) => aimFan(b, t));
         stands.setPools(pools);
       }
       lightFlares();
-      stands.update(t, dt, exc, roar, reduced);
+      stands.update(t, dt, exc, roar, reduced, winner);
     },
   };
 }
