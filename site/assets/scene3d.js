@@ -34,7 +34,7 @@ const WIDE = { az: 0, d: 21, h: 8.6, pitch: 0.34, fov: 33.6, shift: -0.2, x: 0 }
 const WIDE_TALL = { az: 0, d: 14.8, h: 8.8, pitch: 0.42, fov: 58, shift: 0, x: 0 };
 const WIDE_TAN = Math.tan((WIDE.fov * Math.PI) / 360) * (16 / 9);
 // once round the hall: closer, a little lower, in ORBIT_T seconds
-const ORBIT = { az: 0, d: 15.2, h: 6.4, pitch: 0.34, fov: 43, shift: -0.3, x: 0 };
+const ORBIT = { az: 0, d: 12.5, h: 5.2, pitch: 0.34, fov: 40, shift: -0.3, x: 0 };
 const ORBIT_TALL = { az: 0, d: 13.8, h: 8.2, pitch: 0.42, fov: 60, shift: 0, x: 0 };
 const ORBIT_T = 64;
 /** Between two views, share k of the way, turned az round the ring. */
@@ -588,7 +588,7 @@ export async function createScene(root) {
   const pixelRatio = Math.min(window.devicePixelRatio || 1, small ? 1.25 : 1.75);
   renderer.setPixelRatio(pixelRatio);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.15; // the hall is dark, but the ring, the floor and the stands read
+  renderer.toneMappingExposure = 1.3; // the hall is dark, but the ring, the floor and the stands read
   renderer.shadowMap.enabled = !small;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.domElement.className = 'gl';
@@ -608,7 +608,7 @@ export async function createScene(root) {
   scene.add(key);
   const spots = {};
   for (const side of ['red', 'blue']) {
-    const s = new THREE.SpotLight(side === 'red' ? 0xff3030 : 0x20f080, 1.7, 0, 0.36, 0.7, 0);
+    const s = new THREE.SpotLight(side === 'red' ? 0xff3030 : 0x20f080, 1.3, 0, 0.36, 0.7, 0);
     s.position.set(side === 'red' ? -7.2 : 7.2, TRUSS.y - 0.6, -1.8);
     scene.add(s, s.target);
     spots[side] = s;
@@ -619,7 +619,7 @@ export async function createScene(root) {
 
   // the hall: the ring, its apron, posts and ropes, the truss, the floor, the railing, the stands
   // (room.js)
-  const room = buildRoom(scene, renderer, { R: RING, FLOOR, small, ring: window.ARENA_CONFIG?.ring, ...assets });
+  const room = buildRoom(scene, renderer, { R: RING, FLOOR, small, ring: window.ARENA_CONFIG?.ring, eye: new THREE.Vector3(0, WIDE.h, WIDE.d), ...assets });
   const corner = (k) => new THREE.Vector3(RING * Math.cos((k * Math.PI) / 3), FLOOR, RING * Math.sin((k * Math.PI) / 3));
 
   // the scoreboard over the ring: an eight-sided box of black steel, the clock on its four wide faces,
@@ -730,7 +730,8 @@ export async function createScene(root) {
   washes.forEach((b) => aimBeam(b, b.from, b.to));
 
   // the fighters, their desks, and the referee
-  const SEAT = { red: { x: -2.15, z: 0.25, rot: 0.8 }, blue: { x: 2.15, z: 0.25, rot: -0.8 } };
+  // the stations back towards the far posts, turned in to the ring: the gold emblem shows whole between them
+  const SEAT = { red: { x: -2.7, z: -1.5, rot: 1.0 }, blue: { x: 2.7, z: -1.5, rot: -1.0 } };
   const fighters = {};
   for (const side of ['red', 'blue']) {
     const st = buildStation(side, M, assets.kit);
