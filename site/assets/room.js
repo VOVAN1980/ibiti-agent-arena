@@ -1240,13 +1240,13 @@ function buildStands(scene, { small, steel, atlas }) {
         flat varying vec3 vHall; flat varying vec3 vRigL; flat varying vec3 vToRig; flat varying vec3 vFace; flat varying vec3 vWash; flat varying float vRise; flat varying vec2 vHaze;
         ${HALL_LIGHT}
         void main() {
-          float clap = uMove * step(0.5, iCell.z) * step(iCell.z, 1.5) * step(0.5, fract(uTime * 2.6 + iLook.z * 7.0));
+          float clap = uMove * step(0.5, iCell.z) * step(iCell.z, 1.5) * step(0.5, fract(uTime * 1.7 + iLook.z * 7.0));
           int c = int(mix(iCell.x, iCell.y, clap) + 0.5);
           vec4 uvr = texelFetch(uCells, ivec2(c, 0), 0);
           vec4 sa = texelFetch(uCells, ivec2(c, 1), 0);
           vec2 toCam = normalize(cameraPosition.xz - iPos.xz + vec2(0.0001));
           vec3 right = vec3(toCam.y, 0.0, -toCam.x);
-          float bob = uMove * step(1.5, iCell.z) * abs(sin(uTime * 4.2 + iLook.z * 40.0)) * 0.035;
+          float bob = uMove * step(1.5, iCell.z) * (0.5 + 0.5 * sin(uTime * 2.2 + iLook.z * 40.0)) * 0.03;
           vec2 size = sa.xy * iLook.w;
           vec3 w = iPos + right * (position.x - sa.z) * size.x * iLook.y + vec3(0.0, (position.y - sa.w) * size.y + bob, 0.0);
           vUv = mix(uvr.xy, uvr.zw, position.xy);
@@ -1330,12 +1330,18 @@ function buildStands(scene, { small, steel, atlas }) {
     const SLICE = 3500;
     let cursor = n;
     let moodNow = null;
+    // the mood is read in steps, and once people have changed they hold their poses a while: a hall
+    // that followed every flicker of the roar would sit down and stand up again all the time
+    const STEP = 0.2;
+    const HOLD = 6000;
+    let lastAt = -Infinity;
     const pose = (roar, exc, still) => {
       if (cursor >= n) {
-        const now = [roar, exc.red, exc.blue];
-        if (last && now.every((v, k) => Math.abs(v - last[k]) < (still ? 0.25 : 0.02))) return false;
+        const now = [roar, exc.red, exc.blue].map((v) => Math.round(v / STEP) * STEP);
+        if (last && (now.every((v, k) => v === last[k]) || performance.now() - lastAt < HOLD)) return false;
         last = now;
-        moodNow = { roar, red: exc.red, blue: exc.blue };
+        lastAt = performance.now();
+        moodNow = { roar: now[0], red: now[1], blue: now[2] };
         cursor = 0;
       }
       ({ roar } = moodNow);
@@ -1412,7 +1418,7 @@ function buildStands(scene, { small, steel, atlas }) {
           float w = 0.78 * big;
           vec2 toCam = normalize(cameraPosition.xz - iPos.xz + vec2(0.0001));
           vec3 right = vec3(toCam.y, 0.0, -toCam.x);
-          float bob = uMove * arms * abs(sin(uTime * 5.5 + iData.x * 40.0)) * 0.07;
+          float bob = uMove * arms * (0.5 + 0.5 * sin(uTime * 2.6 + iData.x * 40.0)) * 0.05;
           vP = vec2(position.x * w, position.y * h) / big;
           vec3 p = iPos + right * position.x * w + vec3(0.0, position.y * h + bob, 0.0);
           vData = iData;
@@ -1445,7 +1451,7 @@ function buildStands(scene, { small, steel, atlas }) {
                                    : box(p - vec2(0.0, 0.32), vec2(0.18 * wide, 0.18), 0.08);
           float head = (length((p - hc) / vec2(0.105, 0.128)) - 1.0) * 0.105;
           float neck = box(p - vec2(0.0, sh), vec2(0.045, 0.06), 0.02);
-          float sway = uMove * sin(uTime * 3.0 + s) * 0.06;
+          float sway = uMove * sin(uTime * 1.4 + s) * 0.05;
           vec2 l0 = vec2(-0.22 * wide, sh - 0.06);
           vec2 r0 = vec2(0.22 * wide, sh - 0.06);
           vec2 le = vec2(-0.32 + sway, sh + 0.28);
