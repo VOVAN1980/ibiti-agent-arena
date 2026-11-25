@@ -1357,6 +1357,7 @@ export async function createScene(root) {
           state.lastTaunt = t;
           f.act = { kind: 'taunt', since: t, len: 2.4, gesture: pick(lap.taunts) };
           moment('taunt', side);
+          state.exc[side] = Math.max(state.exc[side], 0.8); // its own stand answers the taunt
           // two times in three the other answers, a moment later
           if (f.dice % 3) other.act = { kind: 'answer', from: t + 0.7, since: t, len: 1.9, gesture: LAPS[otherSide].answers[f.dice % LAPS[otherSide].answers.length] };
         } else if (roll < lap.stops + 20 && tt > 8 && t - (f.lastClimb ?? -99) > 30) {
@@ -1856,7 +1857,7 @@ export async function createScene(root) {
     // roars: on its feet for the winner, up and loud while the fighters work it, seated and tense in a round
     const hype = ['red', 'blue'].some((s) => fighters[s].present && fighters[s].pose === 'hype');
     const roar = state.lights === 'winner' ? 1 : hype ? 0.7 : state.lights === 'focus' ? 0.2 : 0.3;
-    room.update(t, dt, state.exc, roar, reduced);
+    room.update(t, dt, state.exc, roar, reduced, state.winner);
     grade.uniforms.time.value = t;
     watchSpeed(realDt);
 
