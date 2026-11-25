@@ -1,7 +1,10 @@
 // The fighters and the referee as humanoid robots. Our own robots (built in Blender for the arena,
-// baked PBR maps): the fighters are heavy boxer robots (riveted steel plates over a flexible under-suit,
-// boxing gloves, cloth shorts), the referee a slim glossy black android with gold piping and a bow tie.
-// They ride the skeleton of the X
+// baked PBR maps): the fighters are heavy boxer robots (layered plates in the corner's colour, chipped
+// down to the steel, with rivets, bolts, panel lines and vents over a dark mechanical frame, exposed
+// servos, one narrow visor slit, leather gloves, cloth shorts), the referee an android in black
+// titanium armour edged in gold, with a bow tie. Pistons at a
+// fighter's elbows and knees slide in and out as the joints bend (aimed here every frame), its visor
+// and back lights breathe a little. They ride the skeleton of the X
 // Bot model from Mixamo (Adobe; free to use in one's own projects, commercial ones included): the same
 // bones, rest pose and clips, so they walk and stand with its animations. If they cannot be loaded,
 // the X Bot itself stands in, with a visor face and glowing eyes added, the joints in the corner's
@@ -20,11 +23,23 @@ const SCALE = 1.12;
 // the eyes on the armoured robots' visors: centre, outward normal and the slit's direction, in the
 // model's own metres at rest (a fighter's helmet is a little larger than the referee's)
 const EYES = {
-  fighter: [[[0.0523, 1.6722, 0.1254], [0.4015, 0.0744, 0.9128], [-0.8862, -0.2025, 0.4167]], [[-0.0523, 1.6722, 0.1254], [-0.4208, 0.0739, 0.9041], [-0.8862, 0.2025, -0.4167]]],
-  ref: [[[0.0414, 1.6735, 0.1197], [0.4102, 0.0149, 0.9119], [-0.9078, 0, 0.4195]], [[-0.0414, 1.6735, 0.1197], [-0.4292, 0.0145, 0.9031], [-0.9078, 0, -0.4195]]],
+  fighter: [[[0.0357, 1.669, 0.1332], [0.1776, -0.0298, 0.9836], [-0.9753, -0.1448, 0.1667]], [[-0.0357, 1.669, 0.1332], [-0.1957, -0.0301, 0.9802], [-0.9753, 0.1448, -0.1667]]],
+  ref: [[[0.0238, 1.6735, 0.1257], [0.1819, 0.0188, 0.9831], [-0.9817, 0, 0.1906]], [[-0.0238, 1.6735, 0.1257], [-0.2013, 0.0186, 0.9793], [-0.9817, 0, -0.1906]]],
 };
 const GLOW = { red: 0xff0a12, blue: 0x00e62e, ref: 0xf2cf6e }; // a deep red and a pure green: never orange
-const EYE_SIZE = { fighter: [0.03, 0.0095], ref: [0.022, 0.006] };
+const EYE_SIZE = { fighter: [0.074, 0.0062], ref: [0.05, 0.0048] }; // the two halves meet: one narrow slit across the visor
+// a fighter's pistons (left side; mirrored): [bone, mount] for the housing and for the rod, the housing's
+// and the rod's radius, the housing's longest length; in the model's own metres at rest (the elbow's
+// housing rides the forearm, clear of the shoulder's lames)
+const PISTONS = [
+  [['LeftForeArm', [0.57, 1.5328, -0.0143]], ['LeftArm', [0.34, 1.5328, -0.0143]], 0.0115, 0.0052, 0.085],
+  [['LeftUpLeg', [0.1811, 0.6337, 0.0416]], ['LeftLeg', [0.1811, 0.4037, 0.0416]], 0.0125, 0.0058, 0.1],
+];
+const PISTON_GEO = new THREE.CylinderGeometry(1, 1, 1, 10, 1).rotateX(Math.PI / 2).translate(0, 0, 0.5); // unit length along +z
+const Z1 = new THREE.Vector3(0, 0, 1);
+const _pa = new THREE.Vector3();
+const _pb = new THREE.Vector3();
+const _pt = new THREE.Vector3();
 const SPREAD = 0.2; // a fighter's arms hang a little out from its bulk (radians, outwards), less as they rise
 
 function timed(p, what) {
@@ -91,6 +106,7 @@ export function makeXRobot(kind, models, colors) {
   model.scale.setScalar(SCALE);
   const color = kind === 'ref' ? (armoured ? GLOW.ref : 0xf5b301) : armoured ? GLOW[kind] : colors[kind];
   const parts = {}; // a fighter's boxing gloves, and its bare armoured hands for typing at the desk
+  let lights = null; // the small back lights (their glow breathes)
   model.traverse((o) => {
     if (!o.isMesh) return;
     o.castShadow = true;
@@ -104,6 +120,7 @@ export function makeXRobot(kind, models, colors) {
         o.material.color.setHex(0x000000);
         o.material.emissive.setHex(color);
         o.material.emissiveIntensity = 2.4;
+        lights = o.material;
       } else o.material.envMapIntensity = 0.9;
       return;
     }
@@ -142,7 +159,7 @@ export function makeXRobot(kind, models, colors) {
   const eyeMat = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: color, emissiveIntensity: armoured ? 0.9 : 3 });
   let eyes;
   if (armoured) {
-    // two angular slits of light in the faceplate's eye holes (the referee's: glints in its gold T), on the head bone
+    // one narrow slit of light across the visor, in two halves that meet in a shallow V (the referee's in gold), on the head bone
     const hs = 1 / B.Head.getWorldScale(new THREE.Vector3()).x;
     const toHead = (v) => B.Head.worldToLocal(model.localToWorld(new THREE.Vector3(...v)));
     const look = kind === 'ref' ? 'ref' : 'fighter';
@@ -155,6 +172,7 @@ export function makeXRobot(kind, models, colors) {
       e.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(ax, new THREE.Vector3().crossVectors(nz, ax), nz));
       e.position.copy(at);
       e.scale.setScalar(hs);
+      e.userData.base = hs; // the head bone's units: the scene scales the slits from this, not from 1
       B.Head.add(e);
       return e;
     });
@@ -179,6 +197,31 @@ export function makeXRobot(kind, models, colors) {
       return e;
     });
   }
+
+  // a fighter's elbow and knee pistons: a housing on the upper bone, a chrome rod on the lower one
+  const pistons = [];
+  if (armoured && kind !== 'ref') {
+    const houseMat = new THREE.MeshStandardMaterial({ color: 0x2b2d32, metalness: 1, roughness: 0.42, envMapIntensity: 0.9 });
+    const rodMat = new THREE.MeshStandardMaterial({ color: 0xd4d7dd, metalness: 1, roughness: 0.16, envMapIntensity: 0.9 });
+    for (const [[ba, pa], [bb, pb], r, rr, hmax] of PISTONS) {
+      for (const m of [1, -1]) {
+        const flip = (n) => (m > 0 ? n : n.replace('Left', 'Right'));
+        const A = boneBy(model, flip(ba));
+        const Bn = boneBy(model, flip(bb));
+        const at = (b, v) => b.worldToLocal(model.localToWorld(new THREE.Vector3(v[0] * m, v[1], v[2])));
+        const k = model.scale.x / A.getWorldScale(new THREE.Vector3()).x; // the model's metres in the bone's units
+        const house = new THREE.Mesh(PISTON_GEO, houseMat);
+        const rod = new THREE.Mesh(PISTON_GEO, rodMat);
+        house.position.copy(at(A, pa));
+        rod.position.copy(at(Bn, pb));
+        A.add(house);
+        Bn.add(rod);
+        for (const o of [house, rod]) o.frustumCulled = false;
+        pistons.push({ A, Bn, house, rod, r: r * k, rr: rr * k, hmax: hmax * k });
+      }
+    }
+  }
+  const phase = kind === 'blue' ? 1.7 : 0;
 
   // its own animations: standing and walking
   const mixer = new THREE.AnimationMixer(model);
@@ -262,6 +305,29 @@ export function makeXRobot(kind, models, colors) {
         aim(B[`${side}UpLeg`], AX[`${side}UpLeg`], thigh, legsW);
         aim(B[`${side}Leg`], AX[`${side}Leg`], shinDir, legsW);
       }
+    }
+
+    // the pistons follow the joints: each part aimed at the other's mount, the rod as long as the gap
+    if (pistons.length) {
+      root.updateMatrixWorld(true);
+      for (const q of pistons) {
+        _pa.copy(q.house.position).applyMatrix4(q.A.matrixWorld);
+        _pb.copy(q.rod.position).applyMatrix4(q.Bn.matrixWorld);
+        _pt.copy(_pb);
+        q.A.worldToLocal(_pt).sub(q.house.position);
+        const d = _pt.length();
+        q.house.quaternion.setFromUnitVectors(Z1, _pt.normalize());
+        q.house.scale.set(q.r, q.r, Math.min(q.hmax, d * 0.58));
+        _pt.copy(_pa);
+        q.Bn.worldToLocal(_pt).sub(q.rod.position);
+        q.rod.quaternion.setFromUnitVectors(Z1, _pt.normalize());
+        q.rod.scale.set(q.rr, q.rr, d * 0.96);
+      }
+    }
+    // alive: the visor's glow and the back lights breathe, slowly
+    if (armoured) {
+      eyeMat.emissiveIntensity = 0.9 * (0.86 + 0.14 * Math.sin(t * 2.3 + phase));
+      if (lights) lights.emissiveIntensity = 2.4 * (0.7 + 0.3 * Math.sin(t * 1.4 + phase));
     }
   }
 

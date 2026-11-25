@@ -1514,7 +1514,10 @@ export async function createScene(root) {
         f.st.face.color.setHex(screen === 'code' ? 0xc8d4ff : 0xffffff);
       }
       const eyeScale = pose === 'fail' || pose === 'lose' ? 0.35 : pose === 'done' || pose === 'win' ? 1.6 : 1;
-      f.bot.eyes.forEach((e) => e.scale.set(1, eyeScale, 1));
+      f.bot.eyes.forEach((e) => {
+        const b = e.userData.base ?? 1; // an armoured robot's eyes sit on its head bone, in that bone's units
+        e.scale.set(b, b * eyeScale, b);
+      });
     },
     poseOf: (side) => fighters[side]?.pose,
     /** Calls fn(name, side) at 'ropes' (up on the ropes), 'taunt', 'flip' (the winner leaves the top rope) and 'land'. */
