@@ -114,6 +114,10 @@ export function makeXRobot(kind, models) {
       o.material.emissive.setHex(kind === 'ref' ? 0xffb83d : color); // the referee's visor and ear rings: a warm, clean gold
       o.material.emissiveIntensity = kind === 'ref' ? 1.7 : 2.4;
       lights = o.material;
+    } else if (kind === 'ref') {
+      // the referee's black titanium: satin, not a mirror the spotlights blind you in
+      o.material.envMapIntensity = 0.4;
+      o.material.roughness = 1.7; // scales the baked roughness up (three clamps it at 1)
     } else o.material.envMapIntensity = 0.9;
   });
   const root = new THREE.Group(); // moved and turned by the scene
