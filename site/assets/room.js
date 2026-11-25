@@ -685,8 +685,8 @@ function polishedEnvironment(renderer) {
   };
   for (let i = 0; i < 36; i++) {
     const az = (i / 36) * Math.PI * 2;
-    spot(20, 0.3 + 0.25 * ((i * 7) % 3) / 2, az + 0.05, 0.4, 14);
-    if (i % 2) spot(20, 0.95 + 0.2 * (i % 3), az, 0.55, 10);
+    spot(20, 0.3 + 0.25 * ((i * 7) % 3) / 2, az + 0.05, 0.4, 9);
+    if (i % 2) spot(20, 0.95 + 0.2 * (i % 3), az, 0.55, 7);
   }
   spot(20, 1.45, 0, 2.2, 2.5, 0xfff0dc); // the key's glow, straight above
   // the stands' warm glow low down, the haze the beams light over them, and the halves' colour only at
@@ -1678,7 +1678,7 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring, eye, kit = n
     const grime = { value: grimeTex(small ? 256 : 512) };
     const ringTint = { value: ring === 'green' ? new THREE.Color(0.95, 1.05, 0.99) : new THREE.Color(1.05, 0.96, 0.98) };
     const posts = { value: Array.from({ length: 6 }, (_, k) => new THREE.Vector2(Math.cos((k * Math.PI) / 3), Math.sin((k * Math.PI) / 3)).multiplyScalar(R - 0.08)) };
-    const postCol = { value: posts.value.map((p) => sideColor(p.x).clone().multiplyScalar(p.x < 0 ? 0.42 : 0.3)) };
+    const postCol = { value: posts.value.map((p) => sideColor(p.x).clone().multiplyScalar(p.x < 0 ? 0.36 : 0.26)) };
     steelRing.getObjectByName('CANVAS').material.onBeforeCompile = (sh) => {
       Object.assign(sh.uniforms, { tGrime: grime, uRingTint: ringTint, uPosts: posts, uPostCol: postCol });
       sh.vertexShader = sh.vertexShader
@@ -1696,11 +1696,11 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring, eye, kit = n
           vec3 spill = vec3(0.0);
           for (int k = 0; k < 6; k++) {
             vec2 q = vXZ - uPosts[k];
-            spill += uPostCol[k] * exp(-dot(q, q) / 2.4);
+            spill += uPostCol[k] * exp(-dot(q, q) / 2.0);
           }
           reflectedLight.indirectSpecular += spill * mix(0.5, 1.6, 1.0 - roughnessFactor);
           // the key's warm sheen on the wet middle
-          reflectedLight.indirectSpecular += vec3(1.0, 0.84, 0.66) * 0.11 * mid * (1.0 - roughnessFactor);`);
+          reflectedLight.indirectSpecular += vec3(1.0, 0.84, 0.66) * 0.14 * mid * (1.0 - roughnessFactor);`);
     };
     // the steps' noses: a polished steel rod on each tread's front edge and on the landing's, that the
     // lamps catch from anywhere in the hall
@@ -1732,7 +1732,7 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring, eye, kit = n
         caps.push(capGeo.clone().rotateY(rot).translate(p.x, 0, p.z));
         glowRing[sideOf(p.x)].push(ringGeo.clone().rotateY(rot).translate(p.x, 0, p.z));
       }
-      add(new THREE.Mesh(mergeGeometries(caps), std({ color: 0xa4aab2, metalness: 1, roughness: 0.16, flatShading: true, envMap: polished, envMapIntensity: 1.0 })), { cast: heavy, mirror: true });
+      add(new THREE.Mesh(mergeGeometries(caps), std({ color: 0xbcc2ca, metalness: 1, roughness: 0.15, flatShading: true, envMap: polished, envMapIntensity: 1.35 })), { cast: heavy, mirror: true });
       for (const sd of ['red', 'green']) add(new THREE.Mesh(mergeGeometries(glowRing[sd]), glow(sd === 'red' ? RED : GREEN, sd === 'red' ? 1.3 : 0.95)), { mirror: true });
     }
   } else {
@@ -1965,8 +1965,8 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring, eye, kit = n
         // the concrete
         float rr = length(vWorld.xz);
         float fall = pow(clamp(1.0 - (rr - 5.6) / 7.0, 0.0, 1.0), 1.25) * smoothstep(0.5, 4.0, abs(vWorld.x));
-        float grain = clamp(dot(diffuseColor.rgb, vec3(0.33)) * 70.0, 0.7, 1.25);
-        outgoingLight += mix(vec3(0.5), vWorld.x < 0.0 ? uRed : uGreen * 0.7, 0.88) * 0.105 * fall * grain;
+        float grain = clamp(dot(diffuseColor.rgb, vec3(0.33)) * ${small ? '210.0' : '70.0'}, 0.7, 1.25); // (a phone's concrete is darker)
+        outgoingLight += mix(vec3(0.5), vWorld.x < 0.0 ? uRed : uGreen * 0.7, 0.85) * ${small ? 0.075 : 0.09} * fall * grain;
         if (mirrorK > 0.0) {
           // the mirror: sharp in the puddles, stretched into streaks towards the viewer where it is only
           // damp, bent a little by the grit and the cracks; round the apron, where the ring's lights
