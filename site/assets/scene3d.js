@@ -24,6 +24,7 @@ const COLOR = { red: 0xef4444, blue: 0x22c55e, ref: 0xe6ebf5, gold: 0xf5b301 };
 const CSS = { red: '#ef4444', blue: '#22c55e' };
 const FLOOR = 1.0; // the top of the ring
 const SIZE = 1.2; // the robots and their desks, a size up from life so they read in the wide shot
+const STATION = 1.2; // each fighter's station (its desk, chair and the fighter) once more, about its spot
 const BOARD_Y = 6.9; // the scoreboard's middle, under the truss's inner ring
 const RING = 6; // the ring's radius (corner to centre)
 // the wide shot (and a tall screen's): `d` metres out from the ring's centre and `h` up, turned `az`
@@ -31,15 +32,16 @@ const RING = 6; // the ring's radius (corner to centre)
 // picture's height, the picture moving up, or down when below 0); WIDE_TAN keeps its width on
 // narrower screens
 const WIDE = { az: 0, d: 21, h: 8.6, pitch: 0.34, fov: 33.6, shift: -0.2, x: 0 };
-const WIDE_TALL = { az: 0, d: 14.8, h: 8.8, pitch: 0.42, fov: 58, shift: 0, x: 0 };
+const WIDE_TALL = { az: 0, d: 14.8, h: 7.0, pitch: 0.37, fov: 58, shift: 0, x: 0 };
 const WIDE_TAN = Math.tan((WIDE.fov * Math.PI) / 360) * (16 / 9);
 // once round the hall: closer, a little lower, in ORBIT_T seconds
-const ORBIT = { az: 0, d: 12.5, h: 5.2, pitch: 0.34, fov: 40, shift: -0.3, x: 0 };
-const ORBIT_TALL = { az: 0, d: 13.8, h: 8.2, pitch: 0.42, fov: 60, shift: 0, x: 0 };
+const ORBIT = { az: 0, d: 12.5, h: 4.6, pitch: 0.37, fov: 40, shift: -0.3, x: 0 };
+const ORBIT_TALL = { az: 0, d: 13.8, h: 6.6, pitch: 0.34, fov: 60, shift: 0, x: 0 };
 const ORBIT_T = 64;
 /** Between two views, share k of the way, turned az round the ring. */
 const mixView = (a, b, k, az) => ({ ...Object.fromEntries(Object.keys(a).map((key) => [key, a[key] + (b[key] - a[key]) * k])), az });
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const POSTER = new URL('./arena/poster.webp', import.meta.url).href;
 // phones and small screens get the light hall: no mirror on the floor, no shadows, fewer fans and
 // particles (a page can also ask for it: window.ARENA_QUALITY = 'small', or 'full' for the whole hall)
 const small = window.ARENA_QUALITY === 'small' || (window.ARENA_QUALITY !== 'full' && (Math.min(screen.width, screen.height) < 700 || matchMedia('(pointer: coarse)').matches));
@@ -147,10 +149,6 @@ function boardTex() {
     bg.addColorStop(1, '#030406');
     g.fillStyle = bg;
     g.fillRect(0, 0, w, h);
-    // the screen's fine pixel grid
-    g.fillStyle = 'rgba(255,255,255,.025)';
-    for (let x = 0; x < w; x += 4) g.fillRect(x, 0, 1, h);
-    for (let y = 0; y < h; y += 4) g.fillRect(0, y, w, 1);
     g.textAlign = 'center';
     g.textBaseline = 'middle';
     const fit = (text, px, weight, max) => {
@@ -195,6 +193,10 @@ function boardTex() {
       const px = fit(third, 44, 700, w - 140);
       if (px >= 30) g.fillText(third, w / 2, 448);
     }
+    // the screen's LEDs: a fine dark grid between them, over the picture
+    g.fillStyle = 'rgba(0,0,0,.32)';
+    for (let x = 0; x < w; x += 4) g.fillRect(x, 0, 1, h);
+    for (let y = 0; y < h; y += 4) g.fillRect(0, y, w, 1);
   });
 }
 function redraw(tex, apply) {
@@ -331,8 +333,8 @@ const LAPS = {
   red: { at: [[0, 1.4], [-0.9, 2.5], [-1.8, 3.1], [-3.0, 2.0], [-3.0, 0.9], [-1.6, 1.2]], speed: 1.25, swing: 0.55, stops: 22, show: ['pump', 'flex', 'wave'], flair: 'wave', ropes: ['pump', 'flex', 'wave'], taunts: ['beckon', 'laugh'], answers: ['laugh', 'flex'] },
   blue: { at: [[0, 1.4], [1.7, 1.3], [2.9, 1.0], [2.9, 2.3], [1.6, 3.1], [0.8, 2.4]], speed: 1.05, swing: 0.38, stops: 16, show: ['point', 'pump', 'box'], flair: 'box', ropes: ['pump', 'point', 'chest'], taunts: ['chest', 'box', 'beckon'], answers: ['brush', 'box'] },
 };
-const ROPE_MID = 1.08; // the middle rope, above the ring's floor: where a fighter stands to play to the stands
-const ROPE_TOP = 1.45; // the top rope: where the winner stands before its backflip
+const ROPE_MID = 1.13; // on the middle rope's turnbuckle, above the ring's floor: where a fighter stands to play to the stands
+const ROPE_TOP = 1.5; // on the top rope's turnbuckle: where the winner stands before its backflip
 const HIP = 0.95; // the height a body turns about in the air
 const lerpTo = (a, b, k) => a + (b - a) * k;
 /** What the arms do out in the ring. */
@@ -504,7 +506,11 @@ function buildStation(side, M, kit) {
       if (m.material?.name === 'ACCENT_NEUTRAL') wing = m.material.clone();
     });
     wing?.color.set(side === 'red' ? 0xa0161e : 0x138040);
-    const slot = { LED_NEUTRAL: glow, ACCENT_NEUTRAL: wing, SCREEN: face, SCREEN_BACK: back };
+    let steel = null;
+    kit.Desk.traverse((m) => {
+      if (m.material?.name === 'KIT') steel = Object.assign(m.material.clone(), { roughness: 1.3, envMapIntensity: 0.55 });
+    });
+    const slot = { KIT: steel, LED_NEUTRAL: glow, ACCENT_NEUTRAL: wing, SCREEN: face, SCREEN_BACK: back };
     for (const [name, parent] of [['Chair', chair], ['Desk', desk], ['Monitor', monitor]]) {
       const o = kit[name].clone();
       o.traverse((m) => {
@@ -568,21 +574,30 @@ function buildStation(side, M, kit) {
     o.position.multiplyScalar(SIZE);
     o.scale.setScalar(SIZE);
   }
-  const home = Object.fromEntries(Object.entries(parts).map(([k, o]) => [k, { p: o.position.clone(), q: o.quaternion.clone() }]));
+  const home = Object.fromEntries(Object.entries(parts).map(([k, o]) => [k, { p: o.position.clone(), q: o.quaternion.clone(), s: o.scale.clone() }]));
   return { g, parts, home, face, screens, light };
 }
 
 // ------------------------------------------------------------------ the scene
 
 export async function createScene(root) {
-  // the robots' model and the hall's baked parts load together; each falls back to code on its own
+  // the robots' model and the hall's baked parts load together; each falls back to code on its own.
+  // A still of the hall comes first and shows while the hall is built and its shaders compile (seconds
+  // on a cold start), until the first frame is drawn
+  const poster = new Image();
+  poster.src = POSTER;
+  const shown = poster.decode().then(() => {
+    root.style.background = `#05070d url(${POSTER}) center / cover no-repeat`;
+  }, () => {});
   const [xg, assets] = await Promise.all([
     loadXbot().catch((e) => {
       console.warn('humanoid robots not available, using the simple ones:', e.message);
       return null;
     }),
     loadHallAssets(small),
+    shown,
   ]);
+  await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0))); // let the still be painted
   root.innerHTML = '';
   const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
   const pixelRatio = Math.min(window.devicePixelRatio || 1, small ? 1.25 : 1.75);
@@ -592,6 +607,7 @@ export async function createScene(root) {
   renderer.shadowMap.enabled = !small;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.domElement.className = 'gl';
+  renderer.domElement.style.opacity = '0'; // the still shows until the first frame
   root.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
@@ -642,9 +658,8 @@ export async function createScene(root) {
     const shape = new THREE.Shape(oct); // x, z; turned up below so that z stays z
     const body = new THREE.ExtrudeGeometry(shape, { depth: BH, bevelEnabled: false }).rotateX(Math.PI / 2).translate(0, BH / 2, 0);
     cube.add(new THREE.Mesh(body, M.black));
-    const frameMat = new THREE.MeshStandardMaterial({ color: 0x8f959f, metalness: 0.92, roughness: 0.32, envMapIntensity: 1.6 });
-    const emblem = emblemPlate(256, 320);
-    const emblemMat = new THREE.MeshBasicMaterial({ map: emblem, color: 0xe8e8e8 });
+    const frameMat = new THREE.MeshStandardMaterial({ color: 0x1b1d21, metalness: 0.9, roughness: 0.35, envMapIntensity: 1.6 });
+    const emblemMat = { red: new THREE.MeshBasicMaterial({ map: emblemPlate(256, 320, '#ff2424'), color: 0xe8e8e8 }), green: new THREE.MeshBasicMaterial({ map: emblemPlate(256, 320, '#1cf064'), color: 0xe8e8e8 }) };
     const boardMat = new THREE.MeshBasicMaterial({ map: board, color: 0xe6e6e6 });
     const ledR = new THREE.MeshBasicMaterial({ color: new THREE.Color().setRGB(1.7, 0.02, 0.02) });
     const ledG = new THREE.MeshBasicMaterial({ color: new THREE.Color().setRGB(0.03, 1.25, 0.09) });
@@ -655,7 +670,7 @@ export async function createScene(root) {
       const len = a.distanceTo(b);
       const out = mid.clone().normalize();
       const wide = i % 2 === 0;
-      const face = new THREE.Mesh(new THREE.PlaneGeometry(len - 0.16, BH - 0.18), wide ? boardMat : emblemMat);
+      const face = new THREE.Mesh(new THREE.PlaneGeometry(len - 0.16, BH - 0.18), wide ? boardMat : emblemMat[mid.x < 0 ? 'red' : 'green']);
       face.position.copy(mid).addScaledVector(out, 0.012);
       face.lookAt(face.position.clone().add(out));
       cube.add(face);
@@ -711,11 +726,11 @@ export async function createScene(root) {
   // most beams are white (about 5600 K) and narrow; the corners' colour is in two slow beams only, the
   // red one kept on the left half of the ring and the green one on the right, so they never cross
   const WHITE = 0xf3f1ec;
-  const sweep = [[WHITE, H(2, 0.5), 0.05, 'white'], [WHITE, H(0, 0.5), 0.05, 'white'], [0xd2605a, H(3, 0.5), 0.055, 'red'], [0x5cc890, H(5, 0.5), 0.055, 'green']].map(([col, h, o, kind]) => Object.assign(makeBeam(col, o, 0.95, h, true), { kind }));
+  const sweep = [[WHITE, H(2, 0.5), 0.05, 'white'], [WHITE, H(0, 0.5), 0.05, 'white'], [0xd2605a, H(3, 0.5), 0.03, 'red'], [0x5cc890, H(5, 0.5), 0.03, 'green']].map(([col, h, o, kind]) => Object.assign(makeBeam(col, o, 0.95, h, true), { kind }));
   // white beams straight down on the canvas from the front and the back of the truss
   const washes = [H(1, 0.22), H(1, 0.78), H(4, 0.22), H(4, 0.78)].map((h) => makeBeam(WHITE, 0.035, 1.0, h));
   washes.forEach((b) => b.to.set(b.from.x * 0.3, FLOOR, b.from.z * 0.25));
-  const focus = { red: makeBeam(0xffe0da, 0.08, 0.55, H(3, 0.22)), blue: makeBeam(0xdcffe8, 0.08, 0.55, H(5, 0.78)) };
+  const focus = { red: makeBeam(0xffe0da, 0.045, 0.7, H(3, 0.22)), blue: makeBeam(0xdcffe8, 0.045, 0.7, H(5, 0.78)) };
   for (const b of [focus.red, focus.blue]) b.m.material.uniforms.reach.value = 0.9; // these land on a fighter
   const crown = makeBeam(0xffe8b8, 0.08, 0.7, H(1, 0.5));
   const aimBeam = (b, from, to) => {
@@ -737,6 +752,7 @@ export async function createScene(root) {
     const st = buildStation(side, M, assets.kit);
     st.g.position.set(SEAT[side].x, FLOOR, SEAT[side].z);
     st.g.rotation.y = SEAT[side].rot;
+    st.g.scale.setScalar(STATION);
     scene.add(st.g);
     const bot = xg ? makeXRobot(side, xg, COLOR) : buildRobot(side, M);
     bot.root.scale.setScalar(SIZE);
@@ -794,6 +810,7 @@ export async function createScene(root) {
       f.st.g.add(o);
       o.position.copy(f.st.home[name].p);
       o.quaternion.copy(f.st.home[name].q);
+      o.scale.copy(f.st.home[name].s); // it flew in the hall's own scale
     }
     f.st.face.color.setHex(0xc8d4ff);
     f.wrecked = false;
@@ -827,9 +844,15 @@ export async function createScene(root) {
   const grade = new ShaderPass(GradeShader);
   composer.addPass(grade);
   // the floor's mirror is drawn first, from the same camera
+  let first = true;
   const draw = (dt) => {
     room.beforeRender(camera);
     composer.render(dt);
+    if (first) {
+      first = false;
+      renderer.domElement.style.opacity = '';
+      root.style.background = '';
+    }
   };
 
   let size = { w: 1, h: 1 };
@@ -878,13 +901,15 @@ export async function createScene(root) {
 
   // ---- acts: a taunt and its answer, a climb onto the ropes, the winner's backflip
 
-  /** A fighter's corner post on the camera's side of the ring: where it stands on the ropes there, where
-   *  it hops down, and where the winner lands (in the station's own coordinates; the post in the hall's). */
+  /** A fighter's corner post on the camera's side of the ring: where it stands on the ropes there (on
+   *  the turnbuckles of the near side, beside the post), where it hops down, and where the winner lands
+   *  (in the station's own coordinates; the post in the hall's). */
   function cornerOf(f, side) {
     if (!f.corner) {
-      const post = corner(side === 'red' ? 2 : 1).multiplyScalar(0.97).setY(FLOOR);
+      const [k, along] = side === 'red' ? [2, 1] : [1, 2];
+      const post = corner(k).multiplyScalar((RING - 0.08) / RING).setY(FLOOR);
       const inward = post.clone().setY(0).normalize().multiplyScalar(-1);
-      const standW = post.clone().addScaledVector(inward, 0.5);
+      const standW = post.clone().addScaledVector(corner(along).sub(corner(k)).normalize(), 0.48);
       const own = (w) => {
         const v = f.st.g.worldToLocal(w.clone());
         return new THREE.Vector2(v.x, v.z);
@@ -1123,7 +1148,7 @@ export async function createScene(root) {
     const flip = f.flip ?? 0;
     bot.root.rotation.order = 'YXZ';
     bot.root.rotation.set(flip, bot.yaw, 0);
-    bot.root.position.set(f.pos.x - HIP * Math.sin(flip) * Math.sin(bot.yaw), lift + HIP * (1 - Math.cos(flip)), f.pos.y - HIP * Math.sin(flip) * Math.cos(bot.yaw));
+    bot.root.position.set(f.pos.x - HIP * Math.sin(flip) * Math.sin(bot.yaw), lift / STATION + HIP * (1 - Math.cos(flip)), f.pos.y - HIP * Math.sin(flip) * Math.cos(bot.yaw));
     if (bot.pose) {
       let reach = null;
       if (p.reach === 'keys' && !walking) {
@@ -1358,7 +1383,7 @@ export async function createScene(root) {
       camFront.set(-k.outW.z, 0, k.outW.x); // along the ropes
       camera.position.copy(k.standW).addScaledVector(k.outW, 4.6).addScaledVector(camFront, state.winner === 'red' ? -1.5 : 1.5).add(camUp.set(0, 2.9, 0));
       // its hips, wherever the flip has them, followed softly
-      flier.st.g.localToWorld(camLook.set(flier.pos.x, (flier.lift ?? 0) + HIP, flier.pos.y));
+      flier.st.g.localToWorld(camLook.set(flier.pos.x, (flier.lift ?? 0) / STATION + HIP, flier.pos.y));
       if (!following) camFollow.copy(camLook);
       following = true;
       camFollow.lerp(camLook, Math.min(1, realDt * 7));
@@ -1378,8 +1403,8 @@ export async function createScene(root) {
       f.st.g.getWorldQuaternion(camQ);
       camFront.set(0, 0, 1).applyQuaternion(camQ);
       const k = Math.min(1, (t - cam.at) / 4.2);
-      camera.position.copy(v3).addScaledVector(camFront, (2.9 - k * 0.4) * SIZE).add(camUp.set(0.35, 1.85 * SIZE, 0));
-      camLook.copy(v3).add(camUp.set(0, 1.4 * SIZE, 0));
+      camera.position.copy(v3).addScaledVector(camFront, (2.9 - k * 0.4) * SIZE * STATION).add(camUp.set(0.35, 1.85 * SIZE * STATION, 0));
+      camLook.copy(v3).add(camUp.set(0, 1.4 * SIZE * STATION, 0));
       camera.lookAt(camLook);
       for (const b of beams) b.m.visible = false;
       draw(dt);
