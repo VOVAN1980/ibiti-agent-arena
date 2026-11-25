@@ -691,7 +691,9 @@ function polishedEnvironment(renderer) {
   spot(20, 1.45, 0, 2.2, 2.5, 0xfff0dc); // the key's glow, straight above
   // the stands' warm glow low down, the haze the beams light over them, and the halves' colour only at
   // the sides
-  for (const [y0, y1, k] of [[-1, 4, 0.3], [4, 12, 0.55]]) env.add(new THREE.Mesh(new THREE.CylinderGeometry(24, 24, y1 - y0, 64, 1, true).translate(0, (y0 + y1) / 2, 0), new THREE.MeshBasicMaterial({ color: new THREE.Color(0x8a7a66).multiplyScalar(k), side: THREE.DoubleSide })));
+  for (const [y0, y1, k] of [[-1, 4, 0.32], [4, 12, 0.85]]) env.add(new THREE.Mesh(new THREE.CylinderGeometry(24, 24, y1 - y0, 64, 1, true).translate(0, (y0 + y1) / 2, 0), new THREE.MeshBasicMaterial({ color: new THREE.Color(0x8a7a66).multiplyScalar(k), side: THREE.DoubleSide })));
+  // the wet floor below, catching the hall's light (an upright gold face mirrors it to the camera)
+  env.add(new THREE.Mesh(new THREE.CircleGeometry(40, 48).rotateX(-Math.PI / 2).translate(0, -5, 0), new THREE.MeshBasicMaterial({ color: new THREE.Color(0x7a6a58).multiplyScalar(0.55), side: THREE.DoubleSide })));
   for (const [x, c] of [[-1, RED], [1, GREEN]]) {
     const m = new THREE.Mesh(new THREE.PlaneGeometry(10, 3), new THREE.MeshBasicMaterial({ color: c.clone().multiplyScalar(0.6), side: THREE.DoubleSide }));
     m.position.set(x * 22, 1, 0);
@@ -1184,7 +1186,8 @@ function buildStands(scene, { small, steel, atlas }) {
           float pool = 0.5 + 0.5 * sin(ang * 11.0 + iPos.y * 0.45 + uTime * 0.12) * sin(ang * 5.0 - iPos.y * 0.6 + 1.7 - uTime * 0.09);
           float far = smoothstep(0.2, 0.8, -d.y) * (1.0 - redW - greenW);
           vec3 rigCol = mix(vec3(1.0, 0.95, 0.9), filt * vec3(0.72, 0.8, 0.8), 0.9 * (redW + greenW));
-          vRigL = rigCol * (0.2 + 1.1 * pool * pool) * uRig * (1.0 - rise * 0.45 + far * 0.6) * (0.75 + 0.5 * iVary.y) * iLook.x;
+          float front = exp(-max(r - ${STANDS_R.toFixed(2)}, 0.0) * 0.35) * (1.0 - far); // the first rows, in the ring's spill
+          vRigL = rigCol * (0.2 + 1.1 * pool * pool + front * 0.9) * uRig * (1.0 - rise * 0.45 + far * 0.6) * (0.75 + 0.5 * iVary.y) * iLook.x;
           vWash = (uRed * redW + uGreen * greenW * 0.85) * uGain * (1.0 - rise * 0.5);
           vec4 mv = viewMatrix * vec4(w, 1.0);
           vD = -mv.z;
@@ -1634,6 +1637,7 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring, eye, kit = n
     return o;
   };
   const std = (o) => new THREE.MeshStandardMaterial(o);
+  const polished = polishedEnvironment(renderer); // what polished metal mirrors
   const glow = (color, k) => new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(k) });
   const brushed = tex(steelTex(256, 256, 70), { repeat: [2, 2] });
   const steel = std({ color: 0x9ea4ae, map: brushed, metalness: 0.9, roughness: 0.32, envMapIntensity: 1.3 });
@@ -1665,7 +1669,6 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring, eye, kit = n
     const steelRing = add(kitRing(kit, { R, led: strip, panel, eye, cover }), { cast: heavy, mirror: true });
     // the gold: polished, mirroring a sharper, more contrasted hall (bright lamps, dark gaps), so it reads
     // as metal and its chamfers flash, not as yellow paint
-    const polished = polishedEnvironment(renderer);
     const gold = steelRing.getObjectByName('GOLD')?.material;
     if (gold) Object.assign(gold, { envMap: polished, envMapIntensity: 2.8, roughness: 0.6, emissiveIntensity: 0.03 });
     // the canvas's plates mirror the same sharp hall: black with points of light, not a grey sheen
@@ -1675,7 +1678,7 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring, eye, kit = n
     const grime = { value: grimeTex(small ? 256 : 512) };
     const ringTint = { value: ring === 'green' ? new THREE.Color(0.95, 1.05, 0.99) : new THREE.Color(1.05, 0.96, 0.98) };
     const posts = { value: Array.from({ length: 6 }, (_, k) => new THREE.Vector2(Math.cos((k * Math.PI) / 3), Math.sin((k * Math.PI) / 3)).multiplyScalar(R - 0.08)) };
-    const postCol = { value: posts.value.map((p) => sideColor(p.x).clone().multiplyScalar(p.x < 0 ? 0.52 : 0.38)) };
+    const postCol = { value: posts.value.map((p) => sideColor(p.x).clone().multiplyScalar(p.x < 0 ? 0.42 : 0.3)) };
     steelRing.getObjectByName('CANVAS').material.onBeforeCompile = (sh) => {
       Object.assign(sh.uniforms, { tGrime: grime, uRingTint: ringTint, uPosts: posts, uPostCol: postCol });
       sh.vertexShader = sh.vertexShader
@@ -1697,7 +1700,7 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring, eye, kit = n
           }
           reflectedLight.indirectSpecular += spill * mix(0.5, 1.6, 1.0 - roughnessFactor);
           // the key's warm sheen on the wet middle
-          reflectedLight.indirectSpecular += vec3(1.0, 0.72, 0.45) * 0.15 * mid * (1.0 - roughnessFactor);`);
+          reflectedLight.indirectSpecular += vec3(1.0, 0.84, 0.66) * 0.11 * mid * (1.0 - roughnessFactor);`);
     };
     // the steps' noses: a polished steel rod on each tread's front edge and on the landing's, that the
     // lamps catch from anywhere in the hall
@@ -1911,7 +1914,7 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring, eye, kit = n
 
   // ---- the ropes: braided steel, a little sag, black sleeves where they meet the code's posts
   {
-    const ropeMat = std({ color: 0x7d8187, metalness: 0.95, roughness: 0.32, normalMap: braidNormal(), normalScale: new THREE.Vector2(0.18, 0.18), envMapIntensity: 1.8 });
+    const ropeMat = std({ color: 0x9ca2aa, metalness: 1, roughness: 0.24, normalMap: braidNormal(), normalScale: new THREE.Vector2(0.2, 0.2), envMap: polished, envMapIntensity: 1.5 });
     ropeMat.normalMap.wrapS = ropeMat.normalMap.wrapT = THREE.RepeatWrapping;
     ropeMat.normalMap.repeat.set(600, 1);
     const ropes = [];
@@ -1961,9 +1964,9 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring, eye, kit = n
         // the apron's light on the floor: each half's colour, falling off out to the stands, as patchy as
         // the concrete
         float rr = length(vWorld.xz);
-        float fall = pow(clamp(1.0 - (rr - 5.6) / 6.0, 0.0, 1.0), 1.3) * smoothstep(0.5, 4.0, abs(vWorld.x));
+        float fall = pow(clamp(1.0 - (rr - 5.6) / 7.0, 0.0, 1.0), 1.25) * smoothstep(0.5, 4.0, abs(vWorld.x));
         float grain = clamp(dot(diffuseColor.rgb, vec3(0.33)) * 70.0, 0.7, 1.25);
-        outgoingLight += mix(vec3(0.5), vWorld.x < 0.0 ? uRed : uGreen * 0.7, 0.85) * 0.1 * fall * grain;
+        outgoingLight += mix(vec3(0.5), vWorld.x < 0.0 ? uRed : uGreen * 0.7, 0.88) * 0.105 * fall * grain;
         if (mirrorK > 0.0) {
           // the mirror: sharp in the puddles, stretched into streaks towards the viewer where it is only
           // damp, bent a little by the grit and the cracks; round the apron, where the ring's lights
@@ -2004,7 +2007,7 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring, eye, kit = n
       const x = Math.cos(am);
       if (Math.abs(x) < 0.05) continue; // where red meets green, a gap
       // the dash, and its glow on the floor: wider, and reaching a third of its length past each end
-      for (const [list, w, over] of [[core, 0.03, 0], [halo, 0.2, 0.3]]) {
+      for (const [list, w, over] of [[core, 0.045, 0], [halo, 0.32, 0.3]]) {
         const b0 = a0 - (a1 - a0) * over;
         const len = (a1 - a0) * (1 + 2 * over);
         const ring = new THREE.RingGeometry(TRACK_R - w, TRACK_R + w, 4, 1, -b0 - len, len);
@@ -2044,7 +2047,7 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring, eye, kit = n
       }
       bg.putImageData(img, 0, 0);
     }
-    const haloM = new THREE.Mesh(haloGeo, new THREE.MeshBasicMaterial({ vertexColors: true, map: tex(band, { srgb: false }), color: new THREE.Color(0.08, 0.08, 0.08), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
+    const haloM = new THREE.Mesh(haloGeo, new THREE.MeshBasicMaterial({ vertexColors: true, map: tex(band, { srgb: false }), color: new THREE.Color(0.1, 0.1, 0.1), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
     haloM.position.y = 0.01;
     scene.add(haloM);
     // a thin steel lip set into the concrete just inside it
@@ -2305,7 +2308,8 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring, eye, kit = n
   if (heavy) {
     extra.forEach((h, n) => {
       if (h.at.z > 2.5) return; // over the camera's own stand a beam would cross the whole picture
-      const color = new THREE.Color(0xf3f1ec);
+      // white, a breath of the half's colour in those over the sides (the haze there is lit red or green)
+      const color = new THREE.Color(0xf3f1ec).lerp(h.at.x < 0 ? new THREE.Color(1, 0.35, 0.33) : new THREE.Color(0.4, 1, 0.5), THREE.MathUtils.smoothstep(Math.abs(h.at.x) / T.r, 0.3, 0.9) * 0.45);
       const m = new THREE.Mesh(new THREE.ConeGeometry(1.35, 1, 24, 1, true), volumeMaterial(color, 0.034, 0.92));
       scene.add(m);
       h.color.copy(color);
@@ -2430,7 +2434,7 @@ export const GradeShader = {
       c = max(c - 0.008, 0.0) / 0.992;                         // the blacks: black
       c = mix(c, c * c * (3.0 - 2.0 * c), 0.22);               // a gentle S
       float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
-      c = mix(vec3(l), c, 1.12);                               // the neon a touch richer
+      c = mix(vec3(l), c, 1.18);                               // the colour a touch richer
       c = max(c, 0.0);
       c += vec3(-0.004, -0.001, 0.006) * (1.0 - l) * smoothstep(0.0, 0.25, l) + vec3(0.01, 0.004, -0.008) * l;
       vec2 d = (vUv - 0.5) * vec2(aspect, 1.0) / max(aspect, 1.0);
