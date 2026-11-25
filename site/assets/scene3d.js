@@ -427,8 +427,8 @@ const POSES = {
   idle: (t) => ({ spot: [0, 0], seat: true, bounce: 0, turn: 0, lean: -0.1, look: 0, ...ARMS_DOWN, a0x: -0.3, a1x: -0.3, e0: -0.6 + Math.sin(t) * 0.05, e1: -0.6 }),
   // the fight is over: up from the chair and out in front of the desk, facing the ring, waiting for the referee
   stand: (t) => ({ spot: [0, 1.45], seat: false, bounce: 0, turn: 0, lean: 0, look: -0.05 + Math.sin(t * 0.9) * 0.03, ...ARMS_DOWN, a0z: -0.12 + Math.sin(t * 1.3) * 0.02, a1z: 0.12 - Math.sin(t * 1.3) * 0.02 }),
-  // beaten: it stays where it stood, head and shoulders down
-  sad: (t) => ({ spot: [0, 1.45], seat: false, bounce: 0, turn: Math.sin(t * 0.6) * 0.12, lean: 0.22, look: 0.55 + Math.sin(t * 1.1) * 0.05, ...ARMS_DOWN, e0: -0.05, e1: -0.05 }),
+  // beaten: it stays where it stood, head and shoulders down, then trudges back round to its desk
+  sad: (t) => ({ spot: t < 4 ? [0, 1.45] : [0, -0.05], speed: 0.85, seat: false, bounce: 0, turn: Math.sin(t * 0.6) * 0.12, lean: 0.22, look: 0.55 + Math.sin(t * 1.1) * 0.05, ...ARMS_DOWN, e0: -0.05, e1: -0.05 }),
   // the winner: out to the front, jumping, arms up, turning to every stand
   win: (t) => {
     // the champion: still while the referee holds its arm up (the free fist shaking at the sky), then
@@ -440,7 +440,7 @@ const POSES = {
   },
   // the loser: smashes everything, then sits on the floor
   lose: (t) => {
-    if (t < 0.5) return { spot: [0, 0], seat: t < 0.25, bounce: 0, turn: 0, lean: 0, look: 0, ...ARMS_DOWN };
+    if (t < 0.5) return { spot: [0, 0], seat: false, bounce: 0, turn: 0, lean: 0, look: 0, ...ARMS_DOWN };
     if (t < 1.1) { // the monitor
       const k = ease((t - 0.5) / 0.35);
       const hit = ease((t - 0.85) / 0.15);
@@ -1474,7 +1474,7 @@ export async function createScene(root) {
         if (off < -Math.PI) off += Math.PI * 2;
         pace = Math.max(0.05, Math.cos(Math.min(Math.abs(off), Math.PI / 2))) ** 1.5;
       }
-      const speed = (lead?.speed ?? (p.lap && toSpot ? lap.speed : toSpot ? Math.min(1.7, dist * 7) : 1.7)) * pace;
+      const speed = (lead?.speed ?? (p.lap && toSpot ? lap.speed : toSpot ? Math.min(p.speed ?? 1.7, dist * 7) : p.speed ?? 1.7)) * pace;
       f.spd = (f.spd ?? 0) + (Math.min(speed, toSpot ? dist * 6 : 9) - (f.spd ?? 0)) * Math.min(1, dt * 4);
       f.pos.add(d.clampLength(0, dt * f.spd));
     }
@@ -1500,6 +1500,7 @@ export async function createScene(root) {
     }
     rig.ground = FLOOR;
     rig.stance = 0;
+    rig.breath = reduced ? 0 : 1;
     const standing = !walking && !p.seat && !lead?.place;
     // a light boxer's guard between acts: gloves up by the chin, the feet set, the knees soft
     const guard = standing && !reduced && !f.act && (f.pose === 'hype' || f.pose === 'stand') && !f.gesture && !flair && !raiseOf();
@@ -1776,9 +1777,9 @@ export async function createScene(root) {
         const o = 1 - i;
         if (raise.off > 0.3) {
           const clap = Math.sin(t * 9) * 0.06;
-          rig.hands[o].at.set((o ? 1 : -1) * (0.04 + clap), 2.05, 0.42).applyQuaternion(q).add(me.setY(FLOOR));
+          rig.hands[o].at.set((o ? 1 : -1) * (0.05 + clap), 1.5, 0.36).applyQuaternion(q).add(me.setY(FLOOR));
           rig.hands[o].w = raise.off;
-          rig.hands[i].at.set((i ? 1 : -1) * (0.04 + clap), 2.05, 0.42).applyQuaternion(q).add(r.bot.root.getWorldPosition(new THREE.Vector3()).setY(FLOOR));
+          rig.hands[i].at.set((i ? 1 : -1) * (0.05 + clap), 1.5, 0.36).applyQuaternion(q).add(r.bot.root.getWorldPosition(new THREE.Vector3()).setY(FLOOR));
           rig.hands[i].w = raise.off;
         }
       }
@@ -2155,7 +2156,11 @@ export async function createScene(root) {
     },
     setPose(side, pose) {
       const f = fighters[side];
-      if (!f || f.pose === pose) return;
+      if (!f) return;
+      if (f.pose === pose) {
+        f.placed = true; // already in it (a robot starts out working the crowd): from here on it walks
+        return;
+      }
       if (f.wrecked && pose !== 'lose') resetStation(f);
       f.pose = pose;
       f.since = now();
