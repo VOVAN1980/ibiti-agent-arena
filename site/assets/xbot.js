@@ -1,21 +1,45 @@
-// The fighters as humanoid robots: the X Bot model from Mixamo (Adobe; free to use in one's own
-// projects, commercial ones included), with a visor face and glowing eyes added, the joints in the
-// corner's colour. It walks and stands with its own animations; everything else (sitting at the
-// desk, typing, arms up, the loser's rage, the referee's signals) is posed here through its
-// skeleton, from the same pose values the simple robots use, and the hands reach the keyboard or
-// the head by solving the arm (two-bone IK).
+// The fighters and the referee as humanoid robots. Our own armoured robots (built in Blender for the
+// arena: hard-surface plates over a flexible under-suit, baked PBR maps) ride the skeleton of the X
+// Bot model from Mixamo (Adobe; free to use in one's own projects, commercial ones included): the same
+// bones, rest pose and clips, so they walk and stand with its animations. If they cannot be loaded,
+// the X Bot itself stands in, with a visor face and glowing eyes added, the joints in the corner's
+// colour. Everything else (sitting at the desk, typing, arms up, the loser's rage, the referee's
+// signals) is posed here through the skeleton, from the same pose values the simple robots use, and
+// the hands reach the keyboard or the head by solving the arm (two-bone IK).
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 
 const MODEL = new URL('./vendor/models/Xbot.glb', import.meta.url).href; // a copy kept with the site (see assets/vendor/README.md)
+const ROBOT = { red: 'robot-red', blue: 'robot-green', ref: 'robot-ref' }; // the green corner's key is "blue"
+const MOVES = new URL('./arena/models/robot-moves.glb', import.meta.url).href; // standing and walking, for all three
+const robotUrl = (name, lite) => new URL(`./arena/models/${name}${lite ? '-lite' : ''}.glb`, import.meta.url).href;
 const SCALE = 1.12;
+// the eyes on the armoured robots' visors: centre, outward normal and the slit's direction, in the
+// model's own metres at rest (a fighter's helmet is a little larger than the referee's)
+const EYES = {
+  fighter: [[[0.0571, 1.6681, 0.1261], [0.3682, -0.0911, 0.9253], [-0.9255, 0, 0.3787]], [[-0.0571, 1.6681, 0.1261], [-0.3868, -0.0915, 0.9176], [-0.9255, 0, -0.3787]]],
+  ref: [[[0.055, 1.6681, 0.1218], [0.3683, -0.0862, 0.9257], [-0.9255, 0, 0.3787]], [[-0.055, 1.6681, 0.1218], [-0.3869, -0.0866, 0.918], [-0.9255, 0, -0.3787]]],
+};
+const GLOW = { red: 0xff1206, blue: 0x12ff48, ref: 0xf2cf6e };
 
-export function loadXbot() {
-  return Promise.race([
-    new GLTFLoader().loadAsync(MODEL),
-    new Promise((_, reject) => setTimeout(() => reject(new Error('the robot model took too long')), 15000)),
-  ]);
+function timed(p, what) {
+  return Promise.race([p, new Promise((_, reject) => setTimeout(() => reject(new Error(`${what} took too long`)), 15000))]);
+}
+
+/** The robots' models: our three armoured robots (the lighter set on phones), or, if any of them
+ *  cannot be had, the X Bot for all three. */
+export async function loadXbot(lite = false) {
+  const loader = new GLTFLoader();
+  try {
+    const kinds = ['red', 'blue', 'ref'];
+    const [moves, ...got] = await timed(Promise.all([loader.loadAsync(MOVES), ...kinds.map((k) => loader.loadAsync(robotUrl(ROBOT[k], lite)))]), 'the robot models');
+    for (const g of got) g.animations = moves.animations; // the X Bot's own clips, shared by the three
+    return { robots: Object.fromEntries(kinds.map((k, i) => [k, got[i]])) };
+  } catch (e) {
+    console.warn('armoured robots not available, using the X Bot:', e.message);
+    return timed(loader.loadAsync(MODEL), 'the robot model');
+  }
 }
 
 const DOWN = new THREE.Vector3(0, -1, 0);
@@ -56,15 +80,27 @@ function solveArm(shoulder, target, l1, l2, pole, upper, fore) {
   fore.subVectors(shoulder.clone().addScaledVector(u, dist), elbow).normalize();
 }
 
-export function makeXRobot(kind, gltf, colors) {
+export function makeXRobot(kind, models, colors) {
+  const armoured = models.robots?.[kind] ?? null;
+  const gltf = armoured ?? models;
   const model = SkeletonUtils.clone(gltf.scene);
   model.scale.setScalar(SCALE);
-  const color = kind === 'ref' ? 0xf5b301 : colors[kind];
+  const color = kind === 'ref' ? (armoured ? GLOW.ref : 0xf5b301) : armoured ? GLOW[kind] : colors[kind];
   model.traverse((o) => {
     if (!o.isMesh) return;
     o.castShadow = true;
     o.receiveShadow = true;
     o.frustumCulled = false; // a posed skinned mesh can leave its bind-pose box
+    if (armoured) {
+      // the baked plates as they are; the small lights (chest core, back pack) in the corner's colour
+      if (o.material.name === 'Glow') {
+        o.material = o.material.clone();
+        o.material.color.setHex(0x000000);
+        o.material.emissive.setHex(color);
+        o.material.emissiveIntensity = 2.4;
+      } else o.material.envMapIntensity = 0.9;
+      return;
+    }
     const joints = /joint/i.test(o.material.name);
     const m = o.material.clone();
     if (kind === 'ref') m.color.setHex(joints ? 0xf2f4f8 : 0x2b303c);
@@ -97,26 +133,45 @@ export function makeXRobot(kind, gltf, colors) {
   const L1 = wp(B.LeftArm).distanceTo(wp(B.LeftForeArm));
   const L2 = wp(B.LeftForeArm).distanceTo(wp(B.LeftHand)) + 0.06;
 
-  // a face: a dark visor with two glowing eyes, on the head bone, facing where the robot faces
-  const headQ = B.Head.getWorldQuaternion(new THREE.Quaternion()).invert();
-  const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(headQ);
-  const up = new THREE.Vector3(0, 1, 0).applyQuaternion(headQ);
-  const right = new THREE.Vector3().crossVectors(up, fwd);
-  const s = 1 / B.Head.getWorldScale(new THREE.Vector3()).x;
-  const face = new THREE.Group();
-  face.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(right, up, fwd));
-  face.position.copy(up).multiplyScalar(0.075 * s).addScaledVector(fwd, 0.128 * s); // on the front of the head, not inside it
-  face.scale.setScalar(s);
-  B.Head.add(face);
-  const visor = new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.085, 0.035), new THREE.MeshStandardMaterial({ color: 0x05070d, metalness: 1, roughness: 0.08 }));
-  face.add(visor);
-  const eyeMat = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: color, emissiveIntensity: 3 });
-  const eyes = [-1, 1].map((k) => {
-    const e = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.026, 0.012), eyeMat);
-    e.position.set(0.045 * k, 0.004, 0.02);
-    face.add(e);
-    return e;
-  });
+  const eyeMat = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: color, emissiveIntensity: armoured ? 1.1 : 3 });
+  let eyes;
+  if (armoured) {
+    // two slits of light on the visor, on the head bone, where the helmet's glass is
+    const hs = 1 / B.Head.getWorldScale(new THREE.Vector3()).x;
+    const toHead = (v) => B.Head.worldToLocal(model.localToWorld(new THREE.Vector3(...v)));
+    eyes = EYES[kind === 'ref' ? 'ref' : 'fighter'].map(([c, n, a]) => {
+      const at = toHead(c);
+      const nz = toHead(c.map((x, i) => x + n[i])).sub(at).normalize();
+      const ax = toHead(c.map((x, i) => x + a[i])).sub(at);
+      ax.addScaledVector(nz, -ax.dot(nz)).normalize();
+      const e = new THREE.Mesh(new THREE.BoxGeometry(0.036, 0.0085, 0.004), eyeMat);
+      e.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(ax, new THREE.Vector3().crossVectors(nz, ax), nz));
+      e.position.copy(at);
+      e.scale.setScalar(hs);
+      B.Head.add(e);
+      return e;
+    });
+  } else {
+    // a face: a dark visor with two glowing eyes, on the head bone, facing where the robot faces
+    const headQ = B.Head.getWorldQuaternion(new THREE.Quaternion()).invert();
+    const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(headQ);
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(headQ);
+    const right = new THREE.Vector3().crossVectors(up, fwd);
+    const s = 1 / B.Head.getWorldScale(new THREE.Vector3()).x;
+    const face = new THREE.Group();
+    face.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(right, up, fwd));
+    face.position.copy(up).multiplyScalar(0.075 * s).addScaledVector(fwd, 0.128 * s); // on the front of the head, not inside it
+    face.scale.setScalar(s);
+    B.Head.add(face);
+    const visor = new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.085, 0.035), new THREE.MeshStandardMaterial({ color: 0x05070d, metalness: 1, roughness: 0.08 }));
+    face.add(visor);
+    eyes = [-1, 1].map((k) => {
+      const e = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.026, 0.012), eyeMat);
+      e.position.set(0.045 * k, 0.004, 0.02);
+      face.add(e);
+      return e;
+    });
+  }
 
   // its own animations: standing and walking
   const mixer = new THREE.AnimationMixer(model);
