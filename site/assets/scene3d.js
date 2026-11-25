@@ -23,8 +23,22 @@ import { loadXbot, makeXRobot } from './xbot.js';
 const COLOR = { red: 0xef4444, blue: 0x22c55e, ref: 0xe6ebf5, gold: 0xf5b301 };
 const CSS = { red: '#ef4444', blue: '#22c55e' };
 const FLOOR = 1.0; // the top of the ring
-const BOARD_Y = 7.2; // the scoreboard's middle, under the truss's inner ring
+const SIZE = 1.2; // the robots and their desks, a size up from life so they read in the wide shot
+const BOARD_Y = 6.9; // the scoreboard's middle, under the truss's inner ring
 const RING = 6; // the ring's radius (corner to centre)
+// the wide shot (and a tall screen's): `d` metres out from the ring's centre and `h` up, turned `az`
+// round it, looking down `pitch`, the lens's height in degrees and its shift (a share of half the
+// picture's height, the picture moving up, or down when below 0); WIDE_TAN keeps its width on
+// narrower screens
+const WIDE = { az: 0, d: 21, h: 8.6, pitch: 0.34, fov: 33.6, shift: -0.2, x: 0 };
+const WIDE_TALL = { az: 0, d: 14.8, h: 8.8, pitch: 0.42, fov: 58, shift: 0, x: 0 };
+const WIDE_TAN = Math.tan((WIDE.fov * Math.PI) / 360) * (16 / 9);
+// once round the hall: closer, a little lower, in ORBIT_T seconds
+const ORBIT = { az: 0, d: 15.2, h: 6.4, pitch: 0.34, fov: 43, shift: -0.3, x: 0 };
+const ORBIT_TALL = { az: 0, d: 13.8, h: 8.2, pitch: 0.42, fov: 60, shift: 0, x: 0 };
+const ORBIT_T = 64;
+/** Between two views, share k of the way, turned az round the ring. */
+const mixView = (a, b, k, az) => ({ ...Object.fromEntries(Object.keys(a).map((key) => [key, a[key] + (b[key] - a[key]) * k])), az });
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 // phones and small screens get the light hall: no mirror on the floor, no shadows, fewer fans and
 // particles (a page can also ask for it: window.ARENA_QUALITY = 'small', or 'full' for the whole hall)
@@ -466,7 +480,7 @@ const DESK_EMBLEM = () => (deskEmblem ??= emblemPlate(256, 256));
 function buildStation(side, M) {
   const g = new THREE.Group();
   const col = COLOR[side];
-  const glow = M.glow(col, 3.2);
+  const glow = M.glow(col, 2.0);
   // a gaming chair in black leather, the corner's colour on its wings
   const leather = new THREE.MeshPhysicalMaterial({ color: 0x101114, roughness: 0.48, metalness: 0, clearcoat: 0.45, clearcoatRoughness: 0.4 });
   const wing = new THREE.MeshPhysicalMaterial({ color: side === 'red' ? 0x5a0b10 : 0x083d1f, roughness: 0.45, clearcoat: 0.5, clearcoatRoughness: 0.35 });
@@ -528,6 +542,10 @@ function buildStation(side, M) {
   light.position.set(0, 1.2, 0.45);
   g.add(light);
   const parts = { monitor, keyboard, desk, chair, tower };
+  for (const o of Object.values(parts)) {
+    o.position.multiplyScalar(SIZE);
+    o.scale.setScalar(SIZE);
+  }
   const home = Object.fromEntries(Object.entries(parts).map(([k, o]) => [k, { p: o.position.clone(), q: o.quaternion.clone() }]));
   return { g, parts, home, face, screens, light };
 }
@@ -540,11 +558,11 @@ export async function createScene(root) {
     return null;
   });
   root.innerHTML = '';
-  const renderer = new THREE.WebGLRenderer({ antialias: !small, powerPreference: 'high-performance' });
+  const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
   const pixelRatio = Math.min(window.devicePixelRatio || 1, small ? 1.25 : 1.75);
   renderer.setPixelRatio(pixelRatio);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05; // the hall is dark, but the ring, the floor and the stands read
+  renderer.toneMappingExposure = 1.15; // the hall is dark, but the ring, the floor and the stands read
   renderer.shadowMap.enabled = !small;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.domElement.className = 'gl';
@@ -694,12 +712,14 @@ export async function createScene(root) {
     st.g.rotation.y = SEAT[side].rot;
     scene.add(st.g);
     const bot = xg ? makeXRobot(side, xg, COLOR) : buildRobot(side, M);
+    bot.root.scale.setScalar(SIZE);
     st.g.add(bot.root);
     fighters[side] = { st, bot, pose: 'hype', since: 0, pos: new THREE.Vector2(0, 1.35), path: [], cur: {}, events: new Set(), wrecked: false, present: true, screen: 'code', placed: false };
     spots[side].target.position.set(SEAT[side].x, FLOOR, SEAT[side].z);
     focus[side].to.set(SEAT[side].x, FLOOR, SEAT[side].z);
   }
   const refBot = xg ? makeXRobot('ref', xg, COLOR) : buildRobot('ref', M);
+  refBot.root.scale.setScalar(SIZE);
   refBot.root.position.set(0, FLOOR, -0.35);
   scene.add(refBot.root);
   const referee = { bot: refBot, pose: 'ref', since: 0, side: null, pos: new THREE.Vector2(0, -0.35), target: new THREE.Vector2(0, -0.35), cur: {} };
@@ -756,16 +776,20 @@ export async function createScene(root) {
   // the camera
   const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 140);
   // cut: true at the start, so the camera is in place from the first frame instead of drifting in
-  const cam = { mode: 'sweep', winner: null, shake: 0, aim: new THREE.Vector3(0, 1.3, 0.3), dist: 13, shot: 'wide', step: 0, at: 0, cut: true };
+  const cam = { mode: null, modeAt: 0, shake: 0, view: { ...WIDE }, shot: 'wide', step: 0, at: 0, cut: true };
   const SHOTS = ['wide', 'red', 'wide', 'blue'];
   const camAt = new THREE.Vector3();
   const camLook = new THREE.Vector3();
   const camQ = new THREE.Quaternion();
   const camFront = new THREE.Vector3();
   const camUp = new THREE.Vector3();
-  const composer = new EffectComposer(renderer);
+  // the hall is drawn into a multisampled target (the canvas's own antialiasing would only smooth the
+  // last pass): thin rails, ropes and truss stay clean; phones go without
+  const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: small ? 0 : 4 }));
   composer.addPass(new RenderPass(scene, camera));
-  const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), small ? 0.5 : 0.58, 0.45, 1.12);
+  // a thin, restrained glow round what burns brighter than white: the light shows the steel, it does not
+  // drown it
+  const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), small ? 0.3 : 0.32, 0.3, 1.0);
   // what glows is what is brighter than white in any one channel, not in luminance: a pure red LED
   // glows as much as a green one, and the tone mapping can keep it red
   bloom.materialHighPassFilter.fragmentShader = bloom.materialHighPassFilter.fragmentShader.replace('float v = dot( texel.xyz, luma );', 'float v = max( max( texel.r, texel.g ), texel.b );');
@@ -1168,8 +1192,11 @@ export async function createScene(root) {
     const t = clock;
     for (const side of ['red', 'blue']) state.exc[side] += (0.32 - state.exc[side]) * Math.min(1, dt * 0.35);
 
-    // the hall: the fans with their side's mood, the phone lights, the LED panels
-    room.update(t, dt, state.exc, reduced);
+    // the hall: the fans with their side's mood, the crowd and its phones, the LED panels. How the hall
+    // roars: on its feet for the winner, up and loud while the fighters work it, seated and tense in a round
+    const hype = ['red', 'blue'].some((s) => fighters[s].present && fighters[s].pose === 'hype');
+    const roar = state.lights === 'winner' ? 1 : hype ? 0.7 : state.lights === 'focus' ? 0.2 : 0.3;
+    room.update(t, dt, state.exc, roar, reduced);
     grade.uniforms.time.value = t;
     watchSpeed(realDt);
 
@@ -1246,22 +1273,22 @@ export async function createScene(root) {
     pyro.update(t, dt);
     screens.update();
 
-    // the camera: the whole ring, both corners, the referee and the scoreboard cube, with a slow
-    // broadcast drift; at the end a little closer to the winner
-    // the wide shot: from over the near stand, a little under the truss's rings, looking down on the
-    // ring; the lens is shifted up (as an architect's camera) so the ring sits low in the picture with
-    // the scoreboard, the truss and its lamps above it, and the posts still stand upright
+    // the camera: the whole ring, both corners, the referee and the scoreboard cube. The wide shot is
+    // from high over the near stand on a long lens (the ring large, the hall's lines calm), the lens
+    // shifted so the ring sits a little low with the scoreboard and the truss over it; between rounds
+    // it now and then circles the whole hall once, in a round it cranes slowly down onto the ring, at
+    // the end it leans towards the winner
     const portrait = camera.aspect < 0.8;
-    const wideFov = portrait ? 58 : 42;
-    const half = portrait ? 4.4 : 8.6;
-    const hf = 2 * Math.atan(Math.tan((wideFov * Math.PI) / 360) * camera.aspect);
-    let dist = Math.max(portrait ? 12.5 : 19.5, half / Math.tan(hf / 2));
-    const aim = new THREE.Vector3(0, portrait ? 2.6 : 1, portrait ? 0.4 : -0.3);
+    const wide = { ...(portrait ? WIDE_TALL : WIDE) };
+    if (!portrait) wide.fov = Math.min(62, Math.max(wide.fov, (Math.atan(WIDE_TAN / camera.aspect) * 360) / Math.PI)); // keep its width on a narrower screen
     if (state.lights === 'winner' && state.winner) {
       fighters[state.winner].bot.root.getWorldPosition(v3);
-      aim.x += (v3.x - aim.x) * 0.3;
-      aim.z += (v3.z - aim.z) * 0.15;
-      dist *= 0.92;
+      wide.x = v3.x * 0.3;
+      wide.d *= 0.93;
+    }
+    if (state.lights !== cam.mode) {
+      cam.mode = state.lights;
+      cam.modeAt = t;
     }
     // like a broadcast: while a round runs, cut between the wide shot and a shot over each robot's shoulder
     if (cam.fixed) {
@@ -1296,8 +1323,7 @@ export async function createScene(root) {
         cam.lensAspect = camera.aspect;
       }
     };
-    const wideShift = portrait ? 0 : -0.25;
-    lensFov(cam.shot === 'wide' || cam.shot === 'peek' ? wideFov : portrait ? 58 : 44, cam.shot === 'wide' ? wideShift : 0);
+    if (cam.shot !== 'wide' && cam.shot !== 'orbit') lensFov(cam.shot === 'peek' ? 42 : portrait ? 58 : 44);
     const flier = !cam.fixed && !reduced && state.winner && fighters[state.winner].act?.kind === 'win' && fighters[state.winner].act.phase !== 'go' ? fighters[state.winner] : null;
     if (flier) {
       lensFov(portrait ? 58 : 44);
@@ -1352,7 +1378,7 @@ export async function createScene(root) {
       requestAnimationFrame(frame);
       return;
     }
-    if (cam.shot !== 'wide') {
+    if (cam.shot === 'red' || cam.shot === 'blue') {
       const g = fighters[cam.shot].st.g;
       const k = Math.min(1, (t - cam.at) / 3.5);
       const out = cam.shot === 'red' ? -1 : 1; // from the outer side of the ring, away from the referee
@@ -1365,22 +1391,37 @@ export async function createScene(root) {
       requestAnimationFrame(frame);
       return;
     }
+    let want = wide;
+    if (cam.shot === 'orbit') {
+      // round and round the hall (for videos and previews; still for those who ask for less motion)
+      want = { ...(portrait ? ORBIT_TALL : ORBIT), az: reduced ? 0.7 : ((t - cam.at) / ORBIT_T) * Math.PI * 2 };
+    } else if (state.lights === 'sweep' && !cam.fixed && !reduced) {
+      // between rounds: the wide shot a while, then once round the whole hall, easing out and back in
+      const u = ((t - cam.modeAt) % (ORBIT_T + 14) - 14) / ORBIT_T;
+      if (u > 0) want = mixView(wide, portrait ? ORBIT_TALL : ORBIT, ease(Math.min(1, u / 0.12)) * ease(Math.min(1, (1 - u) / 0.12)), (1 - Math.cos(u * Math.PI)) * Math.PI);
+    } else if (state.lights === 'focus' && !reduced) {
+      // in a round: from a little higher and further, slowly down and in
+      const k = 1 - ease(Math.min(1, (t - cam.at) / 12));
+      want = { ...wide, h: wide.h + 1.2 * k, d: wide.d + 1.6 * k, pitch: wide.pitch + 0.035 * k };
+    }
+    if (!reduced && !cam.fixed && state.lights !== 'sweep') want.az = Math.sin(t * 0.08) * (portrait ? 0.2 : 0.1); // a slow broadcast drift
     if (cam.cut) {
       cam.cut = false;
-      cam.aim.copy(aim);
-      cam.dist = dist;
+      Object.assign(cam.view, want);
     }
-    cam.aim.lerp(aim, Math.min(1, dt * 1.2));
-    cam.dist += (dist - cam.dist) * Math.min(1, dt * 1.2);
-    const az = Math.PI / 2 + (reduced ? 0 : Math.sin(t * 0.08) * (portrait ? 0.22 : 0.14));
-    const el = portrait ? 0.4 : 0.37;
-    camera.position.set(cam.aim.x + Math.cos(az) * Math.cos(el) * cam.dist, cam.aim.y + Math.sin(el) * cam.dist, cam.aim.z + Math.sin(az) * Math.cos(el) * cam.dist);
+    const k = Math.min(1, dt * 1.5);
+    for (const key of ['d', 'h', 'pitch', 'fov', 'shift', 'x']) cam.view[key] += (want[key] - cam.view[key]) * k;
+    cam.view.az += Math.atan2(Math.sin(want.az - cam.view.az), Math.cos(want.az - cam.view.az)) * Math.min(1, dt * 3);
+    const { az, d, h, pitch, x } = cam.view;
+    lensFov(cam.view.fov, cam.view.shift);
+    camera.position.set(x + Math.sin(az) * d, h, Math.cos(az) * d);
+    camLook.set(-Math.sin(az) * Math.cos(pitch), -Math.sin(pitch), -Math.cos(az) * Math.cos(pitch)).add(camera.position);
     if (cam.shake > 0) {
       camera.position.x += (Math.random() - 0.5) * cam.shake;
       camera.position.y += (Math.random() - 0.5) * cam.shake;
       cam.shake = Math.max(0, cam.shake - dt * 0.6);
     }
-    camera.lookAt(cam.aim);
+    camera.lookAt(camLook);
     draw(dt);
     requestAnimationFrame(frame);
   }
@@ -1484,7 +1525,7 @@ export async function createScene(root) {
     bump() {
       cam.shake = 0.35;
     },
-    /** Hold one camera shot ('wide', 'red', 'blue', 'faceRed', 'faceBlue', or 'peek' from `at` towards `look`), or null to let the cuts run (for videos and previews). */
+    /** Hold one camera shot ('wide', 'orbit' (round the hall), 'red', 'blue', 'faceRed', 'faceBlue', or 'peek' from `at` towards `look`), or null to let the cuts run (for videos and previews). */
     holdShot(shot, at = null, look = null) {
       cam.fixed = shot;
       cam.peek = at && look ? [at, look] : null;
