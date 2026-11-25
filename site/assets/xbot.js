@@ -232,22 +232,85 @@ export function makeXRobot(kind, models, colors) {
   walk.play();
   walk.setEffectiveWeight(0);
   let walkW = 0;
+  // its feet as it stands (the idle clip): the ankle's height and the way from the ankle to the ball of
+  // the foot, in the robot's own units
+  for (const n of ['LeftToeBase', 'RightToeBase']) B[n] = boneBy(model, n);
+  mixer.update(0);
+  root.updateMatrixWorld(true);
+  const ankleY = wp(B.LeftFoot).y;
+  const TOE = { Left: wp(B.LeftToeBase).sub(wp(B.LeftFoot)), Right: wp(B.RightToeBase).sub(wp(B.RightFoot)) };
+  AX.LeftFoot = axis(B.LeftFoot, B.LeftToeBase);
+  AX.RightFoot = axis(B.RightFoot, B.RightToeBase);
+  const HIP_Y = wp(B.Hips).y;
 
   const rootQ = new THREE.Quaternion();
+  const invQ = new THREE.Quaternion();
   const leanQ = new THREE.Quaternion();
   const dirs = { u: new THREE.Vector3(), f: new THREE.Vector3() };
+  const ik = { u: new THREE.Vector3(), f: new THREE.Vector3() };
+  const solved = [[new THREE.Vector3(), new THREE.Vector3()], [new THREE.Vector3(), new THREE.Vector3()]];
   const target = new THREE.Vector3();
   const shoulderAt = new THREE.Vector3();
+  const rootAt = new THREE.Vector3();
+  const tmp = new THREE.Vector3();
+  const tmp2 = new THREE.Vector3();
+  const poleV = new THREE.Vector3();
   let sitW = 0;
   const bulky = armoured && kind !== 'ref';
   if (parts.Hands) parts.Hands.visible = false;
 
-  /** Pose the robot for this frame (c: the smoothed pose values; p: the pose; reach: where the hands go). */
-  function pose(c, p, t, walking, dt, reach) {
-    walkW += ((walking || p.walkAnim ? 1 : 0) - walkW) * Math.min(1, dt * 6);
+  // the feet: planted on the ground where they stand, a step at a time when the body has turned or moved
+  // away from them (in place of the walk clip, whose stride would slide)
+  const feet = ['Left', 'Right'].map((side) => ({ side, s: side === 'Left' ? 1 : -1, at: new THREE.Vector3(), from: new THREE.Vector3(), to: new THREE.Vector3(), yaw: 0, fromYaw: 0, toYaw: 0, u: 1, dur: 0.3, ready: false }));
+  let plantW = 0;
+  let lastStep = 0;
+  const prevAt = new THREE.Vector3();
+  let havePrev = false;
+  const vel = new THREE.Vector3();
+  let speed = 0;
+  const handW = [0, 0];
+  const footW = [0, 0];
+  const shift = new THREE.Vector3(); // the hips over the standing foot while the other steps
+  let gaitT = 0;
+  const NO_RIG = {};
+
+  /** The robot's yaw (about the hall's up) from a world quaternion. */
+  const yawOf = (q) => {
+    tmp2.set(0, 0, 1).applyQuaternion(q);
+    return Math.atan2(tmp2.x, tmp2.z);
+  };
+
+  /** Pose the robot for this frame. c: the smoothed pose values; p: the pose; reach: where the hands go
+   *  at the desk (two points, or 'head'); rig: what the scene asks of the body this frame, all optional:
+   *  hands [right, left] { at (world), w, pole (on the robot's own axes) }, feet [left, right] { at (the
+   *  ankle, world), w, yaw (world) }, body { x, y, z } (the hips moved, in metres on the robot's own
+   *  axes), look (a world point the head turns to) and lookW, twist (the chest turned, radians), breath,
+   *  stance (0..1: the feet set as a boxer's), ground (the floor's height), air (off the ground: nothing
+   *  planted), legs { hip, knee, w } (both legs bent by angles), hug (the hands round the shins). */
+  function pose(c, p, t, walking, dt, reach, rig = NO_RIG) {
+    root.updateMatrixWorld(true);
+    const ws = root.getWorldScale(tmp).x; // world metres in one of the robot's own units
+    root.getWorldPosition(rootAt);
+    if (havePrev && dt > 0) {
+      vel.subVectors(rootAt, prevAt).divideScalar(dt).setY(0);
+      speed += (vel.length() - speed) * Math.min(1, dt * 12);
+    }
+    prevAt.copy(rootAt);
+    havePrev = true;
+    root.getWorldQuaternion(rootQ);
+    invQ.copy(rootQ).invert();
+    const rootYaw = yawOf(rootQ);
+
+    // the walk clip only while it really goes somewhere, played as fast as the body moves (its stride
+    // then matches the ground)
+    const clipSpeed = 1.7 * ws; // the clip's own pace on the ground
+    const moving = (walking || p.walkAnim) && !rig.air ? Math.min(1, Math.max(0, (speed / clipSpeed - 0.1) / 0.2)) : 0;
+    walkW += (moving - walkW) * Math.min(1, dt * 7);
+    walk.timeScale = Math.min(1.5, Math.max(0.3, speed / clipSpeed));
     walk.setEffectiveWeight(walkW);
     idle.setEffectiveWeight(1 - walkW);
     mixer.update(dt);
+    gaitT = walk.time / walk.getClip().duration; // where in its stride (0: the left foot leaves the ground)
 
     sitW += ((p.seat && !walking ? 1 : 0) - sitW) * Math.min(1, dt * 7);
     if (parts.Gloves && parts.Hands) {
@@ -257,53 +320,194 @@ export function makeXRobot(kind, models, colors) {
       parts.Hands.visible = bare;
     }
     const floor = c.floor || 0;
-    const legsW = Math.max(sitW, floor, c.tuck || 0); // seated, on the floor, or tucked in the air
-    lift.position.y = (shin + 0.03 - hipsY) * sitW + (0.2 - hipsY) * floor * (1 - sitW) + (p.seat ? 0 : c.bounce);
+    const legs = rig.legs;
+    const legsW = Math.max(sitW, floor, c.tuck || 0, legs?.w ?? 0); // seated, on the floor, or bent in the air
+    const body = rig.body;
+    lift.position.set(
+      ((body?.x ?? 0) + shift.x) / ws,
+      (shin + 0.03 - hipsY) * sitW + (0.2 - hipsY) * floor * (1 - sitW) + (p.seat ? 0 : c.bounce) + ((body?.y ?? 0) + shift.y) / ws,
+      (body?.z ?? 0) / ws,
+    );
+    root.updateMatrixWorld(true);
 
-    root.getWorldQuaternion(rootQ);
     leanQ.setFromEuler(_e.set(c.lean, 0, 0));
     const toWorld = (v) => v.applyQuaternion(leanQ).applyQuaternion(rootQ);
-    // the spine leans, the head looks and shakes
-    const spineDir = UP.clone().applyQuaternion(leanQ).applyQuaternion(rootQ);
-    for (const n of ['Spine', 'Spine1', 'Spine2']) aim(B[n], AX[n], spineDir, 0.9);
-    const headDir = UP.clone().applyEuler(_e.set(c.lean + c.look, 0, 0)).applyQuaternion(rootQ);
+    // the spine leans (and breathes), the chest turns, the head looks and shakes
+    const breath = (rig.breath ?? 1) * Math.sin(t * 1.9 + phase) * 0.025;
+    const spineDir = UP.clone().applyEuler(_e.set(c.lean + breath, 0, 0)).applyQuaternion(rootQ);
+    const twist = (rig.twist ?? 0) / 3;
+    for (const n of ['Spine', 'Spine1', 'Spine2']) {
+      aim(B[n], AX[n], spineDir, 0.9);
+      if (twist) B[n].rotateOnAxis(AX[n], twist);
+    }
+    let headPitch = c.lean + c.look;
+    let headYaw = c.shake || 0;
+    const lookW = rig.look ? rig.lookW ?? 1 : 0;
+    if (lookW > 0) {
+      // towards a point: its yaw from where the chest faces, its pitch from level
+      B.Head.getWorldPosition(tmp);
+      tmp2.subVectors(rig.look, tmp);
+      const yaw = Math.max(-1.1, Math.min(1.1, turnDiff(Math.atan2(tmp2.x, tmp2.z), rootYaw + (rig.twist ?? 0))));
+      const pitch = Math.max(-0.5, Math.min(0.8, -Math.atan2(tmp2.y, Math.hypot(tmp2.x, tmp2.z))));
+      headYaw += yaw * lookW;
+      headPitch = lerpN(headPitch, pitch, lookW);
+    }
+    const headDir = UP.clone().applyEuler(_e.set(headPitch, 0, 0)).applyQuaternion(rootQ);
     aim(B.Head, AX.Head, headDir, 0.9);
-    if (c.shake) B.Head.rotateOnAxis(AX.Head, c.shake);
+    if (headYaw) B.Head.rotateOnAxis(AX.Head, headYaw);
 
-    // the arms: angles as for the simple robots, or reaching a target (keyboard, head)
+    // the arms: angles as for the simple robots, blended towards a point the hand reaches (two-bone IK)
     for (const [i, side] of [[0, 'Right'], [1, 'Left']]) {
       const upper = B[`${side}Arm`];
       const fore = B[`${side}ForeArm`];
+      const ax = i ? c.a1x : c.a0x;
+      let az = i ? c.a1z : c.a0z;
+      if (bulky) az += (i ? 1 : -1) * SPREAD * Math.max(0, Math.cos(az));
+      const el = i ? c.e1 : c.e0;
+      dirs.u.copy(DOWN).applyEuler(_e.set(ax, 0, az));
+      dirs.f.copy(DOWN).applyEuler(_e.set(el, 0, 0)).applyEuler(_e.set(ax, 0, az));
+      toWorld(dirs.u);
+      toWorld(dirs.f);
+      const h = rig.hands?.[i];
+      let w = 0;
       if (reach) {
         if (reach === 'head') {
           B.Head.getWorldPosition(target).add(_v.set(side === 'Left' ? 0.13 : -0.13, 0.05, 0.06).applyQuaternion(rootQ));
         } else target.copy(reach[i]);
+        poleV.set(side === 'Left' ? 0.7 : -0.7, -1, reach === 'head' ? 0.3 : -0.5);
+        w = 1;
+      } else if (h && h.w > 0.001) {
+        target.copy(h.at);
+        if (h.pole) poleV.copy(h.pole);
+        else poleV.set(side === 'Left' ? 0.6 : -0.6, -1, -0.3);
+        w = h.w;
+      }
+      handW[i] = reach ? 1 : handW[i] + (w - handW[i]) * Math.min(1, dt * 14);
+      if (w > 0.001) {
         upper.getWorldPosition(shoulderAt);
-        const pole = new THREE.Vector3(side === 'Left' ? 0.7 : -0.7, -1, reach === 'head' ? 0.3 : -0.5).applyQuaternion(rootQ);
-        solveArm(shoulderAt, target, L1, L2, pole, dirs.u, dirs.f);
-      } else {
-        const ax = i ? c.a1x : c.a0x;
-        let az = i ? c.a1z : c.a0z;
-        if (bulky) az += (i ? 1 : -1) * SPREAD * Math.max(0, Math.cos(az));
-        const el = i ? c.e1 : c.e0;
-        dirs.u.copy(DOWN).applyEuler(_e.set(ax, 0, az));
-        dirs.f.copy(DOWN).applyEuler(_e.set(el, 0, 0)).applyEuler(_e.set(ax, 0, az));
-        toWorld(dirs.u);
-        toWorld(dirs.f);
+        fore.getWorldPosition(tmp);
+        const l1 = shoulderAt.distanceTo(tmp);
+        const l2 = tmp.distanceTo(B[`${side}Hand`].getWorldPosition(_v)) + 0.06 * ws;
+        solveArm(shoulderAt, target, l1, l2, poleV.applyQuaternion(rootQ), solved[i][0], solved[i][1]);
+      }
+      if (handW[i] > 0.002) {
+        dirs.u.lerp(solved[i][0], handW[i]).normalize();
+        dirs.f.lerp(solved[i][1], handW[i]).normalize();
       }
       aim(upper, AX[`${side}Arm`], dirs.u, 1);
       aim(fore, AX[`${side}ForeArm`], dirs.f, 1);
     }
 
-    // the legs: their own walk and stance, unless sitting (on the chair or on the floor)
+    // the legs: bent by angles (on the chair, on the floor, tucked in the air), else planted by IK
     if (legsW > 0.01) {
-      const hip = -1.5;
-      const knee = floor > 0.5 ? 0.15 : 1.5;
+      const hip = legs?.w ? legs.hip : floor > 0.5 ? -2.05 : -1.5;
+      const knee = legs?.w ? legs.knee : floor > 0.5 ? 2.15 : 1.5;
       for (const side of ['Left', 'Right']) {
         const thigh = DOWN.clone().applyEuler(_e.set(hip, 0, 0)).applyQuaternion(rootQ);
         const shinDir = DOWN.clone().applyEuler(_e.set(hip + knee, 0, 0)).applyQuaternion(rootQ);
         aim(B[`${side}UpLeg`], AX[`${side}UpLeg`], thigh, legsW);
         aim(B[`${side}Leg`], AX[`${side}Leg`], shinDir, legsW);
+      }
+    }
+    const ground = rig.ground ?? rootAt.y;
+    const stance = rig.stance ?? 0;
+    const tracking = walkW > 0.5 || !!rig.air || legsW > 0.5;
+    plantW += ((tracking ? 0 : 1) - plantW) * Math.min(1, dt * 10);
+    shift.multiplyScalar(Math.max(0, 1 - dt * 5));
+    const restYaw = (f) => rootYaw + f.s * 0.08 * (1 - stance) - 0.3 * stance;
+    for (const f of feet) {
+      if (tracking || !f.ready) {
+        // following the clip (or the pose): ready to be planted where the foot is when it stops
+        B[`${f.side}Foot`].getWorldPosition(f.at);
+        f.at.y = ground + ankleY * ws;
+        f.yaw = rootYaw;
+        f.u = 1;
+        f.ready = true;
+      }
+    }
+    if (!tracking) {
+      // where each foot belongs under the body now: a little apart, or set as a boxer's (left ahead)
+      const rest = (f, out) => out.set(f.s * lerpN(0.1, 0.15, stance), 0, f.s * 0.085 * stance).applyQuaternion(rootQ).multiplyScalar(ws).add(rootAt).setY(ground + ankleY * ws).addScaledVector(vel, 0.16);
+      const busy = feet.some((f) => f.u < 1);
+      if (!busy && t - lastStep > 0.05) {
+        // the foot furthest from its place steps, if it is far enough (or turned enough)
+        let worst = null;
+        let err = 0;
+        for (const [i, f] of feet.entries()) {
+          if (rig.feet?.[i]?.w > 0.001) continue;
+          rest(f, tmp);
+          const e = Math.hypot(tmp.x - f.at.x, tmp.z - f.at.z) / ws + Math.abs(turnDiff(restYaw(f), f.yaw)) * 0.16;
+          if (e > err) {
+            err = e;
+            worst = f;
+          }
+        }
+        if (worst && err > 0.07) {
+          worst.from.copy(worst.at);
+          rest(worst, worst.to);
+          worst.fromYaw = worst.yaw;
+          worst.toYaw = restYaw(worst);
+          worst.u = 0;
+          worst.dur = Math.min(0.42, 0.25 + err * 0.5);
+        }
+      }
+      for (const f of feet) {
+        if (f.u >= 1) continue;
+        f.u = Math.min(1, f.u + dt / f.dur);
+        const k = f.u * f.u * (3 - 2 * f.u);
+        f.at.lerpVectors(f.from, f.to, k);
+        f.at.y += Math.sin(f.u * Math.PI) * 0.07 * ws;
+        f.yaw = f.fromYaw + turnDiff(f.toYaw, f.fromYaw) * k;
+        // the hips over the other foot while this one is off the ground
+        const other = feet[f.s > 0 ? 1 : 0];
+        tmp.subVectors(other.at, rootAt).setY(0).applyQuaternion(invQ);
+        const up = Math.sin(f.u * Math.PI);
+        shift.x += (tmp.x * 0.3 - shift.x) * Math.min(1, dt * 12) * up;
+        shift.y = -up * 0.02 * ws;
+        if (f.u >= 1) lastStep = t;
+      }
+    }
+    for (const [i, f] of feet.entries()) {
+      const want = rig.feet?.[i];
+      const w = want?.w ?? 0;
+      footW[i] += (w - footW[i]) * Math.min(1, dt * 12);
+      if (w > 0.001) {
+        // the scene places this foot (on a rope, on the canvas): the planter takes it from there
+        f.at.copy(want.at);
+        f.yaw = want.yaw ?? rootYaw;
+        f.u = 1;
+      }
+      const k = Math.max(footW[i], plantW) * (1 - legsW);
+      if (k < 0.01) continue;
+      const up = B[`${f.side}UpLeg`];
+      const mid = B[`${f.side}Leg`];
+      up.getWorldPosition(shoulderAt);
+      mid.getWorldPosition(tmp);
+      const l1 = shoulderAt.distanceTo(tmp);
+      const l2 = tmp.distanceTo(B[`${f.side}Foot`].getWorldPosition(_v));
+      // the knee forward, where the foot points, a little out
+      const yaw = f.yaw;
+      poleV.set(Math.sin(yaw) + f.s * 0.15 * Math.cos(yaw), 0.1, Math.cos(yaw) - f.s * 0.15 * Math.sin(yaw));
+      solveArm(shoulderAt, f.at, l1, l2, poleV, ik.u, ik.f);
+      aim(up, AX[`${f.side}UpLeg`], ik.u, k);
+      aim(mid, AX[`${f.side}Leg`], ik.f, k);
+      // the foot flat, pointing where it should
+      tmp.copy(TOE[f.side]).applyAxisAngle(UP, turnDiff(yaw, rootYaw)).applyQuaternion(rootQ);
+      aim(B[`${f.side}Foot`], AX[`${f.side}Foot`], tmp, k);
+    }
+    if (rig.hug) {
+      // the hands round the shins (a tuck in the air)
+      for (const side of ['Right', 'Left']) {
+        B[`${side}Leg`].getWorldPosition(tmp);
+        B[`${side}Foot`].getWorldPosition(target).lerp(tmp, 0.5);
+        target.add(tmp.set(0, 0, 0.1 * ws).applyQuaternion(rootQ));
+        B[`${side}Arm`].getWorldPosition(shoulderAt);
+        B[`${side}ForeArm`].getWorldPosition(tmp);
+        const l1 = shoulderAt.distanceTo(tmp);
+        const l2 = tmp.distanceTo(B[`${side}Hand`].getWorldPosition(_v)) + 0.06 * ws;
+        solveArm(shoulderAt, target, l1, l2, poleV.set(side === 'Left' ? 0.8 : -0.8, -0.2, -0.3).applyQuaternion(rootQ), ik.u, ik.f);
+        aim(B[`${side}Arm`], AX[`${side}Arm`], ik.u, rig.hug);
+        aim(B[`${side}ForeArm`], AX[`${side}ForeArm`], ik.f, rig.hug);
       }
     }
 
@@ -331,5 +535,10 @@ export function makeXRobot(kind, models, colors) {
     }
   }
 
-  return { root, kind: 'x', eyes, pose, cur: {} };
+  /** Where the walk is in its stride (0..1, 0 as the left foot leaves the ground) and how much it walks. */
+  const gait = () => ({ phase: gaitT, w: walkW });
+  return { root, kind: 'x', eyes, pose, gait, cur: {}, bones: B, feet, hipY: HIP_Y, ankleY, model };
 }
+
+const lerpN = (a, b, k) => a + (b - a) * k;
+const turnDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));

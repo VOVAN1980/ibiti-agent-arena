@@ -21,6 +21,10 @@ export const TRUSS = { y: 9.0, r: 9.6, yIn: 8.05, rIn: 4.4 }; // the two rings o
 export const STANDS_R = 13.5; // the first row of the stands
 export const RAIL_R = STANDS_R - 0.1; // the steel railing in front of them
 export const ROPES = [0.35, 0.72, 1.08, 1.45]; // the ropes' heights over the canvas
+// what weighs on the ropes (a climbing fighter's feet and hands), set each frame by scene3d.js: up to four
+// loads, each (x, rope's height, z, how far down in metres) and its side of the ring (the post's x and z,
+// where along the side from that post the rope starts and ends); a rope dips in a V to its two ends
+export const ROPE_LOAD = { at: { value: Array.from({ length: 4 }, () => new THREE.Vector4()) }, side: { value: Array.from({ length: 4 }, () => new THREE.Vector4()) } };
 
 // The stands, from the floor out: the lower bowl, then a middle and an upper tier, each on a balcony
 // over a walkway behind the tier below. rows of `depth` metres each rising `rise`; `aisles` stair
@@ -2015,6 +2019,23 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring, eye, kit = n
     // where a texel of the braid is smaller than a pixel its bumps are averaged away: the sheen goes as
     // rough as they were, so the wide shot does not sparkle
     ropeMat.onBeforeCompile = (sh) => {
+      sh.uniforms.uLoad = ROPE_LOAD.at;
+      sh.uniforms.uLoadSide = ROPE_LOAD.side;
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform vec4 uLoad[4];\nuniform vec4 uLoadSide[4];').replace('#include <begin_vertex>', `#include <begin_vertex>
+        float dip = 0.0;
+        for (int i = 0; i < 4; i++) {
+          vec4 L = uLoad[i];
+          if (L.w <= 0.0) continue;
+          vec4 S = uLoadSide[i];
+          vec2 dir = normalize(L.xz - S.xy);
+          vec2 rel = transformed.xz - S.xy;
+          float along = dot(rel, dir);
+          float on = (1.0 - smoothstep(0.07, 0.13, length(rel - dir * along))) * (1.0 - smoothstep(0.07, 0.12, abs(transformed.y - L.y)));
+          float at = dot(L.xz - S.xy, dir);
+          float v = along < at ? (along - S.z) / max(0.05, at - S.z) : (S.w - along) / max(0.05, S.w - at);
+          dip = max(dip, L.w * on * clamp(v, 0.0, 1.0));
+        }
+        transformed.y -= dip;`);
       sh.fragmentShader = sh.fragmentShader.replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
         {
           vec2 fw = fwidth(vRoughnessMapUv) * ${small ? '256.0' : '512.0'};
