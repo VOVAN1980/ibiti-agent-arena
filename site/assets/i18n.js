@@ -162,7 +162,9 @@ export function setLang(lang) {
   const u = new URL(location.href);
   if (saved) u.searchParams.delete('lang');
   else u.searchParams.set('lang', lang);
-  location.href = u.toString();
+  // the same address (one with a #part, say) would only scroll, not load the page again: reload it then
+  if (u.href === location.href) location.reload();
+  else location.href = u.href;
 }
 
 /** Fills every [data-i18n] element's text and every [data-i18n-ph] placeholder. */
