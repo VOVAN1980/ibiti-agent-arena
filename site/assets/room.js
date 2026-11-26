@@ -95,11 +95,13 @@ export async function loadHallAssets(small) {
     t.anisotropy = 4;
     return t;
   });
+  // the crowd: the people, their normals and (not on phones) their heads at about twice the texels
   const crowd = Promise.all([
     fetch(`${ARENA}crowd-atlas.json`).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`crowd-atlas.json: ${r.status}`)))),
     load(`crowd-atlas${lite}.webp`, true),
     load(`crowd-atlas${lite}-normal.webp`, false),
-  ]).then(([atlas, map, normal]) => ({ cells: atlas.cells, map, normal }));
+    small ? null : load('crowd-heads.webp', true).catch(() => null),
+  ]).then(([atlas, map, normal, heads]) => ({ cells: atlas.cells, elev: atlas.elev, headsSize: atlas.headsSize, map, normal, heads: atlas.files?.heads ? heads : null }));
   const [k, c] = await Promise.all([soft(kit, 'the ring kit'), soft(crowd, 'the crowd atlas')]);
   return { kit: k, crowd: c };
 }
@@ -1175,10 +1177,13 @@ function buildStands(scene, { small, steel, atlas }) {
 
   /** The people from the atlas: a billboard each, turned round the vertical to the camera, lit through
    *  its normal map by the hall's light; red fans mostly on the left, green on the right, no one next to
-   *  their own copy. Each sits in one pose and changes it only when their side's mood does (see pose()),
-   *  over half a second to a second, one after another; the shader blends the old picture into the new
-   *  one and moves it up or down as they rise or sit. At rest they live a little: they breathe, sway,
-   *  now and then lean in, turn to a neighbour or look at a phone. */
+   *  their own copy. Each holds a pose (a set of one to four pictures, see SETS) and changes it only when
+   *  their side's mood does (see pose()), over half a second to a second, one after another; the shader
+   *  blends the old picture into the new one and moves it up or down as they rise or sit. A set of
+   *  several pictures (clapping, arms pumping or waving, a fist going up) cross-fades from one to the
+   *  next, slowly, each person at their own speed and phase. Their heads come from a second atlas at
+   *  about twice the texels (not on phones). At rest they live a little: they breathe, sway, now and
+   *  then lean in, turn to a neighbour or look at a phone. */
   const atlasPeople = () => {
     const { cells } = atlas;
     const n = full.length;
@@ -1186,34 +1191,59 @@ function buildStands(scene, { small, steel, atlas }) {
     const kinds = cells.filter((c) => c.person != null);
     const PEOPLE = Math.max(...kinds.map((c) => c.person)) + 1;
     const FR = Math.max(...kinds.map((c) => c.frame)) + 1;
-    const cellOf = new Int16Array(PEOPLE * FR).fill(-1);
-    cells.forEach((c, i) => c.person != null && (cellOf[c.person * FR + c.frame] = i));
-    const fr = (pose, k = 0, or = 0) => kinds.filter((c) => c.person === 0 && c.pose === pose)[k]?.frame ?? or;
-    const F = {
-      seated: fr('seated'), seated2: fr('seated', 1), clap: fr('seated_clap'), lean: fr('seated_lean'), seatedCheer: fr('seated_cheer'),
-      seatedPhone: fr('seated_phone'), standing: fr('standing'), cheer: fr('standing_cheer'), fist: fr('standing_fist'),
-      standingPhone: fr('standing_phone'), talk: fr('seated_talk', 0, fr('seated', 1)), dejected: fr('seated_dejected', 0, fr('seated_lean')),
-      standClap: fr('standing_clap', 0, fr('standing')),
+    if (cells.some((c, i) => c.person != null && i !== c.person * FR + c.frame)) console.warn('crowd atlas: cells out of order');
+    const fr = (pose, or = 0) => kinds.find((c) => c.person === 0 && c.pose === pose)?.frame ?? or;
+    // the poses: [pictures (frame names, cycled), seconds a cycle (each person a little quicker or slower)]
+    const sit = fr('seated');
+    const stand = fr('standing', sit);
+    const up = fr('standing_cheer', stand);
+    const SETS = {
+      sit: [[sit]], lean: [[fr('seated_lean', sit)]], talk: [[fr('seated_talk', sit)]], sitPhone: [[fr('seated_phone', sit)]],
+      dejected: [[fr('seated_dejected', fr('seated_lean', sit))]],
+      sitClap: [[fr('seated_clap_open', fr('seated_clap')), fr('seated_clap')], 1.15],
+      sitCheer: [[fr('seated_cheer'), fr('seated_pump', fr('seated_cheer'))], 1.8],
+      stand: [[stand]], standPhone: [[fr('standing_phone', stand)]], armsUp: [[up]],
+      standClap: [[fr('standing_clap_open', fr('standing_clap', stand)), fr('standing_clap', stand)], 1.2],
+      pump: [[up, fr('standing_pump', up)], 1.9],
+      wave: [[fr('wave_l', up), up, fr('wave_r', up), up], 2.9],
+      fist: [[fr('standing_fist', up), fr('standing_fist_low', up)], 1.5],
     };
+    const S = {};
+    Object.keys(SETS).forEach((k, i) => (S[k] = i));
+    const setList = Object.values(SETS);
+    // their table for the shader: row 0 the frames (up to four), row 1 how many, the cycle, the share of
+    // each step spent blending into the next
+    const setTable = new Float32Array(setList.length * 8);
+    setList.forEach(([frames, cycle = 1], i) => {
+      setTable.set([0, 1, 2, 3].map((k) => frames[Math.min(k, frames.length - 1)]), i * 4);
+      setTable.set([frames.length, cycle, 0.3, 0], (setList.length + i) * 4);
+    });
+    const setTex = new THREE.DataTexture(setTable, setList.length, 2, THREE.RGBAFormat, THREE.FloatType);
+    setTex.needsUpdate = true;
+    const calmSets = new Set([S.sit, S.lean, S.talk, S.sitPhone]);
     const fanOf = (k) => FANS[k].filter((p) => p < PEOPLE);
     const fans = { red: fanOf('red'), green: fanOf('green'), none: Array.from({ length: PEOPLE }, (_, p) => p).filter((p) => !FANS.red.includes(p) && !FANS.green.includes(p)) };
-    // the cells for the shader: row 0 the uv rect, row 1 the size in metres and the anchor
-    const table = new Float32Array(cells.length * 8);
+    // the cells for the shader: row 0 the uv rect, row 1 the size in metres and the anchor, row 2 where
+    // the head lies in the cell, row 3 the head's uv rect in the heads atlas
+    const heads = !!atlas.heads;
+    const table = new Float32Array(cells.length * 16);
     cells.forEach((c, i) => {
       table.set(c.uv, i * 4);
       table.set([...c.size, ...c.anchor], (cells.length + i) * 4);
+      table.set(c.head ?? [2, 2, 3, 3], (cells.length * 2 + i) * 4);
+      table.set(c.headUv ?? [0, 0, 0, 0], (cells.length * 3 + i) * 4);
     });
-    const cellTex = new THREE.DataTexture(table, cells.length, 2, THREE.RGBAFormat, THREE.FloatType);
+    const cellTex = new THREE.DataTexture(table, cells.length, 4, THREE.RGBAFormat, THREE.FloatType);
     cellTex.needsUpdate = true;
     const pos = new Float32Array(n * 3);
     const look = new Float32Array(n * 4); // brightness, mirrored (-1) or not, a phase, a size
     const dye = new Float32Array(n * 3); // a dark hue their clothes take on, so no two copies match
     const vary = new Float32Array(n * 4); // a light shirt (1) or not, the light where they sit, a hue for the skin, a hue for the hair
-    const act = new Float32Array(n * 4); // the cell they come from, the one they go to, when the change starts, how they move (1 clapping, 2 cheering)
+    const act = new Float32Array(n * 4); // the pose they come from, the one they go to, when the change starts, who they are
     const who = new Uint8Array(n);
     const draw = new Float32Array(n * 4);
     const idle = new Uint8Array(n); // their pose at rest
-    const frame = new Uint8Array(n); // the frame they are in (or going to)
+    const now = new Uint8Array(n); // the pose they are in (or going to)
     const side = new Int8Array(n);
     const any = (l) => l[Math.floor(Math.random() * l.length)];
     // no one beside or straight behind their own copy: the last few people along the row and the row in
@@ -1248,14 +1278,14 @@ function buildStands(scene, { small, steel, atlas }) {
       dye.set(DYES[Math.floor(Math.random() * DYES.length)], i * 3);
       vary.set([Math.random() < 0.22 + 0.1 * far ? 1 : 0, Math.random(), Math.random(), Math.random()], i * 4);
       draw.set([Math.random(), Math.random(), Math.random(), Math.random()], i * 4);
-      idle[i] = restPose(draw[i * 4], Math.random(), draw[i * 4 + 3]);
+      idle[i] = restPose(draw[i * 4], Math.random());
     });
     /** A pose at rest: mostly sitting back, some leaning in, turned to a neighbour, or on a phone. */
-    function restPose(a, r, d) {
-      if (a < 0.03) return F.seatedPhone;
-      if (r < 0.08) return F.lean;
-      if (r < 0.15) return F.talk;
-      return d < 0.5 ? F.seated : F.seated2;
+    function restPose(a, r) {
+      if (a < 0.03) return S.sitPhone;
+      if (r < 0.08) return S.lean;
+      if (r < 0.15) return S.talk;
+      return S.sit;
     }
     const quad = new THREE.PlaneGeometry(1, 1).translate(0.5, 0.5, 0);
     const geo = new THREE.InstancedBufferGeometry();
@@ -1268,46 +1298,76 @@ function buildStands(scene, { small, steel, atlas }) {
     geo.setAttribute('iAct', new THREE.InstancedBufferAttribute(act, 4).setUsage(THREE.DynamicDrawUsage));
     geo.instanceCount = n;
     const mat = new THREE.ShaderMaterial({
-      defines: { POOLS, SOFT: small ? 0 : 1 },
-      uniforms: { ...light, ...common, ...mood, uCells: { value: cellTex }, uMap: { value: atlas.map }, uNormal: { value: atlas.normal } },
+      defines: { POOLS, SOFT: small ? 0 : 1, HEADS: heads ? 1 : 0, FR: `${FR}.0`, HEADS_W: `${atlas.headsSize?.[0] ?? 2048}.0`, HEADS_H: `${atlas.headsSize?.[1] ?? 1024}.0` },
+      uniforms: { ...light, ...common, ...mood, uCells: { value: cellTex }, uSets: { value: setTex }, uMap: { value: atlas.map }, uNormal: { value: atlas.normal }, uHeads: { value: atlas.heads ?? null } },
       alphaToCoverage: !small,
       side: THREE.DoubleSide, // a mirrored one turns its back
-      vertexShader: `attribute vec3 iPos; attribute vec4 iLook; attribute vec4 iAct; attribute vec3 iDye; attribute vec4 iVary; uniform sampler2D uCells; uniform float uTime; uniform float uMove;
+      vertexShader: `attribute vec3 iPos; attribute vec4 iLook; attribute vec4 iAct; attribute vec3 iDye; attribute vec4 iVary; uniform sampler2D uCells; uniform sampler2D uSets; uniform float uTime; uniform float uMove;
         varying vec4 vUv; varying vec4 vLoc; varying float vD; flat varying float vK; flat varying vec3 vRight; flat varying vec3 vToCam; flat varying vec3 vDye; flat varying vec4 vVary;
         flat varying vec3 vKey; flat varying vec3 vAmb; flat varying vec3 vRim; flat varying vec3 vToRig; flat varying vec3 vFace; flat varying vec4 vHaze;
+        #if HEADS
+        varying vec4 vHead; flat varying vec4 vHuv0; flat varying vec4 vHuv1;
+        #endif
         ${HALL_LIGHT}
+        // a pose's pictures at this moment: the frame shown, the next one and how far the cross-fade into
+        // it has gone (a set cycles through its frames, each person at their own speed and phase)
+        vec3 frames(float s, float ph) {
+          vec4 f = texelFetch(uSets, ivec2(int(s + 0.5), 0), 0);
+          vec4 p = texelFetch(uSets, ivec2(int(s + 0.5), 1), 0);
+          if (p.x < 1.5) return vec3(f.x, f.x, 0.0);
+          float u = fract(uTime * uMove / (p.y * (0.85 + 0.3 * fract(ph * 7.31))) + ph) * p.x; // (still for less motion)
+          float i = floor(u);
+          float j = mod(i + 1.0, p.x);
+          float a = i < 0.5 ? f.x : i < 1.5 ? f.y : i < 2.5 ? f.z : f.w;
+          float b = j < 0.5 ? f.x : j < 1.5 ? f.y : j < 2.5 ? f.z : f.w;
+          return vec3(a, b, smoothstep(0.5 - p.z, 0.5 + p.z, u - i));
+        }
         void main() {
           // the change of pose: the old picture fades into the new one while both slide towards the new
-          // height (rising or sitting down); the quad covers both
+          // height (rising or sitting down); the quad covers both. Holding a pose, its pictures cross-fade
+          // one into the next
           float ph = iLook.z;
           float k = smoothstep(iAct.z, iAct.z + 0.55 + 0.45 * ph, uTime);
-          vec4 uv0 = texelFetch(uCells, ivec2(int(iAct.x + 0.5), 0), 0);
-          vec4 sa0 = texelFetch(uCells, ivec2(int(iAct.x + 0.5), 1), 0);
-          vec4 uv1 = texelFetch(uCells, ivec2(int(iAct.y + 0.5), 0), 0);
-          vec4 sa1 = texelFetch(uCells, ivec2(int(iAct.y + 0.5), 1), 0);
+          float base = floor(iAct.w + 0.5) * FR;
+          vec3 fa = frames(iAct.x, ph);
+          vec3 fb = frames(iAct.y, ph);
+          float change = step(0.0001, k) * step(k, 0.9999);
+          float c0 = base + (change > 0.5 ? (fa.z < 0.5 ? fa.x : fa.y) : k < 0.5 ? fa.x : fb.x);
+          float c1 = base + (change > 0.5 ? (fb.z < 0.5 ? fb.x : fb.y) : k < 0.5 ? fa.y : fb.y);
+          float m = change > 0.5 ? k : k < 0.5 ? fa.z : fb.z;
+          float mid = step(0.0001, m) * step(m, 0.9999);
+          vec4 uv0 = texelFetch(uCells, ivec2(int(c0 + 0.5), 0), 0);
+          vec4 sa0 = texelFetch(uCells, ivec2(int(c0 + 0.5), 1), 0);
+          vec4 uv1 = texelFetch(uCells, ivec2(int(c1 + 0.5), 0), 0);
+          vec4 sa1 = texelFetch(uCells, ivec2(int(c1 + 0.5), 1), 0);
           vec2 s0 = sa0.xy * iLook.w;
           vec2 s1 = sa1.xy * iLook.w;
           vec2 lo0 = -sa0.zw * s0, hi0 = (1.0 - sa0.zw) * s0;
           vec2 lo1 = -sa1.zw * s1, hi1 = (1.0 - sa1.zw) * s1;
-          float dy0 = k * (hi1.y - hi0.y) * 0.35;
-          float dy1 = (1.0 - k) * (hi0.y - hi1.y) * 0.35;
-          float mid = step(0.0001, k) * step(k, 0.9999);
-          vec2 lo = mix(k < 0.5 ? lo0 : lo1, min(lo0 + vec2(0.0, dy0), lo1 + vec2(0.0, dy1)), mid);
-          vec2 hi = mix(k < 0.5 ? hi0 : hi1, max(hi0 + vec2(0.0, dy0), hi1 + vec2(0.0, dy1)), mid);
+          float dy0 = change * m * (hi1.y - hi0.y) * 0.35;
+          float dy1 = change * (1.0 - m) * (hi0.y - hi1.y) * 0.35;
+          vec2 lo = mix(m < 0.5 ? lo0 : lo1, min(lo0 + vec2(0.0, dy0), lo1 + vec2(0.0, dy1)), mid);
+          vec2 hi = mix(m < 0.5 ? hi0 : hi1, max(hi0 + vec2(0.0, dy0), hi1 + vec2(0.0, dy1)), mid);
           vec2 q = mix(lo, hi, position.xy); // metres from the anchor
-          vec2 l0 = (q - vec2(0.0, dy0 * mid)) / s0 + sa0.zw;
-          vec2 l1 = (q - vec2(0.0, dy1 * mid)) / s1 + sa1.zw;
+          vec2 l0 = (q - vec2(0.0, dy0)) / s0 + sa0.zw;
+          vec2 l1 = (q - vec2(0.0, dy1)) / s1 + sa1.zw;
           vUv = vec4(mix(uv0.xy, uv0.zw, l0), mix(uv1.xy, uv1.zw, l1));
           vLoc = vec4(l0, l1);
-          vK = mid > 0.5 ? k : step(0.5, k) * 2.0; // 2: only the new picture, 0: only the old
-          // alive: breathing, a slow sway of their own; clapping a small quick bounce, cheering a bob
+          vK = mid > 0.5 ? m : step(0.5, m) * 2.0; // 2: only the second picture, 0: only the first
+          #if HEADS
+          // where in the head's box this corner is (inside 0..1 shows the sharper head), for both pictures
+          vec4 h0 = texelFetch(uCells, ivec2(int(c0 + 0.5), 2), 0);
+          vec4 h1 = texelFetch(uCells, ivec2(int(c1 + 0.5), 2), 0);
+          vHead = vec4((l0 - h0.xy) / (h0.zw - h0.xy), (l1 - h1.xy) / (h1.zw - h1.xy));
+          vHuv0 = texelFetch(uCells, ivec2(int(c0 + 0.5), 3), 0);
+          vHuv1 = texelFetch(uCells, ivec2(int(c1 + 0.5), 3), 0);
+          #endif
+          // alive: breathing, a slow sway of their own (no bouncing)
           float t = uTime + ph * 60.0;
-          float mv = iAct.w;
-          float bob = uMove * (0.006 * sin(t * 1.5) + step(0.5, mv) * step(mv, 1.5) * 0.012 * abs(sin(t * 6.0)) + step(1.5, mv) * 0.03 * (0.5 + 0.5 * sin(t * 2.3)));
           float sway = uMove * 0.012 * sin(t * 0.37) * smoothstep(0.3, 1.0, q.y);
           vec2 toCam = normalize(cameraPosition.xz - iPos.xz + vec2(0.0001));
           vec3 right = vec3(toCam.y, 0.0, -toCam.x);
-          vec3 w = iPos + right * (q.x + sway) * iLook.y + vec3(0.0, q.y * (1.0 + 0.004 * uMove * sin(t * 1.5)) + bob, 0.0);
+          vec3 w = iPos + right * (q.x + sway) * iLook.y + vec3(0.0, q.y * (1.0 + 0.004 * uMove * sin(t * 1.5)), 0.0);
           vRight = right * iLook.y;
           vToCam = vec3(toCam.x, 0.0, toCam.y);
           vDye = iDye;
@@ -1346,23 +1406,46 @@ function buildStands(scene, { small, steel, atlas }) {
           vD = -mv4.z;
           gl_Position = projectionMatrix * mv4;
         }`,
-      fragmentShader: `uniform sampler2D uMap; uniform sampler2D uNormal; uniform vec3 fogColor; uniform float mirrorPass;
+      fragmentShader: `uniform sampler2D uMap; uniform sampler2D uNormal; uniform sampler2D uHeads; uniform vec3 fogColor; uniform float mirrorPass;
         varying vec4 vUv; varying vec4 vLoc; varying float vD; flat varying float vK; flat varying vec3 vRight; flat varying vec3 vToCam; flat varying vec3 vDye; flat varying vec4 vVary;
         flat varying vec3 vKey; flat varying vec3 vAmb; flat varying vec3 vRim; flat varying vec3 vToRig; flat varying vec3 vFace; flat varying vec4 vHaze;
+        #if HEADS
+        varying vec4 vHead; flat varying vec4 vHuv0; flat varying vec4 vHuv1;
+        #endif
         float inside(vec2 l) { return step(0.0, l.x) * step(l.x, 1.0) * step(0.0, l.y) * step(l.y, 1.0); }
+        // a picture's colour: inside its head's box from the sharper heads atlas (with explicit gradients:
+        // the box's edge runs through a pixel block)
+        #if HEADS
+        vec4 pic(vec2 uv, vec2 hl, vec4 huv) {
+          vec2 g = mix(huv.xy, huv.zw, hl);
+          vec2 gx = dFdx(hl) * (huv.zw - huv.xy), gy = dFdy(hl) * (huv.zw - huv.xy);
+          vec2 ux = dFdx(uv), uy = dFdy(uv);
+          // (a texel and a half inside the box: its edge texels blur into the gutter)
+          vec2 e = vec2(1.5 / HEADS_W, 1.5 / HEADS_H) / (huv.zw - huv.xy);
+          vec4 c;
+          if (inside((hl - e) / (1.0 - 2.0 * e)) > 0.5) c = textureGrad(uHeads, g, gx, gy);
+          else c = textureGrad(uMap, uv, ux, uy);
+          return c;
+        }
+        #define PIC0 pic(vUv.xy, vHead.xy, vHuv0)
+        #define PIC1 pic(vUv.zw, vHead.zw, vHuv1)
+        #else
+        #define PIC0 texture2D(uMap, vUv.xy)
+        #define PIC1 texture2D(uMap, vUv.zw)
+        #endif
         void main() {
           vec4 a;
           vec3 nt;
           if (vK > 1.5) {
-            a = texture2D(uMap, vUv.zw);
+            a = PIC1;
             nt = texture2D(uNormal, vUv.zw).xyz;
           } else if (vK < 0.0001) {
-            a = texture2D(uMap, vUv.xy);
+            a = PIC0;
             nt = texture2D(uNormal, vUv.xy).xyz;
           } else {
-            // between two poses: both pictures, each only inside its own cell
-            vec4 a0 = texture2D(uMap, vUv.xy);
-            vec4 a1 = texture2D(uMap, vUv.zw);
+            // between two pictures: both, each only inside its own cell
+            vec4 a0 = PIC0;
+            vec4 a1 = PIC1;
             a0.a *= inside(vLoc.xy) * (1.0 - vK);
             a1.a *= inside(vLoc.zw) * vK;
             float t = a1.a / max(a0.a + a1.a, 0.0001);
@@ -1380,13 +1463,15 @@ function buildStands(scene, { small, steel, atlas }) {
           float lum = dot(a.rgb, vec3(0.33));
           float cloth = 1.0 - smoothstep(0.2, 0.45, (a.r - a.b) / (a.r + 0.02));
           vec3 dark = mix(a.rgb * mix(1.0, 0.6, smoothstep(0.2, 0.6, lum)), vDye * (0.6 + lum * 2.2), 0.35) * 1.5;
-          vec3 c = mix(a.rgb * mix(vec3(1.0, 0.86, 0.78), vec3(0.82, 0.8, 0.84), vVary.z) * 0.3, mix(dark, a.rgb * 0.9, vVary.x), cloth);
+          // (dark skin keeps more of its light, or it sinks into a featureless black)
+          vec3 c = mix(a.rgb * mix(vec3(1.0, 0.86, 0.78), vec3(0.82, 0.8, 0.84), vVary.z) * 0.3 * mix(1.8, 1.0, smoothstep(0.03, 0.3, lum)), mix(dark, a.rgb * 0.9, vVary.x), cloth);
           c = mix(vec3(dot(c, vec3(0.3333))), c, mix(1.0, 0.72, cloth)); // the fans' colours muted, as cloth in a dark hall
           c = min(c, vec3(mix(0.24, 1.0, cloth)));
           // the normal in the picture's frame: x along it, y up, z towards the camera
           vec3 n = nt * 2.0 - 1.0;
           vec3 N = normalize(vRight * n.x + vec3(0.0, n.y, 0.0) + vToCam * n.z);
-          float wrap = max(dot(N, vToRig) * 0.6 + 0.4, 0.0);
+          // skin takes the light from above harder than cloth (faces modelled by it: brows, nose, chin)
+          float wrap = max(dot(N, vToRig) * mix(0.8, 0.6, cloth) + mix(0.2, 0.4, cloth), 0.0);
           float edge = pow(clamp(1.0 - abs(n.z), 0.0, 1.0), 2.0);
           vec3 col = c * (vAmb + vKey * (wrap + max(N.y, 0.0) * 0.35)) + vRim * (edge * (0.4 + 0.6 * max(dot(N, vFace), 0.0)) + 0.06) * (0.5 + lum);
           col = mix(col, vHaze.rgb, vHaze.a);
@@ -1394,20 +1479,19 @@ function buildStands(scene, { small, steel, atlas }) {
           gl_FragColor = vec4(col, a.a);
         }`,
     });
-    const stretch = 1 / Math.cos(THREE.MathUtils.degToRad(atlas.elev)); // the pictures are seen from above
+    const stretch = 1 / Math.cos(THREE.MathUtils.degToRad(atlas.elev ?? 12)); // the pictures are seen from above
     const off = new Float32Array(n * 2);
     const holds = new Uint8Array(n);
-    /** Person i to `f` (with its move), from `at` on; returns true if anything changed. */
+    /** Person i to pose `s`, from `at` on; returns true if anything changed. */
     const placed = new Uint8Array(n);
-    const set = (i, f, move, at, reduced) => {
-      const to = cellOf[who[i] * FR + f];
+    const set = (i, s, at, reduced) => {
       const was = act[i * 4 + 1];
-      if (placed[i] && to === was && act[i * 4 + 3] === move) return false;
-      act.set([reduced || !placed[i] ? to : was, to, reduced || !placed[i] ? -1 : at, move], i * 4);
+      if (placed[i] && s === was) return false;
+      act.set([reduced || !placed[i] ? s : was, s, reduced || !placed[i] ? -1 : at, who[i]], i * 4);
       placed[i] = 1;
-      frame[i] = f;
+      now[i] = s;
       // the phone: in the hand in the picture (a pose without one leaves its light where it was, to fade)
-      const k = cells[to];
+      const k = cells[who[i] * FR + setList[s][0][0]];
       holds[i] = k.torch ? 1 : 0;
       if (k.torch) {
         const sz = look[i * 4 + 3];
@@ -1416,87 +1500,109 @@ function buildStands(scene, { small, steel, atlas }) {
       } else if (!off[i * 2 + 1]) off[i * 2 + 1] = (k.headTop - 0.2) * look[i * 4 + 3] * stretch;
       return true;
     };
-    /** Person i's pose for their side's mood: `lvl` 0 calm .. 1 on its feet, `mode` 'win' | 'lose' | ''. */
+    /** On their feet: arms up (held, pumping, waving slowly), a fist going up, clapping or filming. */
+    const cheer = (a, d) => {
+      if (a < 0.16) return S.standPhone;
+      if (d < 0.26) return S.wave;
+      if (d < 0.44) return S.armsUp;
+      if (d < 0.58) return S.pump;
+      if (d < 0.74) return S.fist;
+      return S.standClap;
+    };
+    /** Person i's pose for their side's mood: `lvl` 0 calm .. 1 their hero ahead, `mode` 'win' | 'lose' | ''. */
     const choose = (i, lvl, mode) => {
       const [a, b, c, d] = draw.subarray(i * 4, i * 4 + 4);
-      const sit = d < 0.5 ? F.seated : F.seated2;
       const rest = idle[i];
+      const cur = now[i];
       // a few in the back rows and the far stand stand the whole time (not on the losing side)
       const s = full[i];
-      const stander = b < 0.006 + 0.02 * farness[s] + 0.0012 * seats.row[s];
+      const stander = b > 0.994 - 0.02 * farness[s] - 0.0012 * seats.row[s];
       if (mode === 'lose') {
         // seated, nobody cheers: hands on heads, leaning in, talking it over
-        if (c < 0.16) return [F.dejected, 0];
-        if (c < 0.26) return [F.lean, 0];
-        if (c < 0.33) return [F.talk, 0];
-        return [rest === F.seatedPhone || rest === F.talk ? sit : rest, 0];
+        if (c < 0.16) return S.dejected;
+        if (c < 0.26) return S.lean;
+        if (c < 0.33) return S.talk;
+        return rest === S.sitPhone || rest === S.talk ? S.sit : rest;
       }
-      const up = mode === 'win' ? 1 : lvl;
-      const standShare = mode === 'win' ? 0.72 : up * 0.3;
-      if (b < standShare || stander) {
-        if (!(b < standShare)) return [F.standing, 0];
-        if (a < 0.08) return [F.standingPhone, 0];
-        if (c < 0.5 * up) return [d < 0.5 ? F.cheer : F.fist, 2];
-        if (c < 0.8 * up) return [F.standClap, 1];
-        return [F.standing, 0];
-      }
-      if (c < up * 0.5) return [F.clap, 1];
-      if (c < up * 0.68) return [F.seatedCheer, 2];
-      if (a < 0.03 + up * 0.06) return [F.seatedPhone, 0];
-      return [rest, 0];
+      // the winner's half: about seven in ten on their feet
+      if (mode === 'win') return b < 0.72 ? cheer(a, d) : c < 0.6 ? S.sitClap : c < 0.8 ? S.sitCheer : rest;
+      // their hero ahead: up to seven in ten stand (each at their own level, so they rise together and
+      // sit back down one by one as it settles); the rest clap or cheer in their seats
+      const standAt = b < 0.7 ? 0.5 + 0.45 * (b / 0.7) : 2;
+      const up = cur === S.stand || cur === S.standPhone || cur === S.armsUp || cur === S.pump || cur === S.wave || cur === S.fist || cur === S.standClap;
+      if (lvl > standAt || (up && lvl > standAt - 0.08)) return cheer(a, d);
+      if (stander) return lvl > 0.6 ? cheer(a, d) : S.stand;
+      const seatAt = 0.2 + 0.55 * c;
+      const active = cur === S.sitClap || cur === S.sitCheer;
+      if (lvl > seatAt || (active && lvl > seatAt - 0.08)) return d < 0.6 || lvl < 0.5 ? S.sitClap : S.sitCheer;
+      if (a < 0.03 + lvl * 0.05) return S.sitPhone;
+      return rest;
     };
-    // the mood of each half (red, the ends and the far stand, green), read in steps: a half reacts soon
-    // when its mood rises and settles down slowly; between changes people hold their poses
-    const STEP = 0.2;
-    const RISE_HOLD = 1500;
-    const HOLD = 6000;
-    const halves = [-1, 0, 1].map((s) => ({ s, lvl: -1, mode: null, at: -Infinity }));
+    // the mood of each half (red, the ends and the far stand, green): it rises at once with its side's
+    // excitement and settles slowly, so the stand sits back down person by person over several seconds
+    const halves = [-1, 0, 1].map((s) => ({ s, lvl: 0, mode: null }));
     let winLatch = null;
     let lifeAt = 0;
+    let lastT = null;
+    let lookAt = -1;
+    let first = true;
     const pose = (t, roar, exc, reduced, winner) => {
       // who won: as the scene says, or (until it does) the half that roars when the hall is on its feet
       if (roar < 0.95) winLatch = null;
       else if (winner) winLatch = winner;
       else if (!winLatch && Math.abs(exc.red - exc.blue) > 0.2) winLatch = exc.red > exc.blue ? 'red' : 'blue';
-      const lvlOf = (e) => THREE.MathUtils.clamp((e - 0.4) / 0.6, 0, 1) * (roar < 0.25 ? 0.8 : 1) + (roar > 0.6 && roar < 0.95 ? 0.12 : 0);
+      const lvlOf = (e) => THREE.MathUtils.clamp((e - 0.42) / 0.5, 0, 1) * (roar < 0.25 ? 0.85 : 1);
       const red = lvlOf(exc.red);
       const green = lvlOf(exc.blue);
-      const now = performance.now();
-      let changed = false;
+      const dt = lastT == null ? 0 : Math.max(0, t - lastT);
+      lastT = t;
+      let changed = first; // (the phones take their places the first time)
+      first = false;
+      let moved = false;
       for (const h of halves) {
         const raw = h.s < 0 ? red : h.s > 0 ? green : 0.5 * Math.max(red, green);
         const win = winLatch ? (h.s === 0 ? '' : (h.s < 0) === (winLatch === 'red') ? 'win' : 'lose') : '';
-        const lvl = Math.min(1, Math.round((winLatch && h.s === 0 ? Math.max(raw, 0.35) : raw) / STEP) * STEP);
+        const lvl = winLatch && h.s === 0 ? Math.max(raw, 0.35) : raw;
+        const was = h.lvl;
+        // (held a couple of seconds at its height, then down a little at a time)
+        if (lvl >= h.lvl - 0.02) h.peakAt = t;
+        h.lvl = reduced ? lvl : Math.max(lvl, h.lvl - (t - (h.peakAt ?? 0) > 2.5 ? dt * 0.09 : 0));
+        const rising = h.lvl > was + 1e-4 || (win === 'win' && h.mode !== 'win');
         const modeChanged = win !== h.mode;
-        if (!modeChanged && lvl === h.lvl) continue;
-        if (!modeChanged && now - h.at < (lvl > h.lvl ? RISE_HOLD : HOLD)) continue;
-        const rising = modeChanged ? win === 'win' : lvl > h.lvl;
-        h.lvl = lvl;
         h.mode = win;
-        h.at = now;
+        if (!modeChanged && Math.abs(h.lvl - was) < 1e-4) continue;
+        h.rising = rising;
+        moved = true;
+      }
+      // everyone against their half's mood, ten times a second; each changes in their own time (up within
+      // a second or so, down more slowly)
+      if (moved && t - lookAt > 0.1) {
+        lookAt = t;
         for (let i = 0; i < n; i++) {
-          if (side[i] !== h.s) continue;
-          const [f, move] = choose(i, lvl, win);
-          // each in their own time: on their feet within a second or so, back down more slowly
+          const h = halves[side[i] + 1];
+          const s = choose(i, h.lvl, h.mode);
+          if (s === now[i]) continue;
           const late = look[i * 4 + 2];
-          changed = set(i, f, move, t + (rising ? 0.1 + 1.1 * late * late : 0.4 + 2.6 * late), reduced) || changed;
+          changed = set(i, s, t + (h.rising ? 0.1 + 1.1 * late * late : 0.2 + 1.2 * late), reduced) || changed;
         }
       }
       // at rest, now and then someone leans in, turns to a neighbour, sits back or checks a phone
       if (!reduced && t - lifeAt > 0.5) {
         lifeAt = t;
-        const calm = new Set([F.seated, F.seated2, F.lean, F.talk, F.seatedPhone]);
         for (let j = 0; j < n / 150; j++) {
           const i = Math.floor(Math.random() * n);
           const h = halves[side[i] + 1];
-          if (h.mode || h.lvl > 0.2 || !calm.has(frame[i])) continue;
-          idle[i] = restPose(draw[i * 4] < 0.1 && Math.random() < 0.3 ? 0 : 1, Math.random(), Math.random());
-          changed = set(i, idle[i], 0, t + Math.random(), reduced) || changed;
+          if (h.mode || h.lvl > 0.15 || !calmSets.has(now[i])) continue;
+          idle[i] = restPose(draw[i * 4] < 0.1 && Math.random() < 0.3 ? 0 : 1, Math.random());
+          changed = set(i, idle[i], t + Math.random(), reduced) || changed;
         }
       }
       if (changed) geo.attributes.iAct.needsUpdate = true;
       return changed;
     };
+    // everyone in their seat to begin with
+    for (let i = 0; i < n; i++) set(i, idle[i], 0, true);
+    geo.attributes.iAct.needsUpdate = true;
     return { mesh: new THREE.Mesh(geo, mat), pos, off, holds, pose, mayHold: (i) => draw[i * 4] < 0.1 };
   };
 
