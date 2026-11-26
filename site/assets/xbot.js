@@ -118,7 +118,7 @@ export function makeXRobot(kind, models) {
       o.material = o.material.clone();
       o.material.color.setHex(0x000000);
       o.material.emissive.setHex(kind === 'ref' ? 0xffb83d : color); // the referee's visor and ear rings: a warm, clean gold
-      o.material.emissiveIntensity = kind === 'ref' ? 1.7 : 2.4;
+      o.material.emissiveIntensity = kind === 'ref' ? 0.7 : 2.4; // the referee's: a calm glow, its helmet does not shine
       lights = o.material;
     } else if (kind === 'ref') {
       // the referee's black titanium: satin, not a mirror the spotlights blind you in
@@ -562,7 +562,7 @@ export function makeXRobot(kind, models) {
     }
     // alive: the visor's glow and the back lights breathe, slowly
     eyeMat.emissiveIntensity = 0.9 * (0.86 + 0.14 * Math.sin(t * 2.3 + phase));
-    if (lights) lights.emissiveIntensity = kind === 'ref' ? 1.7 * (0.92 + 0.08 * Math.sin(t * 0.8)) : 2.4 * (0.7 + 0.3 * Math.sin(t * 1.4 + phase));
+    if (lights) lights.emissiveIntensity = kind === 'ref' ? 0.7 * (0.92 + 0.08 * Math.sin(t * 0.8)) : 2.4 * (0.7 + 0.3 * Math.sin(t * 1.4 + phase));
   }
 
   /** Put down somewhere new (the scene placed it, it did not walk there): no speed from the jump, standing

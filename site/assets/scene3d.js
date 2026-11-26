@@ -1569,9 +1569,22 @@ export async function createScene(root) {
       rig.hands[i].pole.set(out * 0.8, lerp(-1, 0.2, smooth(raise.up)), -0.6); // (eased: no elbow flip)
       f.raiseArm = i;
     } else f.raiseArm = null;
-    // typing: each hand from key to key, a tap on each; the head reads the screen
+    // typing: each hand from key to key, a tap on each; the head reads the screen. Both start together:
+    // a fighter down at its desk first rests its hands on the keys and waits until the other is seated too
+    // (a second after both are down), so one is never seen working while the other is still on its way
     let reach = null;
-    if (p.reach === 'keys' && !walking && p.seat) {
+    f.seatedFor = p.seat && !walking ? (f.seatedFor ?? 0) + dt : 0;
+    const otherIn = !other.present || (other.seatedFor ?? 0) > 1.4;
+    const typing = (f.seatedFor ?? 0) > 1.4 && (otherIn || f.seatedFor > 12); // (never waits for ever)
+    if (p.reach === 'keys' && !walking && p.seat && !typing) {
+      const rest = [0, 1].map((i) => f.st.g.localToWorld(new THREE.Vector3(i ? 0.14 : -0.14, 0.955, 0.37)));
+      reach = rest;
+      f.keys = null;
+      const scr = f.st.g.localToWorld(new THREE.Vector3(0, 1.4, 0.84));
+      f.gaze = { at: scr.clone(), mid: scr.clone(), glance: t + 6 + Math.random() * 6, until: 0 };
+      rig.look = scr;
+      rig.lookW = 0.9;
+    } else if (p.reach === 'keys' && !walking && p.seat) {
       f.keys ??= [0, 1].map(() => ({ from: new THREE.Vector3(), to: new THREE.Vector3(), u: 1, dur: 0.1 }));
       const calm = side === 'blue';
       reach = f.keys.map((kk, i) => {
