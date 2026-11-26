@@ -84,7 +84,13 @@ function aim(bone, axis, dirWorld, k) {
 /** The arm's two directions so that the hand reaches `target`, the elbow bending towards `pole`. */
 function solveArm(shoulder, target, l1, l2, pole, upper, fore) {
   const d = _v.subVectors(target, shoulder);
-  const dist = Math.min(d.length(), (l1 + l2) * 0.999);
+  // soft at full stretch: the last 1.5% of the reach is eased in, so a limb straightens smoothly instead
+  // of its elbow or knee snapping straight in the last frame (where the solution changes fastest)
+  const L = l1 + l2;
+  const s0 = L * 0.985;
+  let dist = d.length();
+  if (dist > s0) dist = s0 + (L - s0) * (1 - Math.exp(-(dist - s0) / (L - s0)));
+  dist = Math.min(dist, L * 0.999);
   const u = d.normalize().clone();
   const cosA = (l1 * l1 + dist * dist - l2 * l2) / (2 * l1 * dist);
   const a = Math.acos(Math.max(-1, Math.min(1, cosA)));
@@ -213,6 +219,13 @@ export function makeXRobot(kind, models) {
   const dirs = { u: new THREE.Vector3(), f: new THREE.Vector3() };
   const ik = { u: new THREE.Vector3(), f: new THREE.Vector3() };
   const solved = [[new THREE.Vector3(), new THREE.Vector3()], [new THREE.Vector3(), new THREE.Vector3()]];
+  // a hand that takes a new target: its arm turns over from where it was to the new solution in an
+  // eased quarter of a second (not at once, while the last target's weight is still fading)
+  const held = [[new THREE.Vector3(), new THREE.Vector3()], [new THREE.Vector3(), new THREE.Vector3()]];
+  const fresh = [new THREE.Vector3(), new THREE.Vector3()];
+  const ikU = [1, 1];
+  const ikOn = [false, false];
+  const lastAt = [new THREE.Vector3(), new THREE.Vector3()];
   const target = new THREE.Vector3();
   const shoulderAt = new THREE.Vector3();
   const rootAt = new THREE.Vector3();
@@ -228,6 +241,10 @@ export function makeXRobot(kind, models) {
   // away from them (in place of the walk clip, whose stride would slide)
   const feet = ['Left', 'Right'].map((side) => ({ side, s: side === 'Left' ? 1 : -1, at: new THREE.Vector3(), from: new THREE.Vector3(), to: new THREE.Vector3(), yaw: 0, fromYaw: 0, toYaw: 0, u: 1, dur: 0.3, ready: false }));
   let plantW = 0;
+  let plantU = 0;
+  let legsS = 0;
+  let legsV = 0;
+  let lastLegs = null;
   let lastStep = 0;
   const prevAt = new THREE.Vector3();
   let havePrev = false;
@@ -235,6 +252,8 @@ export function makeXRobot(kind, models) {
   let speed = 0;
   const handW = [0, 0];
   const footW = [0, 0];
+  const handV = [0, 0]; // (their speeds: the weights ease in and out as springs, never at once)
+  const footV = [0, 0];
   const shift = new THREE.Vector3(); // the hips over the standing foot while the other steps
   let gaitT = 0;
   const NO_RIG = {};
@@ -292,7 +311,16 @@ export function makeXRobot(kind, models) {
     }
     const floor = c.floor || 0;
     const legs = rig.legs;
-    const legsW = Math.max(sitW, floor, c.tuck || 0, legs?.w ?? 0); // seated, on the floor, or bent in the air
+    // seated, on the floor, or bent in the air; legs the scene stops bending (a body that lay down and
+    // gets up) straighten eased, from the angles they had, not at once
+    const legsBase = Math.max(sitW, floor, c.tuck || 0);
+    const legsRaw = Math.max(legsBase, legs?.w ?? 0);
+    if (legs?.w) lastLegs = { hip: legs.hip, knee: legs.knee, left: legs.left ? { hip: legs.left.hip, knee: legs.left.knee } : null, splay: legs.splay ?? 0 };
+    [legsS, legsV] = spring(legsS, legsV, legsRaw, 8, dt);
+    if (legsS < 0.01 && !legs?.w) lastLegs = null;
+    const legsW = Math.max(legsRaw, legsS);
+    const legSrc = legs?.w ? legs : lastLegs;
+    const legK = legs?.w ? 1 : lastLegs ? Math.min(1, Math.max(0, (legsS - legsBase) / Math.max(legsS, 1e-3))) : 0;
     const body = rig.body;
     lift.position.set(
       ((body?.x ?? 0) + shift.x) / ws,
@@ -361,14 +389,27 @@ export function makeXRobot(kind, models) {
         w = h.w;
       }
       // eased on and off (to the keys over about half a second, as it settles in its chair)
-      handW[i] += ((reach ? 1 : w) - handW[i]) * Math.min(1, dt * (reach ? 6 : 14));
+      const hw0 = handW[i];
+      [handW[i], handV[i]] = spring(handW[i], handV[i], reach ? 1 : w, reach ? 6 : w > handW[i] ? 14 : 9, dt); // (let go a little slower: an arm falls, it does not drop)
       if (w > 0.001) {
         upper.getWorldPosition(shoulderAt);
         fore.getWorldPosition(tmp);
         const l1 = shoulderAt.distanceTo(tmp);
         const l2 = tmp.distanceTo(B[`${side}Hand`].getWorldPosition(_v)) + 0.06 * ws;
-        solveArm(shoulderAt, target, l1, l2, poleV.applyQuaternion(rootQ), solved[i][0], solved[i][1]);
-      }
+        solveArm(shoulderAt, target, l1, l2, poleV.applyQuaternion(rootQ), fresh[0], fresh[1]);
+        if (!ikOn[i] || target.distanceToSquared(lastAt[i]) > 0.3) {
+          // a new target (after none, or one far from the last): from the arm as it is now
+          ikOn[i] = true;
+          ikU[i] = 0;
+          held[i][0].copy(hw0 > 0.002 ? solved[i][0] : dirs.u);
+          held[i][1].copy(hw0 > 0.002 ? solved[i][1] : dirs.f);
+        }
+        lastAt[i].copy(target);
+        ikU[i] = Math.min(1, ikU[i] + dt / 0.25);
+        const r = ikU[i] * ikU[i] * (3 - 2 * ikU[i]);
+        solved[i][0].copy(held[i][0]).lerp(fresh[0], r).normalize();
+        solved[i][1].copy(held[i][1]).lerp(fresh[1], r).normalize();
+      } else ikOn[i] = false;
       if (handW[i] > 0.002) {
         dirs.u.lerp(solved[i][0], handW[i]).normalize();
         dirs.f.lerp(solved[i][1], handW[i]).normalize();
@@ -381,10 +422,10 @@ export function makeXRobot(kind, models) {
     if (legsW > 0.01) {
       for (const side of ['Left', 'Right']) {
         // the left leg may have its own angles (legs.left), and both may be spread apart (legs.splay)
-        const L = side === 'Left' && legs?.left ? legs.left : legs;
-        const hip = legs?.w ? L.hip : floor > 0.5 ? -2.05 : -1.5;
-        const knee = legs?.w ? L.knee : floor > 0.5 ? 2.15 : 1.5;
-        const splay = (legs?.w ? legs.splay ?? 0 : 0) * (side === 'Left' ? 1 : -1);
+        const L = side === 'Left' && legSrc?.left ? legSrc.left : legSrc;
+        const hip = lerpN(floor > 0.5 ? -2.05 : -1.5, L?.hip ?? 0, L ? legK : 0);
+        const knee = lerpN(floor > 0.5 ? 2.15 : 1.5, L?.knee ?? 0, L ? legK : 0);
+        const splay = (legSrc ? (legSrc.splay ?? 0) * legK : 0) * (side === 'Left' ? 1 : -1);
         const thigh = DOWN.clone().applyEuler(_e.set(hip, 0, splay)).applyQuaternion(rootQ);
         const shinDir = DOWN.clone().applyEuler(_e.set(hip + knee, 0, splay)).applyQuaternion(rootQ);
         aim(B[`${side}UpLeg`], AX[`${side}UpLeg`], thigh, legsW);
@@ -394,27 +435,29 @@ export function makeXRobot(kind, models) {
     const ground = rig.ground ?? rootAt.y;
     const stance = rig.stance ?? 0;
     const tracking = walkW > 0.5 || !!rig.air || legsW > 0.5;
-    plantW += ((tracking ? 0 : 1) - plantW) * Math.min(1, dt * 10);
+    // the planted feet hand over to the clip (and back) in an eased quarter of a second: while they let
+    // go they stay where they stand (a step under way finishes), so no foot or knee jumps
+    plantU = Math.min(1, Math.max(0, plantU + ((tracking ? -1 : 1) * dt) / 0.25));
+    plantW = plantU * plantU * (3 - 2 * plantU);
     shift.multiplyScalar(Math.max(0, 1 - dt * 5));
     const restYaw = (f) => rootYaw + f.s * (0.08 + (rig.toeOut ?? 0)) * (1 - stance) - 0.3 * stance;
     for (const f of feet) {
-      if (tracking || !f.ready) {
-        // following the clip (or the pose), closely but never in a jump: ready to be planted where the
-        // foot is when it stops
+      if ((tracking && plantU <= 0) || !f.ready) {
+        // following the clip (or the pose) once nothing is planted: ready to be planted where the foot is
+        // when it stops
         B[`${f.side}Foot`].getWorldPosition(tmp);
         tmp.y = ground + ankleY * ws;
-        if (f.ready) f.at.lerp(tmp, 1 - Math.exp(-dt * 30));
-        else f.at.copy(tmp);
+        f.at.copy(tmp);
         f.yaw = rootYaw;
         f.u = 1;
         f.ready = true;
       }
     }
-    if (!tracking) {
+    {
       // where each foot belongs under the body now: a little apart, or set as a boxer's (left ahead)
       const rest = (f, out) => out.set(f.s * (lerpN(0.1, 0.15, stance) + (rig.wide ?? 0)), 0, f.s * 0.085 * stance + (rig.feetFwd ?? 0)).applyQuaternion(rootQ).multiplyScalar(ws).add(rootAt).setY(ground + ankleY * ws).addScaledVector(vel, 0.16);
       const busy = feet.some((f) => f.u < 1);
-      if (!busy && t - lastStep > 0.05) {
+      if (!tracking && !busy && t - lastStep > 0.05) {
         // the foot furthest from its place steps, if it is far enough (or turned enough)
         let worst = null;
         let err = 0;
@@ -455,7 +498,7 @@ export function makeXRobot(kind, models) {
     for (const [i, f] of feet.entries()) {
       const want = rig.feet?.[i];
       const w = want?.w ?? 0;
-      footW[i] += (w - footW[i]) * Math.min(1, dt * 12);
+      [footW[i], footV[i]] = spring(footW[i], footV[i], w, 12, dt);
       if (w > 0.001) {
         // the scene places this foot (on a rope, on the canvas): the planter takes it from there
         f.at.copy(want.at);
@@ -518,10 +561,42 @@ export function makeXRobot(kind, models) {
     if (lights) lights.emissiveIntensity = kind === 'ref' ? 1.7 * (0.92 + 0.08 * Math.sin(t * 0.8)) : 2.4 * (0.7 + 0.3 * Math.sin(t * 1.4 + phase));
   }
 
+  /** Put down somewhere new (the scene placed it, it did not walk there): no speed from the jump, standing
+   *  or seated already, its feet planted where they are. */
+  function place(seated = false) {
+    havePrev = false;
+    speed = 0;
+    walkW = 0;
+    walk.setEffectiveWeight(0);
+    idle.setEffectiveWeight(1);
+    sitU = seated ? 1 : 0;
+    sitW = sitU;
+    plantU = plantW = seated ? 0 : 1;
+    shift.set(0, 0, 0);
+    for (const f of feet) {
+      f.ready = false;
+      f.u = 1;
+    }
+    for (const i of [0, 1]) {
+      handW[i] = handV[i] = footW[i] = footV[i] = 0;
+      ikOn[i] = false;
+    }
+  }
+
   /** Where the walk is in its stride (0..1, 0 as the left foot leaves the ground) and how much it walks. */
   const gait = () => ({ phase: gaitT, w: walkW });
-  return { root, kind: 'x', eyes, pose, gait, cur: {}, bones: B, feet, hipY: HIP_Y, ankleY, model };
+  return { root, kind: 'x', eyes, pose, place, gait, cur: {}, bones: B, feet, hipY: HIP_Y, ankleY, model };
 }
 
 const lerpN = (a, b, k) => a + (b - a) * k;
+/** A weight (0..1) easing towards `to` as a critically damped spring, about as quick as a first-order
+ *  ease at `rate`: it sets off from rest instead of jumping off at full speed. Returns [value, speed]. */
+function spring(x, v, to, rate, dt) {
+  const w = rate * 1.6;
+  const ex = Math.exp(-w * dt);
+  const e = x - to;
+  const m = (v + w * e) * dt;
+  const x2 = to + (e + m) * ex;
+  return [Math.min(1, Math.max(0, x2)), (v - w * m) * ex];
+}
 const turnDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));

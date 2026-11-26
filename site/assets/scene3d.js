@@ -806,6 +806,7 @@ export async function createScene(root) {
   let clock = performance.now() / 1000;
   let slow = 1;
   let slowTo = 1;
+  let slowV = 0;
   const now = () => clock;
   // moments the page may want to hear of ('ropes', 'taunt', 'flip', 'land', 'punch', 'crash'), for the
   // hall's voice
@@ -820,11 +821,41 @@ export async function createScene(root) {
 
   // ------------------------------------------------------------------ every frame
 
-  function applyBody(bot, p, k) {
+  // the body's values follow the pose as a critically damped spring: a new pose (a gesture, an arm
+  // swapping over) starts from rest and gathers speed, never jumping off at full speed the first frame;
+  // `rate` as a first-order ease's (it settles in about the same time)
+  /** A value easing towards `to` as a critically damped spring, about as quick as a first-order ease at
+   *  `rate`: it sets off from rest. Returns [value, speed]. */
+  function springTo(x, v, to, rate, dt) {
+    const w = rate * 1.6;
+    const ex = Math.exp(-w * dt);
+    const e = x - to;
+    const m = (v + w * e) * dt;
+    return [to + (e + m) * ex, (v - w * m) * ex];
+  }
+  const SPRUNG = ['turn', 'lean', 'look', 'a0x', 'a0z', 'e0', 'a1x', 'a1z', 'e1', 'floor', 'tuck'];
+  function applyBody(bot, p, dt, rate) {
     const cur = bot.cur ?? (bot.cur = {});
-    for (const key of ['bounce', 'turn', 'lean', 'look', 'shake', 'a0x', 'a0z', 'e0', 'a1x', 'a1z', 'e1', 'floor', 'tuck']) {
+    const vel = bot.curV ?? (bot.curV = {});
+    const k = Math.min(1, dt * rate);
+    for (const key of ['bounce', 'shake']) {
       const v = p[key] ?? 0;
       cur[key] = cur[key] == null ? v : cur[key] + (v - cur[key]) * k;
+    }
+    const w = rate * 1.6;
+    const ex = Math.exp(-w * dt);
+    for (const key of SPRUNG) {
+      const v = p[key] ?? 0;
+      if (cur[key] == null) {
+        cur[key] = v;
+        vel[key] = 0;
+        continue;
+      }
+      const e = cur[key] - v;
+      const u = vel[key] ?? 0;
+      const m = (u + w * e) * dt;
+      vel[key] = (u - w * m) * ex;
+      cur[key] = v + (e + m) * ex;
     }
     return cur;
   }
@@ -986,10 +1017,11 @@ export async function createScene(root) {
       a.began = true;
       a.since = t;
     }
-    const at = t - a.since; // the time in this phase
+    let at = t - a.since; // the time in this phase
     const next = (phase) => {
       a.phase = phase;
       a.since = t;
+      at = 0; // a phase that follows in this same frame starts at its own beginning (no frame from its middle)
     };
     if (a.kind === 'taunt' || a.kind === 'answer') {
       if (at > a.len || !other.present) {
@@ -1265,9 +1297,9 @@ export async function createScene(root) {
     const v = () => new THREE.Vector3();
     return { feet: [{ at: v(), w: 0, yaw: 0 }, { at: v(), w: 0, yaw: 0 }], hands: [{ at: v(), w: 0, pole: v() }, { at: v(), w: 0, pole: v() }], body: v(), look: null, lookW: 1, lean: 0, twist: 0, legs: null, hug: 0, air: false, arms: null, stance: 0, ground: FLOOR, breath: 1 };
   }
-  /** A hop on the spot: the knees dip and push, the body leaves the canvas, lands, again. */
-  function hop(tt, [period, h]) {
-    const ph = (tt / period) % 1;
+  /** A hop on the spot: the knees dip and push, the body leaves the canvas, lands, again (`ph` where in
+   *  the hop, 0..1). */
+  function hop(ph, h) {
     if (ph < 0.3) return { lift: 0, dip: -0.55 * h * Math.sin((Math.PI * ph) / 0.3) };
     return { lift: h * Math.sin((Math.PI * (ph - 0.3)) / 0.7), dip: 0 };
   }
@@ -1303,8 +1335,13 @@ export async function createScene(root) {
     const lead = f.act ? stepAct(f, side, t, dt) : fightLead(f, side, t, dt);
     if (!lead?.place) {
       // back on its feet and on the floor, eased (a body that lay down gets up, it does not pop up)
-      f.lift = (f.lift ?? 0) * Math.max(0, 1 - dt * 9);
-      f.flip = Math.abs(f.flip ?? 0) < 0.002 ? 0 : Math.atan2(Math.sin(f.flip), Math.cos(f.flip)) * Math.max(0, 1 - dt * 5);
+      // (as springs: a body let go of by an act sets off from rest, it does not jump)
+      [f.lift, f.liftV] = springTo(f.lift ?? 0, f.liftV ?? 0, 0, 9, dt);
+      [f.flip, f.flipSpd] = springTo(Math.atan2(Math.sin(f.flip ?? 0), Math.cos(f.flip ?? 0)), f.flipSpd ?? 0, 0, 5, dt);
+      if (Math.abs(f.flip) < 0.002 && Math.abs(f.flipSpd) < 0.01) f.flip = f.flipSpd = 0;
+    } else {
+      f.liftV = 0;
+      f.flipSpd = 0;
     }
     // on its lap: an easy walk, with a few seconds of its own flair now and then
     const flair = !lead && f.pose === 'hype' && (f.flairUntil ?? 0) > t ? lap.flair : null;
@@ -1323,7 +1360,7 @@ export async function createScene(root) {
       p.seat = false;
       if (lead.p) Object.assign(p, lead.p); // the act's own body values (the head, the lean, the arms)
     }
-    const c = applyBody(bot, p, Math.min(1, dt * (lead?.ease ?? 10)));
+    const c = applyBody(bot, p, dt, lead?.ease ?? 10);
     // walk to the spot of the pose (or to the next corner of its lap), round the desk when the way
     // crosses it, on the side it is nearer to
     let goal;
@@ -1416,12 +1453,15 @@ export async function createScene(root) {
     else if (showing) facing = yawOut(f);
     else if (f.pose === 'stand' && other.present && !raiseOf()) facing = yawAt(f, other) * 0.7; // squared up to the other, waiting
     if (!lead?.place) {
-      // eased, and never faster than a person turns: no snap at a corner of its way
+      // eased (a spring: a turn gathers speed, it does not start at full speed), and never faster than a
+      // person turns: no snap at a corner of its way
       const y0 = bot.yaw ?? c.turn;
-      const want = turnTo(y0, facing, Math.min(1, dt * (lead ? 5 : walking ? 4 : 3.2))) - y0;
-      const cap = dt * (lead ? (lead.turn ?? 4.5) : 3.6);
-      bot.yaw = y0 + Math.max(-cap, Math.min(cap, want));
-    }
+      const err = turnTo(y0, facing, 1) - y0;
+      const top = lead ? (lead.turn ?? 4.5) : 3.6;
+      const [y1, v1] = springTo(y0, f.yawV ?? 0, y0 + err, lead ? 5 : walking ? 4 : 3.2, dt);
+      f.yawV = Math.max(-top, Math.min(top, v1));
+      bot.yaw = y0 + Math.max(-top * dt, Math.min(top * dt, y1 - y0));
+    } else f.yawV = 0;
     if (p.seat && !walking && Math.abs(turnTo(0, facing - (bot.yaw ?? facing), 1)) > 0.3) p.seat = false; // turned to its desk first, then down
 
     // the body's rig for this frame: an act's own, or the pose's (a guard, hops, typing)
@@ -1494,12 +1534,14 @@ export async function createScene(root) {
     } else f.stepDone = 0;
     // hops (the winner, an answer in time, fists pumping) and small bobs
     let hopLift = 0;
-    if (!lead?.place && !p.seat && !reduced) {
-      // a hop fades out (an act that starts mid-hop lands it first, eased)
-      f.hopW = (f.hopW ?? 0) + ((p.hop ? 1 : 0) - (f.hopW ?? 0)) * Math.min(1, dt * 6);
+    if (!lead?.place && !reduced) {
+      // a hop fades out (an act that starts mid-hop, or a sit, lands it first, eased); its own running
+      // phase, so a new pose (another pace of hops) never jumps it to another point of the hop
+      f.hopW = (f.hopW ?? 0) + ((p.hop && !p.seat ? 1 : 0) - (f.hopW ?? 0)) * Math.min(1, dt * 6);
       if (p.hop) f.hopP = p.hop;
+      if (f.hopP) f.hopPh = ((f.hopPh ?? 0) + dt / f.hopP[0]) % 1;
       if (f.hopW > 0.01 && f.hopP) {
-        const h = hop(tt, f.hopP);
+        const h = hop(f.hopPh, f.hopP[1]);
         hopLift = h.lift * f.hopW;
         rig.body.y += h.dip * f.hopW;
         rig.air = hopLift > 0.015;
@@ -1520,7 +1562,7 @@ export async function createScene(root) {
       const high = new THREE.Vector3(out * 0.36, 3.2, 0.06);
       rig.hands[i].at.copy(low.lerp(high, raise.up)).applyQuaternion(q).add(me.setY(FLOOR));
       rig.hands[i].w = raise.grip;
-      rig.hands[i].pole.set(out * 0.8, raise.up > 0.5 ? 0.2 : -1, -0.6);
+      rig.hands[i].pole.set(out * 0.8, lerp(-1, 0.2, smooth(raise.up)), -0.6); // (eased: no elbow flip)
       f.raiseArm = i;
     } else f.raiseArm = null;
     // typing: each hand from key to key, a tap on each; the head reads the screen
@@ -1588,6 +1630,11 @@ export async function createScene(root) {
   const HIT = 0.74; // from the start of the haymaker to the uppercut on the jaw (s)
   const FLY = 0.62; // the flight back onto the desk (s)
   const LAND = 0.22; // the desk giving way under the body (s)
+  // how far the desk has given way: it goes on at about the speed the body hit it with, slowing as it buckles
+  const landOf = (tc) => {
+    const x = Math.min(1, Math.max(0, tc / LAND));
+    return 1 - (1 - x) * (1 - x);
+  };
   // the broken desk: its front legs buckle, the top tilts down to the front and sinks (the station's units)
   const CRUSH = { tilt: 0.36, drop: 0.55, back: -0.25 };
   const XV = new THREE.Vector3(1, 0, 0);
@@ -1726,6 +1773,7 @@ export async function createScene(root) {
         F.hitAt = t;
         F.chin = chinOf(L);
         F.by0 = L.fightRig?.body.y ?? 0;
+        F.tw0 = L.fightRig?.twist ?? 0; // (the chest turns back from the swing as it flies, not at once)
         F.hip0 = baseOf(L).add(_fv.set(0, hipW(L) + F.by0, 0));
         F.Hi = onDesk(L, 0, F.s, LIE.hip[0], LIE.hip[1], 0.26);
         moment('punch', F.wside);
@@ -1747,7 +1795,7 @@ export async function createScene(root) {
         if (!reduced) cam.shake = 0.42;
       }
     } else if (F.phase === 'crash') {
-      crushDesk(L, easeOut(age / LAND));
+      crushDesk(L, landOf(age));
       if (age >= 0.75) next('down');
     }
   }
@@ -1853,6 +1901,7 @@ export async function createScene(root) {
       th = lieTilt(0) * (0.3 * u + 0.7 * smooth(u));
       yaw = turnTo(F.yawL, F.yawLie, smooth((u - 0.15) / 0.8));
       r.body.y = F.by0 * (1 - smooth(u / 0.4));
+      r.twist = (F.tw0 ?? 0) * (1 - smooth(u / 0.4));
       r.air = true;
       const k = smooth(u / 0.45);
       r.legs = { hip: -0.55 * k, knee: 0.9 * k, w: smooth(u / 0.2) };
@@ -1860,15 +1909,15 @@ export async function createScene(root) {
     } else {
       // on the desk: it gives way (crushDesk, on the same clock), the body drops with it and bounces once
       const tc = t - F.crashAt;
-      const k = easeOut(tc / LAND);
+      const k = landOf(tc);
       const b = tc > LAND ? Math.max(0, Math.sin(((tc - LAND) / 0.34) * Math.PI)) * 0.08 * (1 - smooth((tc - LAND) / 0.5)) : 0;
       hip = onDesk(f, 0, F.s, ...LIE.hip, 0.26).lerp(onDesk(f, 1, F.s, ...LIE.hip, 0.26), k).addScaledVector(UPV, b);
       th = lerp(lieTilt(0), lieTilt(1), k);
       const flop = smooth(tc / 0.45);
-      // limp: the legs over the front edge, the knees bent down to the canvas; the head rolled over to the
+      // limp: the legs over the front edge, out along the canvas, the knees a little bent; the head rolled over to the
       // near side; one hand out on the desk by the head, the other by its side, sliding off the back edge
       // and hanging; a twitch
-      r.legs = { hip: lerp(-0.55, 0.6, flop), knee: lerp(0.9, 0.5, flop), left: { hip: lerp(-0.55, 0.3, flop), knee: lerp(0.9, 0.95, flop) }, splay: 0.14 * flop, w: 1 };
+      r.legs = { hip: lerp(-0.55, -0.18, flop), knee: lerp(0.9, 0.28, flop), left: { hip: lerp(-0.55, -0.08, flop), knee: lerp(0.9, 0.12, flop) }, splay: 0.14 * flop, w: 1 }; // (out in front, low over the canvas: the hips lie only half a metre up)
       const td = F.phase === 'down' ? age : 0;
       const twitch = td > 1.5 && td < 1.85 ? Math.sin(((td - 1.5) / 0.35) * Math.PI) : 0;
       const slide = smooth((td - 2.6) / 1.2);
@@ -2005,7 +2054,7 @@ export async function createScene(root) {
     const r = referee;
     const tt = t - r.since;
     const p = POSES[r.pose](tt, r.side);
-    const c = applyBody(r.bot, p, Math.min(1, dt * 4));
+    const c = applyBody(r.bot, p, dt, 4);
     const d = r.target.clone().sub(r.pos);
     const dist = d.length();
     const walking = dist > 0.03;
@@ -2051,6 +2100,7 @@ export async function createScene(root) {
       rig.hands[i].pole.set(o * 0.3, 0, -1);
     }
     // the raise: its near hand on the winner's wrist, up together and held, then it lets go
+    if (!raise) r.gripArm = null;
     if (raise && raise.grip + raise.off > 0.001 && state.winner) {
       const w = fighters[state.winner];
       const wi = w.raiseArm ?? 1;
@@ -2059,9 +2109,13 @@ export async function createScene(root) {
         const leftW = new THREE.Vector3(1, 0, 0).applyQuaternion(q);
         const i = leftW.dot(wrist.clone().sub(me)) > 0 ? 1 : 0;
         rig.hands[i].at.lerp(wrist.addScaledVector(UPV, -0.05), raise.grip);
-        if (raise.grip > 0.5) rig.hands[i].pole.set(i ? 0.7 : -0.7, raise.up > 0.5 ? -0.3 : -1, -0.3);
         r.gripArm = i;
       }
+      // the elbow out to the side and back from the grip on until the arm hangs straight again (set and
+      // dropped only while it hangs, where the elbow's way makes no difference), turning over smoothly as
+      // the arm goes up; back enough that the arm never points along it on its way up or down (where the
+      // elbow would flip over)
+      if (r.gripArm != null) rig.hands[r.gripArm].pole.set(r.gripArm ? 0.6 : -0.6, lerp(-1, -0.3, smooth(raise.up)), -0.8);
     }
     rig.ground = FLOOR;
     r.bot.pose(c, p, t, walking, dt, null, rig);
@@ -2099,7 +2153,8 @@ export async function createScene(root) {
   function tick(realDt) {
     realT += realDt;
     const real = realT;
-    slow += (slowTo - slow) * Math.min(1, realDt * 9);
+    [slow, slowV] = springTo(slow, slowV, slowTo, 9, realDt); // (into and out of slow motion eased: no snap of the clock or the lens)
+    slow = Math.min(1, Math.max(0.05, slow));
     const dt = realDt * slow;
     clock += dt;
     const t = clock;
@@ -2206,6 +2261,7 @@ export async function createScene(root) {
         cam.at = t;
         cam.shot = 'wide';
       }
+      if (state.lights === 'focus' && cam.shot === 'wide') cam.at = t - 10.5; // a round opens on the wide shot a moment (see below)
     }
     // a fighter on the ropes, or the winner's backflip, takes the picture (not when a shot is held)
     const actor = !cam.fixed && !still ? ['red', 'blue'].map((s) => fighters[s]).find((f) => f.present && f.act && ((f.act.kind === 'climb' && f.act.phase !== 'go') || (f.act.kind === 'win' && f.act.phase !== 'go'))) : null;
@@ -2230,7 +2286,10 @@ export async function createScene(root) {
     else if (fightShot) shot = fightShot;
     else if (state.lights === 'focus' && !still) {
       // like a broadcast: while a round runs, cut between the wide shot and a shot over each robot's shoulder
-      if (t - cam.at > (cam.shot === 'wide' ? 12 : 3.5)) {
+      // (never cutting from the wide shot to a close-up while a fighter still walks to its desk: it would
+      // walk right through the picture)
+      const walking = ['red', 'blue'].some((s) => fighters[s].present && (fighters[s].spd ?? 0) > 0.15);
+      if (t - cam.at > (cam.shot === 'wide' ? 12 : 3.5) && !(cam.shot === 'wide' && walking)) {
         cam.step = (cam.step + 1) % SHOTS.length;
         cam.shot = SHOTS[cam.step];
         if (cam.shot !== 'wide' && !fighters[cam.shot].present) cam.shot = 'wide';
@@ -2361,7 +2420,10 @@ export async function createScene(root) {
       const u = push(t - cam.modeAt < 6 ? 6 : 4.2);
       const refAt = camLook.clone();
       camLook.lerp(v3, 1 - withRef).add(camUp.set(0, (1.75 + 0.35 * withRef) * SIZE * STATION * 0.82, 0));
-      camAt.copy(v3).addScaledVector(camFront, (3.7 - 0.85 * u) * SIZE * STATION).add(camUp.set(0.35, (1.35 + 0.1 * (1 - u)) * SIZE * STATION, 0));
+      // (after the flip it stands near the ropes: the camera, outside them, a little higher, so the near top
+      // rope passes under the picture instead of across the winner's legs)
+      const over = f.winAt ? 0.42 : 0;
+      camAt.copy(v3).addScaledVector(camFront, (3.7 - 0.85 * u) * SIZE * STATION).add(camUp.set(0.35, (1.35 + 0.1 * (1 - u) + over) * SIZE * STATION, 0));
       camAt.x += (refAt.x - v3.x) * 0.4 * withRef;
       camAt.z += (refAt.z - v3.z) * 0.4 * withRef;
       if (cam.cut) cam.look.copy(camLook);
@@ -2460,10 +2522,17 @@ export async function createScene(root) {
   return {
     kind: '3d',
     setFighters({ red = true, blue }) {
-      fighters.red.present = !!red;
-      fighters.red.st.g.visible = !!red;
-      fighters.blue.present = !!blue;
-      fighters.blue.st.g.visible = !!blue;
+      for (const [side, on] of [['red', !!red], ['blue', !!blue]]) {
+        const f = fighters[side];
+        if (on && !f.present) {
+          // back after a while away (the next fight): it starts afresh where its next pose puts it, on its
+          // feet, its desk whole (not getting up from where it lay at the end of the last fight)
+          if (f.wrecked) resetStation(f);
+          Object.assign(f, { placed: false, pose: null, act: null, lift: 0, flip: 0, path: [], spd: 0, gesture: null, showUntil: 0, lapI: null, hopW: 0, guardW: 0, tiltW: 0, keys: null, gaze: null });
+        }
+        f.present = on;
+        f.st.g.visible = on;
+      }
     },
     setPose(side, pose) {
       const f = fighters[side];
@@ -2482,7 +2551,9 @@ export async function createScene(root) {
         f.placed = true;
         f.pos.fromArray(POSES[pose](0).spot);
         f.path = [];
-        f.bot.sit = POSES[pose](0).seat ? 1 : 0;
+        f.bot.place?.(!!POSES[pose](0).seat);
+        f.bot.cur = {};
+        f.bot.curV = {};
       }
       const screen = pose === 'done' || pose === 'win' ? 'sent' : pose === 'fail' ? 'time' : 'code';
       f.screen = screen;

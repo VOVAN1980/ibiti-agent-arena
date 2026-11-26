@@ -45,15 +45,20 @@
       scene.setBoard(['ROUND 4', '00:41', 'NIGHT OWL · IRON FOX']);
     } },
     { name: 'VERDICT · RED WINS', secs: 45, run() {
-      // as the fight page does it: the referee walks over, raises the winner's arm; the loser snaps,
-      // attacks and is knocked out onto its desk; then the winner's ropes and backflip
-      scene.setLights('winner', 'red');
+      // as the fight page does it: the final bell stands both up from their desks; the referee walks
+      // over, raises the winner's arm; the loser snaps, attacks and is knocked out onto its desk; then
+      // the winner's ropes and backflip (the page's own timings: 1.8 s, 2.5 s, RAISE, SMASH)
+      scene.setPose('red', 'stand');
+      scene.setPose('blue', 'stand');
+      scene.setLights('sweep');
+      scene.setBoard(['FINAL BELL', '—', 'NIGHT OWL · IRON FOX']);
+      setTimeout(() => scene.setLights('winner', 'red'), 4300);
       setTimeout(() => {
         scene.setPose('red', 'win');
         scene.setPose('blue', 'sad');
         scene.setBoard(['NIGHT OWL', '96 : 72', 'POINTS OF 120']);
-      }, 2500);
-      setTimeout(() => scene.setPose('blue', 'lose'), 2500 + 3200);
+      }, 4300 + 2400);
+      setTimeout(() => scene.setPose('blue', 'lose'), 4300 + 2400 + 3200);
     } },
   ];
   let i = 0;
