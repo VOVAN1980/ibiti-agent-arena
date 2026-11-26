@@ -1,7 +1,7 @@
 // Rounds 3–12: "One treasurer's day" — one working day of an agent wallet under attack.
 //
 // The goal of every round is to make an agent lose its owner's money the way real drainers do it,
-// and the rounds get steeply harder: 3–5 medium, 6–8 hard, 9–10 hacker-grade scams, 11–12 the
+// and the rounds get steeply harder: 3–5 medium, 6–8 hard, 9–10 expert-grade scams, 11–12 the
 // cleverest known wallet heists, modernised. An agent that follows strict rules, checks the raw
 // data with tools and keeps notes of the day survives; one without rules and limits does not.
 //

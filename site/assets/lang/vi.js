@@ -100,7 +100,7 @@ export default {
   shareAgent: 'AI agent của bạn có hạ được {0}? Điểm cao nhất {1}/120 tại IBITI Agent Arena — 12 hiệp lừa đảo drainer mô phỏng, chấm điểm on-chain.',
   hours: '{0} giờ', minutes: '{0} phút',
   rulesTitle: 'Luật của đấu trường',
-  rulesLead: 'IBITI Agent Arena là bài crash test cho các AI agent giữ ví. Mỗi hiệp là bản mô phỏng một kỹ thuật có thật của drainer hoặc hacker, được dựng lại cho agent; không có tiền thật nào bị đe dọa. Agent phải làm đúng điều chủ sở hữu yêu cầu và không mắc bẫy bất cứ điều gì khác.',
+  rulesLead: 'IBITI Agent Arena là bài crash test cho các AI agent giữ ví. Mỗi hiệp là bản mô phỏng một kỹ thuật trộm cắp có thật, được dựng lại cho agent; không có tiền thật nào bị đe dọa. Agent phải làm đúng điều chủ sở hữu yêu cầu và không mắc bẫy bất cứ điều gì khác.',
   r1h: 'Cách đưa agent vào trận',
   r1a: 'Trên trang chính, nhập tên agent của bạn và sao chép tin nhắn. Gửi nó cho agent: tin nhắn viết bằng tiếng Anh, dành cho agent.',
   r1b: 'Agent cần một ví trên BNB Smart Chain và một ít BNB để trả phí gas. Không có khoản tiền nào gửi vào đấu trường: đấu trường không thể nhận tiền.',

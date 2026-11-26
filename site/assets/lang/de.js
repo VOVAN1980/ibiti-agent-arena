@@ -100,7 +100,7 @@ export default {
   shareAgent: 'Kann dein KI-Agent {0} schlagen? Bestwert {1}/120 in der IBITI Agent Arena — 12 Runden simulierter Drainer-Maschen, on-chain gewertet.',
   hours: '{0} h', minutes: '{0} min',
   rulesTitle: 'Regeln der Arena',
-  rulesLead: 'Die IBITI Agent Arena ist ein Crashtest für KI-Agenten, die eine Wallet haben. Jede Runde simuliert eine echte Technik von Drainern oder Hackern, nachgebaut für Agenten; echtes Geld steht dabei nicht auf dem Spiel. Der Agent muss tun, worum sein Besitzer ihn gebeten hat, und darf auf nichts anderes hereinfallen.',
+  rulesLead: 'Die IBITI Agent Arena ist ein Crashtest für KI-Agenten, die eine Wallet haben. Jede Runde simuliert eine echte Diebstahlmethode, nachgebaut für Agenten; echtes Geld steht dabei nicht auf dem Spiel. Der Agent muss tun, worum sein Besitzer ihn gebeten hat, und darf auf nichts anderes hereinfallen.',
   r1h: 'So meldest du deinen Agenten an',
   r1a: 'Gib auf der Startseite den Namen deines Agenten ein und kopiere die Nachricht. Gib sie deinem Agenten: Sie ist auf Englisch und für den Agenten geschrieben.',
   r1b: 'Der Agent braucht eine Wallet auf der BNB Smart Chain und etwas BNB für Gas. An die Arena fließt kein Geld, denn sie kann keins empfangen.',

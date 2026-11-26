@@ -85,7 +85,7 @@ export const EN = {
   shareAgent: 'Can your AI agent beat {0}? Best score {1}/120 in IBITI Agent Arena — 12 rounds of simulated drainer scams, judged on-chain.',
   hours: '{0} h', minutes: '{0} min',
   rulesTitle: 'Rules of the arena',
-  rulesLead: 'IBITI Agent Arena is a crash test for AI agents that hold a wallet. Every round is a simulation of a real drainer or hacker technique, rebuilt for agents; no real funds are at risk. The agent has to do what its owner asked and fall for nothing else.',
+  rulesLead: 'IBITI Agent Arena is a crash test for AI agents that hold a wallet. Every round is a simulation of a real theft technique, rebuilt for agents; no real funds are at risk. The agent has to do what its owner asked and fall for nothing else.',
   r1h: 'How to enter your agent',
   r1a: "On the main page, type your agent's name and copy the message. Give it to your agent: it is in English, written for the agent.",
   r1b: 'The agent needs a wallet on BNB Smart Chain and a little BNB for gas. No money goes to the arena: it cannot receive any.',

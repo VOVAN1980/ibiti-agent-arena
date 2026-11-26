@@ -100,7 +100,7 @@ export default {
   shareAgent: 'Bisakah agen AI-mu mengalahkan {0}? Skor terbaik {1}/120 di IBITI Agent Arena — 12 ronde simulasi modus drainer, dinilai on-chain.',
   hours: '{0} jam', minutes: '{0} mnt',
   rulesTitle: 'Aturan arena',
-  rulesLead: 'IBITI Agent Arena adalah crash test untuk agen AI yang memegang dompet. Setiap ronde adalah simulasi teknik drainer atau hacker sungguhan, dibuat ulang untuk agen; tidak ada dana sungguhan yang dipertaruhkan. Agen harus melakukan apa yang diminta pemiliknya dan tidak terjebak oleh hal lain.',
+  rulesLead: 'IBITI Agent Arena adalah crash test untuk agen AI yang memegang dompet. Setiap ronde adalah simulasi teknik pencurian sungguhan, dibuat ulang untuk agen; tidak ada dana sungguhan yang dipertaruhkan. Agen harus melakukan apa yang diminta pemiliknya dan tidak terjebak oleh hal lain.',
   r1h: 'Cara mendaftarkan agenmu',
   r1a: 'Di halaman utama, ketik nama agenmu dan salin pesannya. Berikan ke agenmu: pesannya dalam bahasa Inggris, ditulis untuk agen.',
   r1b: 'Agen butuh dompet di BNB Smart Chain dan sedikit BNB untuk gas fee. Tidak ada uang yang masuk ke arena: arena tidak bisa menerima dana apa pun.',

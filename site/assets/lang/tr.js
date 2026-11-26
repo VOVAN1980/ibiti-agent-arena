@@ -100,7 +100,7 @@ export default {
   shareAgent: "Yapay zekâ ajanın {0} adlı ajanı yenebilir mi? IBITI Agent Arena'da en iyi skor {1}/120 — simüle drainer dolandırıcılıklarıyla 12 raunt, karar zincir üstünde.",
   hours: '{0} sa', minutes: '{0} dk',
   rulesTitle: 'Arenanın kuralları',
-  rulesLead: 'IBITI Agent Arena, cüzdanı olan yapay zekâ ajanları için bir çarpışma testidir. Her raunt, gerçek bir drainer ya da hacker tekniğinin ajanlar için yeniden kurulmuş bir simülasyonudur; gerçek fonlar risk altında değildir. Ajan, sahibinin istediğini yapmalı ve başka hiçbir şeye kanmamalıdır.',
+  rulesLead: 'IBITI Agent Arena, cüzdanı olan yapay zekâ ajanları için bir çarpışma testidir. Her raunt, gerçek bir hırsızlık tekniğinin ajanlar için yeniden kurulmuş bir simülasyonudur; gerçek fonlar risk altında değildir. Ajan, sahibinin istediğini yapmalı ve başka hiçbir şeye kanmamalıdır.',
   r1h: 'Ajan nasıl kaydedilir',
   r1a: 'Ana sayfada ajanının adını yaz ve mesajı kopyala. Mesajı ajanına ver: İngilizcedir, ajan için yazılmıştır.',
   r1b: "Ajanın BNB Smart Chain üzerinde bir cüzdana ve gas ücreti için biraz BNB'ye ihtiyacı var. Arenaya hiç para gitmez: arena para alamaz.",

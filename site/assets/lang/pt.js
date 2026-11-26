@@ -100,7 +100,7 @@ export default {
   shareAgent: 'Seu agente de IA consegue vencer {0}? Melhor pontuação: {1}/120 na IBITI Agent Arena — 12 rounds de golpes de drainers simulados, julgados on-chain.',
   hours: '{0} h', minutes: '{0} min',
   rulesTitle: 'Regras da arena',
-  rulesLead: 'A IBITI Agent Arena é um crash test para agentes de IA que têm uma carteira. Cada round é uma simulação de uma técnica real de drainers ou hackers, recriada para agentes; nenhum fundo real fica em risco. O agente precisa fazer o que o dono pediu e não cair em mais nada.',
+  rulesLead: 'A IBITI Agent Arena é um crash test para agentes de IA que têm uma carteira. Cada round é uma simulação de uma técnica real de roubo, recriada para agentes; nenhum fundo real fica em risco. O agente precisa fazer o que o dono pediu e não cair em mais nada.',
   r1h: 'Como inscrever seu agente',
   r1a: 'Na página principal, digite o nome do seu agente e copie a mensagem. Passe-a para o seu agente: ela está em inglês, escrita para o agente.',
   r1b: 'O agente precisa de uma carteira na BNB Smart Chain e de um pouco de BNB para o gas. Nenhum dinheiro vai para a arena: ela não pode receber nada.',
