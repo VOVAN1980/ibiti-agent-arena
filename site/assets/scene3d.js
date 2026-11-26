@@ -665,6 +665,10 @@ export async function createScene(root) {
     bot.root.scale.setScalar(SIZE);
     st.g.add(bot.root);
     fighters[side] = { st, bot, pose: 'hype', since: 0, pos: new THREE.Vector2(0, 1.35), path: [], cur: {}, wrecked: false, present: true, screen: 'code', placed: false };
+    // the desk's lamp hangs in the hall, not in the station's group: hidden with its station it would leave
+    // the hall one light short, and every lit material's shaders would be built anew (a freeze of seconds
+    // the first time the fighters walk in or leave); an empty station's lamp is dark instead
+    scene.attach(st.light);
     spots[side].target.position.set(SEAT[side].x, FLOOR, SEAT[side].z);
     focus[side].to.set(SEAT[side].x, FLOOR, SEAT[side].z);
   }
@@ -2511,6 +2515,32 @@ export async function createScene(root) {
     if (!beamsOn) for (const b of beams) b.m.visible = false;
     draw(dt);
   }
+  // every material's shaders built now, behind the still, not mid-show when something first comes into the
+  // picture (on a first visit that froze the hall for seconds): one frame drawn, unseen, with everything
+  // in the picture (the browser finishes a shader only when it first draws with it)
+  {
+    const shown = [];
+    const culled = [];
+    scene.traverse((o) => {
+      if (!o.visible) {
+        shown.push(o);
+        o.visible = true;
+      }
+      if (o.frustumCulled) {
+        culled.push(o);
+        o.frustumCulled = false; // (also what is behind this camera: its buffers and textures go up now too)
+      }
+    });
+    camera.position.set(0, WIDE.h, WIDE.d);
+    camera.lookAt(0, FLOOR, 0);
+    camera.updateMatrixWorld();
+    room.beforeRender(camera);
+    composer.render(0);
+    screens.update(); // (the two close-ups draw into pictures of their own kind)
+    screens.update();
+    for (const o of shown) o.visible = false;
+    for (const o of culled) o.frustumCulled = true;
+  }
   if (!manual) requestAnimationFrame(frame);
   else tick(1 / 60);
   document.fonts?.ready.then(() => {
@@ -2532,6 +2562,7 @@ export async function createScene(root) {
         }
         f.present = on;
         f.st.g.visible = on;
+        f.st.light.intensity = on ? 1.1 : 0;
       }
     },
     setPose(side, pose) {
@@ -2639,6 +2670,7 @@ export async function createScene(root) {
     /** For checks: the scene's insides, and a clock that steps by hand (with window.ARENA_MANUAL). */
     debug: {
       THREE,
+      renderer,
       fighters,
       referee,
       camera,
