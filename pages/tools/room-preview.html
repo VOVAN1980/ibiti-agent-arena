@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ring preview</title>
+<!-- A team-only look at the 3D ring with no chain behind it: serve the repository's root
+     (e.g. `npx http-server . -p 8090`, or any static server) and open
+     /pages/tools/room-preview.html?state=empty|hype|fight|win&shot=wide|orbit|red|blue|faceRed|faceBlue&ring=red|green&q=small|auto,
+     or &peek=x,y,z,lx,ly,lz for any point of view -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800&family=Unbounded:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; height: 100%; background: #05070d; overflow: hidden; }
+  #stage { position: absolute; inset: 0; }
+  #stage canvas { width: 100%; height: 100%; display: block; }
+  #fps { position: absolute; left: 8px; top: 6px; color: #8a93a6; font: 12px monospace; z-index: 2; }
+</style>
+<script type="importmap">{ "imports": { "three": "../../site/assets/vendor/three/build/three.module.js", "three/addons/": "../../site/assets/vendor/three/examples/jsm/" } }</script>
+</head>
+<body>
+<div id="stage"></div>
+<div id="fps"></div>
+<script type="module">
+  const q = new URLSearchParams(location.search);
+  window.ARENA_CONFIG = { ring: q.get('ring') === 'green' ? 'green' : 'red' };
+  // q=small: the phone's hall; q=auto: as the site decides; by default the whole hall (a headless
+  // browser reports a phone-sized screen)
+  if (q.get('q') === 'small') window.ARENA_QUALITY = 'small';
+  else if (q.get('q') !== 'auto') window.ARENA_QUALITY = 'full';
+  const { createScene } = await import('../../site/assets/scene3d.js');
+  const scene = await createScene(document.getElementById('stage'));
+  window.arenaScene = scene;
+  const state = q.get('state') || 'empty';
+  if (state === 'empty') {
+    scene.setFighters({ red: false, blue: false });
+    scene.setLights('sweep');
+    scene.setBoard(['RING FREE', '—', '2 IN THE HALL']);
+  } else if (state === 'hype') {
+    scene.setFighters({ red: true, blue: true });
+    for (const s of ['red', 'blue']) scene.setPose(s, 'hype');
+    scene.setLights('sweep');
+    scene.setBoard(['GET READY', '9', 'NIGHT OWL · IRON FOX']);
+  } else if (state === 'fight') {
+    scene.setFighters({ red: true, blue: true });
+    scene.setPose('red', 'work');
+    scene.setPose('blue', 'work');
+    scene.setLights('focus');
+    scene.setBoard(['ROUND 4', '00:41', 'NIGHT OWL · IRON FOX']);
+  } else if (state === 'win') {
+    scene.setFighters({ red: true, blue: true });
+    scene.setPose('red', 'win');
+    scene.setPose('blue', 'sad');
+    scene.setLights('winner', 'red');
+    scene.setBoard(['NIGHT OWL', '96 : 72', 'POINTS OF 120']);
+  }
+  if (q.get('peek')) {
+    const v = q.get('peek').split(',').map(Number);
+    scene.holdShot('peek', v.slice(0, 3), v.slice(3, 6));
+  } else if (q.get('shot')) scene.holdShot(q.get('shot'));
+  // frames per second, measured over the last second
+  let n = 0, t0 = performance.now();
+  const tick = () => {
+    n++;
+    const now = performance.now();
+    if (now - t0 > 1000) {
+      window.__fps = Math.round((n * 1000) / (now - t0));
+      if (!q.has('clean')) document.getElementById('fps').textContent = `${window.__fps} fps`;
+      n = 0;
+      t0 = now;
+    }
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+  window.__ready = true;
+</script>
+</body>
+</html>

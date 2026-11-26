@@ -18,7 +18,7 @@ import { musicHold } from './music.js';
 
 // The arena's theme plays on this page only while no battle is on: before a fight, after it, between
 // fights. From the countdown to the winner's moment, and during a replay, only the ring's sound is heard.
-const WIN_MOMENT = 12000; // the fanfare, the roar, the winner's backflip
+const WIN_MOMENT = 22000; // the fanfare, the roar, the knockout, the winner's backflip
 let winUntil = 0;
 const battleOn = (on) => musicHold(on || replaying || Date.now() < winUntil);
 import { createScene as createFlatScene } from './scene.js';
@@ -71,6 +71,13 @@ scene.onMoment?.((name, side) => {
   if (name === 'ropes') cheer(0.5);
   else if (name === 'taunt') ooh(0.45, 1.3);
   else if (name === 'flip') ooh(1.2, 3.2); // the slow turn in the air
+  else if (name === 'punch') {
+    thud(); // the uppercut on the jaw, in slow motion
+    ooh(1.1, 1.6);
+  } else if (name === 'crash') {
+    thud(); // the beaten one breaks its desk
+    cheer(1.3);
+  }
   else if (name === 'land') {
     thud();
     cheer(1.5);
@@ -346,7 +353,7 @@ function gongHtml(g, live = false, replay = false) {
 // ------------------------------------------------------------------ what the arena does, live
 
 // what has already happened on screen, so each sound and each big word comes once
-const cue = { phase: null, round: 0, left: null, onTime: {}, judged: null };
+const cue = { phase: null, round: 0, left: null, onTime: {}, judged: null, firstIn: null };
 
 function cues(b, c, v, views) {
   const first = cue.phase === null;
@@ -365,7 +372,7 @@ function cues(b, c, v, views) {
     const missed = Object.entries(views).filter(([, view]) => view && !view.onTime.includes(cue.round));
     if (missed.length) {
       boo();
-      for (const [side] of missed) scene.excite(other(side), 0.8);
+      for (const [side] of missed) scene.excite(other(side), 0.6);
     }
   }
   if (c.phase === 'over' && cue.phase && cue.phase !== 'over') {
@@ -377,9 +384,13 @@ function cues(b, c, v, views) {
     if (!view) continue;
     const before = cue.onTime[side] ?? view.onTime.length;
     if (!first && view.onTime.length > before) {
+      // its stand rises only if it is the first in with this round's answer
+      const round = view.onTime[view.onTime.length - 1];
+      const firstIn = cue.firstIn !== round;
+      cue.firstIn = round;
       ding();
       cheer(0.8);
-      scene.excite(side, 1);
+      scene.excite(side, firstIn ? 1 : 0.6);
       flash(side);
     }
     cue.onTime[side] = view.onTime.length;
@@ -389,13 +400,14 @@ function cues(b, c, v, views) {
 }
 
 /** The verdict, in order, so that it is clear who won: both stand in front of their desks; after
- *  `delay` the referee walks over and raises the winner's arm; then the winner celebrates (and later
- *  goes up the ropes for its backflip) while the beaten one hangs its head; once the winner has landed,
- *  the beaten one smashes its desk. `loud`: the fanfare, the roar and the confetti come with the
+ *  `delay` the referee walks over and raises the winner's arm; the winner celebrates while the beaten
+ *  one hangs its head; once the referee has let go, the beaten one snaps and attacks, is knocked out
+ *  onto its own desk and lies there; only then the winner goes up the ropes for its backflip (the
+ *  scene holds it until the knockout). `loud`: the fanfare, the roar and the confetti come with the
  *  raised arm (a verdict that lands now, or the end of a replay); a page opened on an old result
  *  plays the same scene quietly. */
 const RAISE = 2400; // the referee's walk and its arm going up
-const SMASH = 11000; // after the raise: the winner's ropes and backflip are over
+const SMASH = 3200; // after the raise: the referee has let go of the winner's arm, the beaten one snaps
 let show = null;
 function stopShow() {
   show?.timers.forEach(clearTimeout);
@@ -864,10 +876,12 @@ async function playReplay(b) {
         const used = Math.min(now, at[side] ?? RT);
         el(side, '[data-bar]').style.width = `${(100 - (used / RT) * 100).toFixed(1)}%`;
         if (at[side] != null && now >= at[side] && !done[side]) {
+          // its stand rises only if it is the first in with this round's answer
+          const firstIn = !Object.keys(done).length;
           done[side] = true;
           ding();
           cheer(0.6);
-          scene.excite(side, 1);
+          scene.excite(side, firstIn ? 1 : 0.6);
           scene.setPose(side, 'done');
           flash(side);
           setNote(side, t('accepted', at[side]));
@@ -888,8 +902,8 @@ async function playReplay(b) {
       if (!x.solved) {
         failed = true;
         scene.setPose(side, 'fail');
-        scene.excite(other(side), 0.8);
-      } else scene.excite(side, 0.9);
+        scene.excite(other(side), 0.6);
+      } else scene.excite(side, 0.6);
       setNote(side, parts.join(' · '), !x.solved);
       el(side, '.run').textContent = String(total[side]);
       const pip = el(side, `.pips i:nth-child(${r})`);

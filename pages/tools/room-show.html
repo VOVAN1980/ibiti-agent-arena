@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ring room show (team only)</title>
+<!-- Team-only: cycles the ring through empty, hype, fight and win so the room, the acts and the
+     camera can be watched on a PC or a phone without the Worker. -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800&family=Unbounded:wght@500;700;800&display=swap" rel="stylesheet">
+<script type="importmap">{ "imports": { "three": "../../site/assets/vendor/three/build/three.module.js", "three/addons/": "../../site/assets/vendor/three/examples/jsm/" } }</script>
+<style>
+  html, body { margin: 0; height: 100%; background: #050507; overflow: hidden; }
+  #stage { position: fixed; inset: 0; }
+  #label { position: fixed; left: 12px; top: 12px; padding: 6px 10px; border-radius: 6px; background: rgba(0,0,0,.7); color: #f2cf6e; font: 600 14px/1.2 system-ui, sans-serif; letter-spacing: .04em; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<div id="label"></div>
+<script type="module">
+  const q = new URLSearchParams(location.search);
+  window.ARENA_CONFIG = { ring: q.get('ring') === 'green' ? 'green' : 'red' };
+  if (q.get('q') === 'small') window.ARENA_QUALITY = 'small';
+  else if (q.get('q') === 'full') window.ARENA_QUALITY = 'full';
+  const { createScene } = await import('../../site/assets/scene3d.js');
+  const scene = await createScene(document.getElementById('stage'));
+  const label = document.getElementById('label');
+
+  const STEPS = [
+    { name: 'EMPTY HALL', secs: 30, run() {
+      scene.setFighters({ red: false, blue: false });
+      scene.setLights('sweep');
+      scene.setBoard(['RING FREE', '—', '2 IN THE HALL']);
+    } },
+    { name: 'WALK-IN · HYPE', secs: 40, run() {
+      scene.setFighters({ red: true, blue: true });
+      for (const s of ['red', 'blue']) scene.setPose(s, 'hype');
+      scene.setLights('sweep');
+      scene.setBoard(['GET READY', '9', 'NIGHT OWL · IRON FOX']);
+    } },
+    { name: 'ROUND', secs: 45, run() {
+      scene.setPose('red', 'work');
+      scene.setPose('blue', 'work');
+      scene.setLights('focus');
+      scene.setBoard(['ROUND 4', '00:41', 'NIGHT OWL · IRON FOX']);
+    } },
+    { name: 'VERDICT · RED WINS', secs: 45, run() {
+      // as the fight page does it: the final bell stands both up from their desks; the referee walks
+      // over, raises the winner's arm; the loser snaps, attacks and is knocked out onto its desk; then
+      // the winner's ropes and backflip (the page's own timings: 1.8 s, 2.5 s, RAISE, SMASH)
+      scene.setPose('red', 'stand');
+      scene.setPose('blue', 'stand');
+      scene.setLights('sweep');
+      scene.setBoard(['FINAL BELL', '—', 'NIGHT OWL · IRON FOX']);
+      setTimeout(() => scene.setLights('winner', 'red'), 4300);
+      setTimeout(() => {
+        scene.setPose('red', 'win');
+        scene.setPose('blue', 'sad');
+        scene.setBoard(['NIGHT OWL', '96 : 72', 'POINTS OF 120']);
+      }, 4300 + 2400);
+      setTimeout(() => scene.setPose('blue', 'lose'), 4300 + 2400 + 3200);
+    } },
+  ];
+  let i = 0;
+  const next = () => {
+    const s = STEPS[i % STEPS.length];
+    s.run();
+    label.textContent = s.name;
+    i++;
+    setTimeout(next, s.secs * 1000);
+  };
+  next();
+</script>
+</body>
+</html>
