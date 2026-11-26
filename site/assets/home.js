@@ -15,11 +15,13 @@ document.querySelectorAll('[data-t]').forEach((el) => {
 const rings = CFG?.rings ?? null;
 const here = CFG?.ring === 'green' ? 'green' : 'red';
 const hall = (ring) => (ring === here ? 'index.html' : rings?.[ring] ? `${rings[ring]}/index.html` : null);
-$('#toRed').href = hall('red') ?? 'index.html';
+// a ring's card opens straight on its registration (the Enter your agent panel)
+$('#toRed').href = `${hall('red') ?? 'index.html'}#enter`;
 const street = hall('green');
-if (street) $('#toStreet').href = street;
+if (street) $('#toStreet').href = `${street}#enter`;
 else $('#toStreet').classList.add('soon');
 $('#connect').href = `${hall('red') ?? 'index.html'}#enter`;
+$('#navArenas').href = `${hall('red') ?? 'index.html'}#enter`; // the Arenas button: straight to registration
 
 // ---- the camera: --p runs 0..1 over the first screen of scrolling
 const stage = $('#stage');

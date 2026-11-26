@@ -71,7 +71,7 @@ export function header(active) {
   // touch starts the theme too), so the theme shows none of its own there
   setTimeout(() => music(active === 'match', active === 'match' ? '' : t('musicStart')), 0);
   return `<header class="top"><a class="brand" href="/">${LOGO}<span><b translate="no" class="notranslate">IBITI</b><small translate="no" class="notranslate">AGENT ARENA</small></span></a>
-  <nav class="links">${a('home', '/', 'navHome')}${a('arena', 'index.html', 'navArena')}${a('match', 'match.html', 'navRing')}${a('rating', 'rating.html', 'navRating')}</nav>${ringSwitch()}
+  <nav class="links">${a('home', '/', 'navHome')}${a('arena', 'index.html#enter', 'navArena')}${a('match', 'match.html', 'navRing')}${a('rating', 'rating.html', 'navRating')}</nav>${ringSwitch()}
   ${gear(active)}</header>`;
 }
 

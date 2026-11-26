@@ -259,3 +259,23 @@ if (linkChallenge !== null && !CHALLENGES) toast(t('noChallenge'));
 else if (challengedFromLink) toast(t('challenged'));
 else if (brokenChallenge) toast(t('badChallenge'));
 loop();
+
+// #enter (the Arena button, a ring's card, Connect agent): the registration panel comes to the front,
+// lit for a moment, its name field ready (on a computer; a phone's keyboard waits for a tap)
+function toEnter() {
+  if (location.hash !== '#enter') return;
+  const panel = document.getElementById('enter');
+  if (!panel) return;
+  panel.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+  panel.classList.remove('spot');
+  void panel.offsetWidth;
+  panel.classList.add('spot');
+  if (matchMedia('(pointer: fine)').matches) document.getElementById('agentName')?.focus({ preventScroll: true });
+}
+addEventListener('hashchange', toEnter);
+// the Arena button pressed again on this page (the same #enter: no hashchange)
+document.addEventListener('click', (e) => {
+  const a = e.target.closest?.('a[href$="#enter"]');
+  if (a && a.pathname === location.pathname && location.hash === '#enter') setTimeout(toEnter, 0);
+});
+setTimeout(toEnter, 60);

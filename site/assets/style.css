@@ -826,3 +826,9 @@ body.rankpage .musicgate { left: auto; right: 16px; }
 @view-transition { navigation: auto; }
 ::view-transition-old(root), ::view-transition-new(root) { animation-duration: .22s; }
 @media (prefers-reduced-motion: reduce) { @view-transition { navigation: none; } }
+
+/* the registration panel: reached from the Arena button and the rings' cards, lit for a moment */
+#enter { scroll-margin-top: 92px; }
+#enter.spot { animation: enterspot 2.4s ease-out 1; }
+@keyframes enterspot { 0%, 30% { box-shadow: 0 0 0 2px rgba(242,207,110,.9), 0 0 40px rgba(242,207,110,.35); } 100% { box-shadow: 0 0 0 0 rgba(242,207,110,0); } }
+@media (prefers-reduced-motion: reduce) { #enter.spot { animation: none; outline: 2px solid rgba(242,207,110,.8); } }
