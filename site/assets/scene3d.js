@@ -507,6 +507,16 @@ export async function createScene(root) {
   renderer.domElement.style.opacity = '0'; // the still shows until the first frame
   root.appendChild(renderer.domElement);
 
+  // the robots' and the ring's baked maps filtered anisotropically: sharp at grazing angles (the canvas,
+  // the plates seen side on), the most the GPU offers (phones up to 8)
+  const aniso = Math.min(small ? 8 : 16, renderer.capabilities.getMaxAnisotropy());
+  const sharpen = (root) => root.traverse((o) => {
+    if (!o.isMesh) return;
+    for (const m of [].concat(o.material)) for (const k of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap']) if (m[k]) m[k].anisotropy = aniso;
+  });
+  if (xg) for (const g of Object.values(xg.robots)) sharpen(g.scene);
+  if (assets.kit) for (const piece of Object.values(assets.kit)) sharpen(piece);
+
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x020304);
   scene.fog = new THREE.FogExp2(0x020203, 0.03);

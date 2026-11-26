@@ -73,17 +73,16 @@ export async function loadHallAssets(small) {
   const kit = new GLTFLoader().loadAsync(`${ARENA}models/ring-kit${small ? '-lite' : ''}.glb`).then((gltf) => {
     const pieces = Object.fromEntries(gltf.scene.children.map((o) => [o.name, o]));
     // the steel needs the hall's reflections to read as steel; the canvas's plates are blackened metal
-    // that takes the lamps' light; the gold is clean polished metal, one even gold with only a fine
-    // brushed grain in its roughness, its shine the reflections on its chamfers and a breath of its own
-    // light, so it reads in shadow
+    // that takes the lamps' light; the gold is polished metal with its own maps (buffing swirls and fine
+    // scratches in its roughness and normals, a faint tarnish in patches), its shine the reflections on
+    // its chamfers and a breath of its own light, so it reads in shadow
     const tune = { KIT: 1.7, ACCENT_NEUTRAL: 1.3, CANVAS: 2.2, GOLD: 1.6, GRILLE: 1.6, TREAD: 2.6 };
-    const grain = brushedGrain();
     gltf.scene.traverse((o) => {
       const m = o.material;
       if (!o.isMesh || !tune[m.name]) return;
       m.envMapIntensity = tune[m.name];
       if (m.name === 'CANVAS') m.metalness = 0.8;
-      if (m.name === 'GOLD') Object.assign(m, { map: null, aoMap: null, metalnessMap: null, metalness: 1, roughnessMap: grain, roughness: 1, color: new THREE.Color(0xf2cf6e), emissive: new THREE.Color(0xf2cf6e), emissiveIntensity: 0.025 });
+      if (m.name === 'GOLD') Object.assign(m, { aoMap: null, metalness: 1, roughness: 1, emissive: new THREE.Color(0xf2cf6e), emissiveMap: m.map, emissiveIntensity: 0.025 });
       if (m.name === 'GRILLE') m.alphaTest = 0.35;
       if (m.name === 'KIT' || m.name === 'TREAD') shoulder(m);
     });
@@ -119,26 +118,6 @@ function stripCore(color) {
   g.fillStyle = gr;
   g.fillRect(0, 0, 64, 2);
   return tex(c, { aniso: 4 });
-}
-
-/** Polished metal's brushed grain, for a roughness map (three reads its green): fine streaks along u,
- *  roughness 0.14 to 0.24. */
-function brushedGrain() {
-  const c = canvas(256);
-  const g = c.getContext('2d');
-  const img = g.createImageData(256, 256);
-  const streak = fbm(256, 64, 3, 7);
-  for (let y = 0; y < 256; y++) {
-    const row = Math.random();
-    for (let x = 0; x < 256; x++) {
-      const v = (0.14 + 0.1 * (0.6 * row + 0.4 * streak[y * 256 + x])) * 255;
-      const i = (y * 256 + x) * 4;
-      img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
-      img.data[i + 3] = 255;
-    }
-  }
-  g.putImageData(img, 0, 0);
-  return tex(c, { srgb: false, repeat: [1, 1] });
 }
 
 /** A tileable value-noise field, `size` square, summed over octaves: values about 0..1. */
@@ -352,21 +331,105 @@ function plateMaps(size, R, ring) {
   };
 }
 
-/** Grime over the whole canvas (the kit's plates tile): blotches, darker where the fighters walk, a little
- *  lighter where the plates are scuffed bright. Grey, 0.5 the plain plate. */
+/** Over the whole canvas (the kit's plates tile), in three channels: r grime (blotches, darker where the
+ *  fighters walk, lighter where the plates are scuffed bright; 0.5 the plain plate), g dust (a dry film
+ *  that gathers towards the ropes and the corners), b the soles' rubber marks (short dark arcs, most
+ *  of them in the middle and round the stations). The texture spans the ring's width. */
 function grimeTex(size) {
   const n = fbm(size, 5, 5, 31);
   const f = fbm(size, 24, 3, 17);
+  const d = fbm(size, 9, 4, 43);
+  const marks = canvas(size);
+  const mg = marks.getContext('2d');
+  mg.fillStyle = '#000';
+  mg.fillRect(0, 0, size, size);
+  let seed = 977;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const px = size / 12.2; // pixels a metre (the texture spans 2R + 0.2)
+  const spots = [[0, 0, 2.6], [-2.7, -1.5, 1.4], [2.7, -1.5, 1.4], [0, 3.2, 1.6]]; // the middle, the stations, the steps' side
+  mg.lineCap = 'round';
+  for (let i = 0; i < 420; i++) {
+    const [cx, cz, r] = spots[i % 5 === 0 ? 1 + (i % 3) : 0];
+    const a = rnd() * Math.PI * 2;
+    const rr = r * Math.sqrt(rnd());
+    const x = (cx + Math.cos(a) * rr) * px + size / 2;
+    const y = size / 2 - (cz + Math.sin(a) * rr) * px; // canvas rows run down, the texture's v (z) up
+    const len = (0.12 + rnd() * 0.45) * px;
+    const dir = rnd() * Math.PI * 2;
+    const bend = (rnd() - 0.5) * len * 0.8;
+    mg.strokeStyle = `rgba(255,255,255,${0.3 + rnd() * 0.6})`;
+    mg.lineWidth = Math.max(1.5, (0.02 + rnd() * 0.045) * px);
+    mg.beginPath();
+    mg.moveTo(x, y);
+    mg.quadraticCurveTo(x + Math.cos(dir) * len * 0.5 - Math.sin(dir) * bend, y + Math.sin(dir) * len * 0.5 + Math.cos(dir) * bend, x + Math.cos(dir) * len, y + Math.sin(dir) * len);
+    mg.stroke();
+  }
+  const md = mg.getImageData(0, 0, size, size).data;
   const c = canvas(size);
   const g = c.getContext('2d');
   const img = g.createImageData(size, size);
-  for (let i = 0; i < size * size; i++) {
-    const v = 128 + (THREE.MathUtils.smoothstep(n[i], 0.3, 0.75) - 0.5) * 150 + (f[i] - 0.5) * 60;
-    img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = v;
-    img.data[i * 4 + 3] = 255;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const i = y * size + x;
+      const r = Math.hypot(x - size / 2, y - size / 2) / (size / 2); // 0 the middle, about 1 the ring's corners
+      const v = 128 + (THREE.MathUtils.smoothstep(n[i], 0.3, 0.75) - 0.5) * 150 + (f[i] - 0.5) * 60 - THREE.MathUtils.smoothstep(r, 0.55, 0.95) * 30;
+      const dust = THREE.MathUtils.smoothstep(d[i] * 0.7 + r * 0.55 + (f[i] - 0.5) * 0.3, 0.62, 0.95);
+      img.data[i * 4] = v;
+      img.data[i * 4 + 1] = dust * 255;
+      img.data[i * 4 + 2] = md[i * 4];
+      img.data[i * 4 + 3] = 255;
+    }
   }
   g.putImageData(img, 0, 0);
-  return tex(c, { srgb: false, aniso: 4 });
+  return tex(c, { srgb: false, aniso: 8 });
+}
+
+/** The posts' polished caps: turned steel (fine rings round the cap, in the roughness), smudges where
+ *  hands lean on them, scratches, a little grime at the lip. Colour (multiplies the steel) and roughness
+ *  (absolute: 0.1 to 0.4), u round the cap, v up its profile. */
+function capMaps(size) {
+  const sm = fbm(size, 6, 4, 61);
+  const fine = fbm(size, 48, 2, 62);
+  const c = canvas(size);
+  const r = canvas(size);
+  const g = c.getContext('2d');
+  const rg = r.getContext('2d');
+  const img = g.createImageData(size, size);
+  const rimg = rg.createImageData(size, size);
+  let seed = 4421;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const rings = Array.from({ length: size }, () => rnd());
+  for (let y = 0; y < size; y++) {
+    const v = 1 - y / size; // 0 the lip, 1 the top
+    for (let x = 0; x < size; x++) {
+      const i = y * size + x;
+      const smudge = THREE.MathUtils.smoothstep(sm[i], 0.45, 0.8);
+      const rough = 0.12 + 0.05 * rings[y] + 0.04 * (fine[i] - 0.5) + 0.2 * smudge + 0.08 * THREE.MathUtils.smoothstep(v, 0.25, 0.0);
+      const col = (0.93 + 0.07 * rings[y] - 0.12 * smudge - 0.25 * THREE.MathUtils.smoothstep(v, 0.2, 0.0)) * 255;
+      img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = col;
+      img.data[i * 4 + 3] = 255;
+      rimg.data[i * 4] = rimg.data[i * 4 + 1] = rimg.data[i * 4 + 2] = rough * 255;
+      rimg.data[i * 4 + 3] = 255;
+    }
+  }
+  g.putImageData(img, 0, 0);
+  rg.putImageData(rimg, 0, 0);
+  // scratches: short straight strokes, brighter and smoother in the colour, rougher in the roughness
+  for (let k = 0; k < 140; k++) {
+    const x = rnd() * size;
+    const y = rnd() * size;
+    const a = rnd() * Math.PI;
+    const l = (0.02 + rnd() * 0.12) * size;
+    for (const [ctx, style] of [[g, `rgba(255,255,255,${0.05 + rnd() * 0.12})`], [rg, `rgba(100,100,100,${0.25 + rnd() * 0.35})`]]) {
+      ctx.strokeStyle = style;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l);
+      ctx.stroke();
+    }
+  }
+  return { map: tex(c, { repeat: [2, 1], aniso: 8 }), rough: tex(r, { srgb: false, repeat: [2, 1], aniso: 8 }) };
 }
 
 /** Dark brushed steel with a little grime, `w` × `h`, tiling. */
@@ -2000,7 +2063,7 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring, eye, kit = n
     Object.assign(steelRing.getObjectByName('CANVAS').material, { envMap: polished, envMapIntensity: 1.1 });
     // the canvas's plates tile: grime over the whole of it, darker and duller in the blotches; the
     // ring's colour a breath in the steel; round each post its strips' colour on the polished plates
-    const grime = { value: grimeTex(small ? 256 : 512) };
+    const grime = { value: grimeTex(small ? 512 : 1024) };
     const ringTint = { value: ring === 'green' ? new THREE.Color(0.95, 1.05, 0.99) : new THREE.Color(1.05, 0.96, 0.98) };
     const posts = { value: Array.from({ length: 6 }, (_, k) => new THREE.Vector2(Math.cos((k * Math.PI) / 3), Math.sin((k * Math.PI) / 3)).multiplyScalar(R - 0.08)) };
     const postCol = { value: posts.value.map((p) => sideColor(p.x).clone().multiplyScalar(p.x < 0 ? 0.36 : 0.26)) };
@@ -2011,12 +2074,18 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring, eye, kit = n
         .replace('#include <fog_vertex>', `#include <fog_vertex>\nvXZ = (modelMatrix * vec4(transformed, 1.0)).xz;\nvGrime = vXZ / ${(2 * R + 0.2).toFixed(1)} + 0.5;`);
       sh.fragmentShader = sh.fragmentShader
         .replace('#include <common>', '#include <common>\nuniform sampler2D tGrime;\nuniform vec3 uRingTint;\nuniform vec2 uPosts[6];\nuniform vec3 uPostCol[6];\nvarying vec2 vGrime;\nvarying vec2 vXZ;')
-        .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-          float grime = texture2D(tGrime, vGrime).r;
+        .replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>
+          vec3 gm = texture2D(tGrime, vGrime).rgb;
+          float grime = gm.r;
           diffuseColor.rgb *= (0.28 + grime * 0.42) * uRingTint;
           // the middle, under the key, polished wet by the fighters' feet; the edges duller
           float mid = exp(-dot(vXZ, vXZ) / 9.0);
-          roughnessFactor = clamp((roughnessFactor + (0.5 - grime) * 0.3) * mix(1.0, 0.55, mid), 0.12, 0.62);`)
+          roughnessFactor = clamp((roughnessFactor + (0.5 - grime) * 0.3) * mix(1.0, 0.55, mid), 0.12, 0.62);
+          // dust: a dry grey film, no metal in it; the soles' rubber marks: black, a little glossy
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.05, 0.047, 0.043), gm.g * 0.6);
+          roughnessFactor = mix(mix(roughnessFactor, 0.72, gm.g * 0.6), 0.42, gm.b * 0.6);
+          metalnessFactor *= 1.0 - gm.g * 0.5 - gm.b * 0.7;
+          diffuseColor.rgb *= 1.0 - gm.b * 0.7;`)
         .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
           vec3 spill = vec3(0.0);
           for (int k = 0; k < 6; k++) {
@@ -2057,7 +2126,9 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring, eye, kit = n
         caps.push(capGeo.clone().rotateY(rot).translate(p.x, 0, p.z));
         glowRing[sideOf(p.x)].push(ringGeo.clone().rotateY(rot).translate(p.x, 0, p.z));
       }
-      add(new THREE.Mesh(mergeGeometries(caps), shoulder(std({ color: 0xbcc2ca, metalness: 1, roughness: 0.15, flatShading: true, envMap: polished, envMapIntensity: 1.35 }))), { cast: heavy, mirror: true });
+      // turned steel: fine rings, smudges and scratches in its roughness (the reflections break up as on real metal)
+      const cm = capMaps(small ? 256 : 512);
+      add(new THREE.Mesh(mergeGeometries(caps), shoulder(std({ color: 0xbcc2ca, map: cm.map, roughnessMap: cm.rough, metalness: 1, roughness: 1, flatShading: true, envMap: polished, envMapIntensity: 1.35 }))), { cast: heavy, mirror: true });
       for (const sd of ['red', 'green']) add(new THREE.Mesh(mergeGeometries(glowRing[sd]), glow(sd === 'red' ? RED : GREEN, sd === 'red' ? 1.3 : 0.95)), { mirror: true });
     }
   } else {
