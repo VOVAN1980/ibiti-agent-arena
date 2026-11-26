@@ -750,7 +750,7 @@ export async function createScene(root) {
   // the camera
   const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 140);
   // cut: true at the start, so the camera is in place from the first frame instead of drifting in
-  const cam = { mode: null, modeAt: 0, shake: 0, fp: new THREE.Vector3(), view: { ...WIDE }, shot: 'wide', step: 0, at: 0, cut: true, look: new THREE.Vector3(), was: null, shotAt: 0 };
+  const cam = { mode: null, modeAt: 0, shake: 0, fp: new THREE.Vector3(), view: { ...WIDE }, shot: 'wide', step: 0, at: 0, cut: true, look: new THREE.Vector3(), lookV: new THREE.Vector3(), was: null, shotAt: 0 };
   const SHOTS = ['wide', 'red', 'wide', 'blue'];
   const camAt = new THREE.Vector3();
   const camLook = new THREE.Vector3();
@@ -2368,8 +2368,12 @@ export async function createScene(root) {
       camAt.copy(mid).addScaledVector(k.a, 5.2 - 1.1 * tight).addScaledVector(k.out, 0.9).setY(FLOOR + 1.9);
       camAt.addScaledVector(camFront.subVectors(C, mid).setY(0), 0.25); // riding along a little
       camAt.y += (C.y - FLOOR - 2.2) * 0.3;
-      if (cam.cut) cam.look.copy(camLook);
-      cam.look.lerp(camLook, Math.min(1, realDt * 9));
+      if (cam.cut) {
+        cam.look.copy(camLook);
+        cam.lookV.set(0, 0, 0);
+      }
+      // (a spring: the aim gathers speed as the body takes off, it does not jerk round)
+      for (const ax of ['x', 'y', 'z']) [cam.look[ax], cam.lookV[ax]] = springTo(cam.look[ax], cam.lookV[ax], camLook[ax], 9, realDt);
       lensFov((portrait ? 64 : 42) - 9 * tight);
       camera.position.copy(camAt);
       camera.lookAt(cam.look);

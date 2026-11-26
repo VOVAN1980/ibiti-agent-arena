@@ -1279,7 +1279,7 @@ function buildStands(scene, { small, steel, atlas }) {
     const setTable = new Float32Array(setList.length * 8);
     setList.forEach(([frames, cycle = 1], i) => {
       setTable.set([0, 1, 2, 3].map((k) => frames[Math.min(k, frames.length - 1)]), i * 4);
-      setTable.set([frames.length, cycle, 0.3, 0], (setList.length + i) * 4);
+      setTable.set([frames.length, cycle, 0.18, 0], (setList.length + i) * 4); // (a short share blending: two pictures at once show as a ghost)
     });
     const setTex = new THREE.DataTexture(setTable, setList.length, 2, THREE.RGBAFormat, THREE.FloatType);
     setTex.needsUpdate = true;

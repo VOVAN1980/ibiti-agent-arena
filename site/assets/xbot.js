@@ -316,7 +316,10 @@ export function makeXRobot(kind, models) {
     const legsBase = Math.max(sitW, floor, c.tuck || 0);
     const legsRaw = Math.max(legsBase, legs?.w ?? 0);
     if (legs?.w) lastLegs = { hip: legs.hip, knee: legs.knee, left: legs.left ? { hip: legs.left.hip, knee: legs.left.knee } : null, splay: legs.splay ?? 0 };
-    [legsS, legsV] = spring(legsS, legsV, legsRaw, 8, dt);
+    if (legs?.w) {
+      legsS = legsRaw; // (the scene bends them: as it says; eased only once it lets go of them)
+      legsV = 0;
+    } else [legsS, legsV] = spring(legsS, legsV, legsRaw, 8, dt);
     if (legsS < 0.01 && !legs?.w) lastLegs = null;
     const legsW = Math.max(legsRaw, legsS);
     const legSrc = legs?.w ? legs : lastLegs;
@@ -435,9 +438,10 @@ export function makeXRobot(kind, models) {
     const ground = rig.ground ?? rootAt.y;
     const stance = rig.stance ?? 0;
     const tracking = walkW > 0.5 || !!rig.air || legsW > 0.5;
-    // the planted feet hand over to the clip (and back) in an eased quarter of a second: while they let
-    // go they stay where they stand (a step under way finishes), so no foot or knee jumps
-    plantU = Math.min(1, Math.max(0, plantU + ((tracking ? -1 : 1) * dt) / 0.25));
+    // the planted feet hand over to the clip in an eased quarter of a second (and are planted again in a
+    // tenth): while they let go they stay where they stand (a step under way finishes), so no foot or
+    // knee jumps
+    plantU = Math.min(1, Math.max(0, plantU + (tracking ? -dt / 0.25 : dt / 0.1))); // (planted again quickly: a foot is set down where it is)
     plantW = plantU * plantU * (3 - 2 * plantU);
     shift.multiplyScalar(Math.max(0, 1 - dt * 5));
     const restYaw = (f) => rootYaw + f.s * (0.08 + (rig.toeOut ?? 0)) * (1 - stance) - 0.3 * stance;
@@ -498,7 +502,7 @@ export function makeXRobot(kind, models) {
     for (const [i, f] of feet.entries()) {
       const want = rig.feet?.[i];
       const w = want?.w ?? 0;
-      [footW[i], footV[i]] = spring(footW[i], footV[i], w, 12, dt);
+      [footW[i], footV[i]] = spring(footW[i], footV[i], w, w > footW[i] ? 30 : 12, dt); // (taken at once: the scene sets a foot down where it is; let go eased)
       if (w > 0.001) {
         // the scene places this foot (on a rope, on the canvas): the planter takes it from there
         f.at.copy(want.at);
