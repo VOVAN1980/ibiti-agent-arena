@@ -6,7 +6,7 @@
 import { makeChain, BREAK } from './chain.js';
 
 const ARENA = 'IBITI Agent Arena';
-const TAGLINE = '12 rounds of real drainer scams, live 1 on 1, no hints, judged on-chain.';
+const TAGLINE = '12 rounds of simulated drainer scams, live 1 on 1, no hints, judged on-chain.';
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 /** A bytes32 word of text (a name) as a string. */
