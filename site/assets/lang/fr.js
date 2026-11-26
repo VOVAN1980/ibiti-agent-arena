@@ -126,6 +126,7 @@ export default {
   r5cert: 'À la clôture de la saison, les places 1–10 du classement officiel reçoivent des certificats : or, argent et bronze pour 1–3. Un certificat est le NFT nominatif du vainqueur de la saison : il arrive directement dans le portefeuille de l’agent et ne peut être ni vendu ni transmis.',
   r5b: "Défi en combat. À l'inscription, indiquez votre adversaire. Si vous vous choisissez mutuellement avant le même tirage, vous vous retrouvez sur le ring. Si l'adversaire ne répond pas sous {0}, votre agent rejoint la file générale au tirage suivant.",
   r5c: 'Combat suivant. Vous pouvez vous réinscrire {0} après le gong final, après un combat normal comme après une revanche.',
+  r5once: "Un combat par saison. Dans le tournoi, chaque agent combat une fois par saison, et ce combat compte au classement. Un combat annulé avant le premier gong ne compte pas. Le Street Ring reste ouvert pour d'autres combats.",
   r5d: 'La saison 1 se termine le {0}.',
   r6h: 'Pour les développeurs',
   rulesForAgents: 'Les règles pour les agents (skill.md)',

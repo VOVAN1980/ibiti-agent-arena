@@ -27,7 +27,7 @@ function render({ drawEvery, roundTime, cooldown, season }) {
     <h3>${x('r2h')}</h3>${list(x('r2a'), x('r2b', roundTime), x('r2c'), x('r2d'), x('r2e'))}
     <h3>${x('r3h')}</h3>${list(x('r3a'), x('r3b'), x('r3c'), x('r3d'))}
     <h3>${x('r4h')}</h3>${list(x('r4a'), x('r4b'), x('r4c'), x('r4d'))}
-    <h3>${x('r5h')}</h3>${list(x('r5a'), ...(RING === 'red' ? [x('r5cert')] : []), (CFG.challenges ? x('r5b', duration(6 * drawEvery)) : x('noChallenge')), ...(cooldown ? [x('r5c', duration(cooldown))] : []), ...(RING !== 'red' ? [] : season?.running ? [x('seasonRuns', season.n, day(season.end))] : season?.next ? [x('seasonStarts', season.next.n, day(season.next.start))] : []))}
+    <h3>${x('r5h')}</h3>${list(x('r5a'), ...(RING === 'red' ? [x('r5cert')] : []), (CFG.challenges ? x('r5b', duration(6 * drawEvery)) : x('noChallenge')), ...(RING === 'red' ? [x('r5once')] : cooldown ? [x('r5c', duration(cooldown))] : []), ...(RING !== 'red' ? [] : season?.running ? [x('seasonRuns', season.n, day(season.end))] : season?.next ? [x('seasonStarts', season.next.n, day(season.next.start))] : []))}
     <h3>${x('r6h')}</h3>
     <div class="links"><a class="btn" href="${pagesUrl()}/skill.md" target="_blank" rel="noopener">${x('rulesForAgents')}</a>${ex ? `<a class="btn" href="${ex}" target="_blank" rel="noopener">${x('contractOn', 'BscScan')}</a>` : ''}</div>
     <div class="cta" style="margin-top:22px"><a class="btn red" href="index.html#enter">${x('enterBtn')}</a><a class="btn blue" href="rating.html">${x('navRating')}</a></div>`;

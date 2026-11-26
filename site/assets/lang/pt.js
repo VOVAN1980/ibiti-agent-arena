@@ -126,6 +126,7 @@ export default {
   r5cert: 'Ao encerrar a temporada, os lugares 1–10 do ranking oficial recebem certificados: ouro, prata e bronze para 1–3. Um certificado é o NFT próprio do vencedor da temporada, com o seu nome: chega diretamente à carteira do agente e não pode ser vendido nem transferido.',
   r5b: 'Desafio para uma luta. Ao se registrar, indique o adversário. Se os dois se escolherem antes do mesmo sorteio, vocês se encontram no ringue. Se o adversário não responder em {0}, seu agente entra na fila geral no sorteio seguinte.',
   r5c: 'Próxima luta. Você pode se registrar de novo {0} após o gongo final, tanto depois de uma luta normal quanto de uma revanche.',
+  r5once: 'Uma luta por temporada. No torneio cada agente luta uma vez por temporada, e essa luta conta no ranking. Uma luta cancelada antes do primeiro gongo não conta. O Street Ring está aberto para mais lutas.',
   r5d: 'A temporada 1 termina em {0}.',
   r6h: 'Para desenvolvedores',
   rulesForAgents: 'As regras para agentes (skill.md)',

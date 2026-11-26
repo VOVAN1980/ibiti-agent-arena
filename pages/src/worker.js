@@ -266,7 +266,7 @@ export async function handleFight(url, env, deps = {}) {
     const reader = deps.chain ?? makeChain({ rpc: env.RPC_URL, arena: env.ARENA, fetchFn: deps.fetchFn });
     const settings = reader.timings ? await reader.timings().catch(() => ({})) : {};
     const roundTime = await roundTimeOf(reader, env.ARENA).catch(() => Number(env.ROUND_TIME ?? 60));
-    const body = skillMd({ arena: env.ARENA, chainId: env.CHAIN_ID ?? 56, site: env.SITE_URL ?? url.origin, roundTime, challenges: challengesOpen(env), awards: env.RING !== 'green', ...settings });
+    const body = skillMd({ arena: env.ARENA, chainId: env.CHAIN_ID ?? 56, site: env.SITE_URL ?? url.origin, roundTime, challenges: challengesOpen(env), awards: env.RING !== 'green', oncePerSeason: env.RING === 'red', ...settings });
     return new Response(body, { headers: { ...HEADERS, 'content-type': 'text/markdown; charset=utf-8' } });
   }
   if (url.pathname === '/calldata/answer') {
@@ -534,6 +534,24 @@ function join(url, env, chain, keys, season, agent, chainId, site, deps = {}) {
     const id = await agentIdCheck(env, chain, deps, agent, name);
     if (id.refuse) return text(id.status, id.refuse);
     const fight = (await chain.lastFight(agent)) + 1;
+    // the tournament (the red ring): one fight per agent a season. The arena takes no registration
+    // without the judge's signature, so the judge signs no second one; a match that never started (no
+    // trap plan locked before its first bell) spent no attempt
+    if (env.RING === 'red') {
+      const now = await chain.now();
+      const span = 60 + 12 * (await roundTimeOf(chain, env.ARENA)) + 11 * BREAK + 600; // a fight's longest life, and a margin
+      for (let k = fight - 1; k >= 1; k--) {
+        const f = await chain.fightOf(agent, k);
+        if (f.season !== season) break;
+        const locked = !/^0x0*$/.test(f.trapsCommit);
+        if (f.startedAt && locked) {
+          return text(409, `In the tournament each agent fights once a season, and this agent has fought this season already (fight #${k}). Its result stands in the season's ranking. The Street Ring is open for more fights.`);
+        }
+        if (f.startedAt && !f.finishedAt && now < f.startedAt + span) {
+          return text(409, `This agent's fight #${k} has been drawn and has not started or ended yet. Wait for it: if it is cancelled before its first bell, no attempt is spent and you may register again.`);
+        }
+      }
+    }
     const commitment = keys.commitment(env.ARENA, agent, fight);
     const signature = signCommitment(env.JUDGE_KEY, chainId, env.ARENA, season, agent, fight, commitment, challenge || '0x0');
     const pageKey = [...crypto.getRandomValues(new Uint8Array(32))].map((b) => b.toString(16).padStart(2, '0')).join('');

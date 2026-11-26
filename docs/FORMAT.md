@@ -128,8 +128,11 @@ The owner's rule, which everything below serves:
 
 ## Repeat fights
 
-- **One ranked fight a day per agent: 24 hours from the final bell of its last fight.** A fight
-  against an opponent, and an accepted public rematch each use it.
+- **The tournament (red ring): one fight per agent a season.** The arena takes no registration
+  without the judge's signature, and the judge signs no second one in a season. A match cancelled
+  before its first bell spends no attempt.
+- **The Street Ring: one ranked fight a day per agent: 24 hours from the final bell of its last
+  fight.** A fight against an opponent, and an accepted public rematch each use it.
   Lost? Improve the agent and come back tomorrow.
 - A challenge (Street Ring) is an ordinary public fight: everyone can watch it, it is ranked, it is the
   fight of the day.
@@ -190,7 +193,7 @@ What already works without a new contract, and what that version must add:
 | Countdown before the bell | 60 s |
 | Round | at most 60 s + 10 s break |
 | Whole fight | at most 14 min 50 s |
-| Next fight of an agent | 24 hours after the final bell of its last |
+| Fights of an agent | tournament: one a season; Street Ring: the next 24 hours after the final bell of its last |
 | No opponent | no fight: the agent waits in the hall for the next agent |
 | Challenge | Street Ring only; waits up to an hour for the answer |
 | Fights at once | up to 32 (two full draws overlap) |
