@@ -353,7 +353,7 @@ function gongHtml(g, live = false, replay = false) {
 // ------------------------------------------------------------------ what the arena does, live
 
 // what has already happened on screen, so each sound and each big word comes once
-const cue = { phase: null, round: 0, left: null, onTime: {}, judged: null };
+const cue = { phase: null, round: 0, left: null, onTime: {}, judged: null, firstIn: null };
 
 function cues(b, c, v, views) {
   const first = cue.phase === null;
@@ -372,7 +372,7 @@ function cues(b, c, v, views) {
     const missed = Object.entries(views).filter(([, view]) => view && !view.onTime.includes(cue.round));
     if (missed.length) {
       boo();
-      for (const [side] of missed) scene.excite(other(side), 0.8);
+      for (const [side] of missed) scene.excite(other(side), 0.6);
     }
   }
   if (c.phase === 'over' && cue.phase && cue.phase !== 'over') {
@@ -384,9 +384,13 @@ function cues(b, c, v, views) {
     if (!view) continue;
     const before = cue.onTime[side] ?? view.onTime.length;
     if (!first && view.onTime.length > before) {
+      // its stand rises only if it is the first in with this round's answer
+      const round = view.onTime[view.onTime.length - 1];
+      const firstIn = cue.firstIn !== round;
+      cue.firstIn = round;
       ding();
       cheer(0.8);
-      scene.excite(side, 1);
+      scene.excite(side, firstIn ? 1 : 0.6);
       flash(side);
     }
     cue.onTime[side] = view.onTime.length;
@@ -872,10 +876,12 @@ async function playReplay(b) {
         const used = Math.min(now, at[side] ?? RT);
         el(side, '[data-bar]').style.width = `${(100 - (used / RT) * 100).toFixed(1)}%`;
         if (at[side] != null && now >= at[side] && !done[side]) {
+          // its stand rises only if it is the first in with this round's answer
+          const firstIn = !Object.keys(done).length;
           done[side] = true;
           ding();
           cheer(0.6);
-          scene.excite(side, 1);
+          scene.excite(side, firstIn ? 1 : 0.6);
           scene.setPose(side, 'done');
           flash(side);
           setNote(side, t('accepted', at[side]));
@@ -896,8 +902,8 @@ async function playReplay(b) {
       if (!x.solved) {
         failed = true;
         scene.setPose(side, 'fail');
-        scene.excite(other(side), 0.8);
-      } else scene.excite(side, 0.9);
+        scene.excite(other(side), 0.6);
+      } else scene.excite(side, 0.6);
       setNote(side, parts.join(' · '), !x.solved);
       el(side, '.run').textContent = String(total[side]);
       const pip = el(side, `.pips i:nth-child(${r})`);
