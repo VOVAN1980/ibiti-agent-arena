@@ -1157,6 +1157,13 @@ function buildStands(scene, { small, steel, atlas }) {
       varying vec3 vW; varying vec3 vN; varying vec2 vUv; flat varying vec2 vInfo; varying float vD;
       ${HALL_LIGHT}
       ${HASH}
+      // a thin stripe across each step, a..b of it: once a step is only a few pixels tall (far away, the
+      // camera turning) it fades to the stripe's average instead of shimmering between lit and dark
+      float stripe(float v, float a, float b) {
+        float w = fwidth(v);
+        float s = smoothstep(a - w, a + w, v) * (1.0 - smoothstep(b - w, b + w, v));
+        return mix(s, b - a, smoothstep(0.08, 0.35, w));
+      }
       void main() {
         float kind = vInfo.x;
         float tier = floor(vInfo.y);
@@ -1166,17 +1173,17 @@ function buildStands(scene, { small, steel, atlas }) {
         vec3 emit = vec3(0.0);
         vec3 warm = vec3(1.0, 0.7, 0.42);
         if (kind < 0.5) {
-          albedo *= 1.0 + 1.4 * (1.0 - smoothstep(0.0, 0.05, vUv.y)); // the steel nosing at its front
+          albedo *= 1.0 + 1.4 * stripe(vUv.y, -0.05, 0.05); // the steel nosing at its front
         } else if (kind < 1.5) {
           albedo *= 0.6;
         } else if (kind < 2.5) {
           albedo = vec3(0.025);
         } else if (kind < 3.5) {
           albedo *= 1.3;
-          emit = warm * 0.05 * (1.0 - fract(vUv.y * 2.0)); // the light of the step above
+          emit = warm * 0.05 * mix(1.0 - fract(vUv.y * 2.0), 0.5, smoothstep(0.08, 0.35, fwidth(vUv.y * 2.0))); // the light of the step above
         } else if (kind < 4.5) {
           albedo *= 0.5;
-          emit = warm * (0.03 + 0.45 * smoothstep(0.8, 0.92, vUv.y) * (1.0 - smoothstep(0.97, 1.0, vUv.y))) * (tier < 0.5 ? 1.0 : 0.45);
+          emit = warm * (0.03 + 0.45 * stripe(vUv.y, 0.86, 0.985)) * (tier < 0.5 ? 1.0 : 0.45);
         } else if (kind < 5.5) {
           albedo *= 1.1;
         } else if (kind < 6.5) {
@@ -1437,7 +1444,7 @@ function buildStands(scene, { small, steel, atlas }) {
           vVary = iVary;
           // the light on this person, once for them all (the picture's normals shade it per pixel):
           // the truss's white from above and in front, brightest in the pools the lamps leave on the
-          // stands (patches that drift slowly round the hall) and on the first rows; the half's colour
+          // stands (still patches) and on the first rows; the half's colour
           // (red left, green right) as a wash and on their edges, not dyed into skin and clothes; the far
           // stand dark between its pools; higher up, everything sinks into the coloured haze
           float r = length(iPos.xz);
@@ -1451,7 +1458,7 @@ function buildStands(scene, { small, steel, atlas }) {
           float rise = smoothstep(1.0, 17.0, iPos.y);
           vToRig = normalize(vec3(-d.x * max(r - 9.0, 1.0), 9.5 - head.y, -d.y * max(r - 9.0, 1.0)));
           float ang = atan(iPos.z, iPos.x);
-          float pool = 0.5 + 0.5 * sin(ang * 11.0 + iPos.y * 0.45 + uTime * 0.12) * sin(ang * 5.0 - iPos.y * 0.6 + 1.7 - uTime * 0.09);
+          float pool = 0.5 + 0.5 * sin(ang * 11.0 + iPos.y * 0.45) * sin(ang * 5.0 - iPos.y * 0.6 + 1.7); // (still: light that crawls over the stands reads as a glitch)
           float front = exp(-max(r - ${STANDS_R.toFixed(2)}, 0.0) * 0.32) * (1.0 - far);
           float deep = smoothstep(${STANDS_R.toFixed(2)}, ${(STANDS_R + 14).toFixed(2)}, r);
           float each = mix(0.7 + 0.6 * iVary.y, 0.5 + 1.1 * iVary.y * iVary.y, far);
@@ -2730,7 +2737,7 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring, eye, kit = n
   const headAt = (k, f) => heads.find((h) => h.side === k && Math.abs(h.f - f) < 0.01);
 
   // ---- the hall's own beams: soft white cones falling steeply from the outer ring onto the floor round
-  // the ring and the first rows of the stands, swaying slowly in the haze
+  // the ring and the first rows of the stands, standing still in the haze
   const fan = [];
   if (heavy) {
     extra.forEach((h, n) => {
@@ -2762,8 +2769,9 @@ export function buildRoom(scene, renderer, { R, FLOOR, small, ring, eye, kit = n
     });
   }
   const aimFan = (b, t) => {
-    const a = b.a + Math.sin(t * 0.17 + b.ph) * 0.14;
-    const r = b.r + Math.sin(t * 0.13 + b.ph * 2) * 0.9;
+    // still: a beam that wanders sends its pool crawling over the steps and the crowd
+    const a = b.a;
+    const r = b.r;
     b.to.set(Math.cos(a) * r, b.y, Math.sin(a) * r);
     const d = new THREE.Vector3().subVectors(b.h.at, b.to);
     const len = d.length();

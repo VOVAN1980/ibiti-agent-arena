@@ -2227,11 +2227,12 @@ export async function createScene(root) {
 
     // beams
     sweep.forEach((b, i) => {
-      if (b.kind === 'white') b.to.set(Math.sin(t * (0.22 + i * 0.05) + i * 1.7) * 3.4, FLOOR, Math.cos(t * (0.18 + i * 0.04) + i) * 2.6);
+      // over the ring's own floor only, and slowly (a calm show light, not a searchlight)
+      if (b.kind === 'white') b.to.set(Math.sin(t * (0.13 + i * 0.03) + i * 1.7) * 3.4, FLOOR, Math.cos(t * (0.11 + i * 0.025) + i) * 2.6);
       else {
         // the corner's own half of the ring, slowly
         const s = b.kind === 'red' ? -1 : 1;
-        b.to.set(s * (2.7 + Math.sin(t * 0.16 + i) * 1.4), FLOOR, Math.cos(t * 0.13 + i * 2.1) * 2.4);
+        b.to.set(s * (2.7 + Math.sin(t * 0.1 + i) * 1.4), FLOOR, Math.cos(t * 0.08 + i * 2.1) * 2.4);
       }
       aimBeam(b, b.from, b.to);
       b.m.visible = b.pool.visible = state.lights === 'sweep';
