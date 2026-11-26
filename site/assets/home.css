@@ -185,3 +185,9 @@ a { color: inherit; }
   .stage { --p: 0 !important; }
   .card, .shot img, .go svg { transition: none; }
 }
+
+/* moving between the arena's pages: a short cross-fade instead of a blank flash (browsers without it
+   simply load the next page) */
+@view-transition { navigation: auto; }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: .22s; }
+@media (prefers-reduced-motion: reduce) { @view-transition { navigation: none; } }

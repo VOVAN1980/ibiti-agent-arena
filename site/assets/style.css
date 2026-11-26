@@ -820,3 +820,9 @@ html, body { -webkit-font-smoothing: auto; -moz-osx-font-smoothing: auto; }
 body.rankpage .musicgate { left: auto; right: 16px; }
 /* the ring's sound button sits below the corner banner, not on it */
 .soundgate { top: 56%; }
+
+/* moving between the arena's pages: a short cross-fade instead of a blank flash (browsers without it
+   simply load the next page) */
+@view-transition { navigation: auto; }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: .22s; }
+@media (prefers-reduced-motion: reduce) { @view-transition { navigation: none; } }

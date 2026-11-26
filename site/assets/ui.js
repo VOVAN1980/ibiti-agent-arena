@@ -67,7 +67,9 @@ function ringSwitch() {
  *  with everything else. `active` is 'arena', 'rating', 'rules', 'match' (the ring: no music) or ''. */
 export function header(active) {
   const a = (id, href, key) => `<a href="${href}" class="${active === id ? 'on' : ''}">${t(key)}</a>`;
-  setTimeout(() => music(active === 'match', t('musicStart')), 0); // the arena's theme, never in the ring
+  // the arena's theme, never during a battle; in the ring the sound button is the one button (any first
+  // touch starts the theme too), so the theme shows none of its own there
+  setTimeout(() => music(active === 'match', active === 'match' ? '' : t('musicStart')), 0);
   return `<header class="top"><a class="brand" href="/">${LOGO}<span><b translate="no" class="notranslate">IBITI</b><small translate="no" class="notranslate">AGENT ARENA</small></span></a>
   <nav class="links">${a('home', '/', 'navHome')}${a('arena', 'index.html', 'navArena')}${a('match', 'match.html', 'navRing')}${a('rating', 'rating.html', 'navRating')}</nav>${ringSwitch()}
   ${gear(active)}</header>`;

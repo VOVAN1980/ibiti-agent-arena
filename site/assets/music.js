@@ -89,13 +89,23 @@ function track() {
 function atFirstTouch() {
   if (waiting) return;
   waiting = true;
-  const kinds = ['pointerdown', 'keydown', 'touchstart'];
+  // (the events a browser counts as the visitor's own touch: a finger lifted on a phone, a click, a key)
+  const kinds = ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown'];
   const go = (e) => {
     if (e.target?.closest?.('.gear')) return;
-    kinds.forEach((k) => removeEventListener(k, go, true));
-    waiting = false;
-    if (allowed && !held && musicOn()) track().play().catch(() => {});
-    else hideGate();
+    if (!(allowed && !held && musicOn())) {
+      kinds.forEach((k) => removeEventListener(k, go, true));
+      waiting = false;
+      hideGate();
+      return;
+    }
+    track()
+      .play()
+      .then(() => {
+        kinds.forEach((k) => removeEventListener(k, go, true));
+        waiting = false;
+      })
+      .catch(() => {}); // not yet a touch the browser counts: the next one tries again
   };
   kinds.forEach((k) => addEventListener(k, go, true));
   showGate();

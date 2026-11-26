@@ -2138,21 +2138,27 @@ export async function createScene(root) {
     r.bot.pose(c, p, t, walking, dt, null, rig);
   }
 
-  // a slow device: once the hall has settled, if it cannot keep about 40 frames a second, the heavy
-  // parts go (the floor's mirror) and it draws at a lower resolution
+  // a slow device (built-in graphics, an older phone): the hall keeps measuring its own pace and, while it
+  // stays under about 52 frames a second, steps down one notch at a time: the floor's mirror off, then a
+  // lower drawing resolution (three notches). It never steps back up, so the picture does not pump.
+  const ratio = (r) => {
+    const v = Math.min(pixelRatio, r);
+    renderer.setPixelRatio(v);
+    composer.setPixelRatio(v);
+    resize();
+  };
+  const NOTCHES = [() => room.lighten(), () => ratio(1), () => ratio(0.85), () => ratio(0.72)];
+  let notch = small ? 1 : 0; // (a phone's hall has no mirror to begin with)
   let speedN = 0;
   let speedT = 0;
-  let lightened = small;
   function watchSpeed(dt) {
-    if (lightened || ++speedN < 90) return;
+    if (notch >= NOTCHES.length || document.hidden) return;
+    if (++speedN <= 60) return; // a second to settle after a start or a step
     speedT += dt;
-    if (speedN < 90 + 120) return;
-    lightened = true;
-    if (speedT / 120 > 1 / 40) {
-      room.lighten();
-      renderer.setPixelRatio(Math.min(pixelRatio, 1));
-      resize();
-    }
+    if (speedN < 60 + 120) return;
+    if (speedT / 120 > 1 / 52) NOTCHES[notch++]();
+    speedN = 0;
+    speedT = 0;
   }
 
   const v3 = new THREE.Vector3();
