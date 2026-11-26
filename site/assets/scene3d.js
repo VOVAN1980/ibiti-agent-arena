@@ -2,9 +2,10 @@
 // over the ring, and two robot fighters at their own gaming desks. They do not fight each other:
 // before the bell they walk out and work the crowd; at the bell they sit down and type; whoever
 // answers jumps up with both arms raised, whoever runs out of time holds its head. At the end the
-// referee robot raises the winner's arm, the winner dances, and the loser smashes its monitor,
-// throws its keyboard, flips its desk and hurls its chair, then trudges to the nearest ropes and hangs
-// its head there.
+// referee robot raises the winner's arm; then the loser snaps and charges the winner, throws a wild
+// haymaker, the winner ducks under it and lands an uppercut on its jaw, and the loser flies back onto its
+// own desk, which breaks under it, and lies there knocked out. Only then the winner climbs its corner's
+// ropes for a backflip.
 // The page tells the scene what happens (the same calls as the 2D scene in scene.js); the scene
 // only draws it.
 // The hall itself (the ring and its apron, the truss and its lights, the wet floor, the stands and
@@ -359,34 +360,8 @@ const POSES = {
     const k = Math.min(1, (t - 1.75) / 0.5);
     return { spot: [0, 1.45], seat: false, hop: [0.72, 0.2 * k], bounce: 0, turn: Math.sin((t - 1.75) * 1.3) * 0.5, lean: -0.05, look: 0.05, a0x: -0.28, a0z: -2.9, e0: -0.25 - 0.55 * pump, a1x: -0.28, a1z: 2.9, e1: -0.25 - 0.55 * (1 - pump) };
   },
-  // the loser: smashes everything, then trudges to the ropes and hangs its head there
-  lose: (t) => {
-    if (t < 0.5) return { spot: [0, 0], seat: false, bounce: 0, turn: 0, lean: 0, look: 0, ...ARMS_DOWN };
-    if (t < 1.1) { // the monitor
-      const k = ease((t - 0.5) / 0.35);
-      const hit = ease((t - 0.85) / 0.15);
-      return { spot: [0, -0.05], seat: false, bounce: 0, turn: 0, lean: lerp(-0.2, 0.3, hit), look: 0.2, a0x: 0, a0z: -0.3, e0: -0.4, a1x: lerp(lerp(0, 0.7, k), -1.7, hit), a1z: 0.2, e1: lerp(lerp(0, -1.4, k), -0.1, hit) };
-    }
-    if (t < 1.9) { // the keyboard: both fists down
-      const k = ease((t - 1.1) / 0.4);
-      const hit = ease((t - 1.5) / 0.15);
-      return { spot: [0, -0.05], seat: false, bounce: 0, turn: 0, lean: lerp(0, 0.45, hit), look: 0.3, a0x: lerp(-2.6 * k, -0.9, hit), a0z: 0.2, e0: lerp(-0.6, -0.1, hit), a1x: lerp(-2.6 * k, -0.9, hit), a1z: -0.2, e1: lerp(-0.6, -0.1, hit) };
-    }
-    if (t < 2.8) { // the desk: lift and flip
-      const k = ease((t - 1.9) / 0.4);
-      const up = ease((t - 2.35) / 0.25);
-      return { spot: [0, -0.05], seat: false, bounce: 0, turn: 0, lean: lerp(0.5 * k, -0.25, up), look: lerp(0.3, -0.3, up), a0x: lerp(-1.1 * k, -2.9, up), a0z: 0.25, e0: -0.3, a1x: lerp(-1.1 * k, -2.9, up), a1z: -0.25, e1: -0.3 };
-    }
-    if (t < 3.9) { // the chair: turn round, grab, throw
-      const k = ease((t - 2.8) / 0.4);
-      const thr = ease((t - 3.4) / 0.25);
-      return { spot: [0, -0.05], seat: false, bounce: 0, turn: Math.PI * k, lean: lerp(0.3, -0.2, thr), look: 0, a0x: lerp(-1.3, -2.8, thr), a0z: -0.4, e0: -0.4, a1x: lerp(-1.3, -2.8, thr), a1z: 0.4, e1: -0.4 };
-    }
-    // beaten and spent: the arms drop from the throw, the head hangs (the scene walks it to the nearest
-    // ropes and leans it there: see slumpStep)
-    const k = ease((t - 3.9) / 0.7);
-    return { spot: [0, -0.05], ropes: true, speed: 0.95, seat: false, bounce: 0, turn: Math.PI, lean: lerp(-0.2, 0.2, k), look: lerp(0, 0.66, k), a0x: lerp(-2.8, 0.05, k), a0z: lerp(-0.4, -0.12, k), e0: lerp(-0.4, -0.18, k), a1x: lerp(-2.8, 0.05, k), a1z: lerp(0.4, 0.12, k), e1: lerp(-0.4, -0.18, k) };
-  },
+  // the loser: it snaps and attacks the winner (the scene's fight leads its body: see fightLead)
+  lose: () => ({ spot: [0, 1.45], seat: false, bounce: 0, turn: 0, lean: 0.1, look: 0, ...ARMS_DOWN }),
   // the referee
   ref: () => ({ spot: [0, 0], seat: false, bounce: 0, turn: 0, lean: 0, look: 0, a0x: 0, a0z: -0.08, e0: -0.12, a1x: 0, a1z: 0.08, e1: -0.12 }),
   // the start of a round: it stays as it stands
@@ -679,7 +654,7 @@ export async function createScene(root) {
     const bot = xg ? makeXRobot(side, xg) : EMPTY_BOT();
     bot.root.scale.setScalar(SIZE);
     st.g.add(bot.root);
-    fighters[side] = { st, bot, pose: 'hype', since: 0, pos: new THREE.Vector2(0, 1.35), path: [], cur: {}, events: new Set(), wrecked: false, present: true, screen: 'code', placed: false };
+    fighters[side] = { st, bot, pose: 'hype', since: 0, pos: new THREE.Vector2(0, 1.35), path: [], cur: {}, wrecked: false, present: true, screen: 'code', placed: false };
     spots[side].target.position.set(SEAT[side].x, FLOOR, SEAT[side].z);
     focus[side].to.set(SEAT[side].x, FLOOR, SEAT[side].z);
   }
@@ -725,6 +700,26 @@ export async function createScene(root) {
       f.st.face.color.setHex(0x553333);
     }
   }
+  /** The things in the air fall, tumble, bounce and come to rest. */
+  function flyParts(dt) {
+    for (const x of flying) {
+      if (x.rest) continue;
+      x.v.y -= 9.8 * dt;
+      x.o.position.addScaledVector(x.v, dt);
+      x.o.rotation.x += x.w.x * dt;
+      x.o.rotation.y += x.w.y * dt;
+      x.o.rotation.z += x.w.z * dt;
+      const ground = Math.hypot(x.o.position.x, x.o.position.z) < RING ? FLOOR : 0;
+      if (x.o.position.y < ground) {
+        x.o.position.y = ground;
+        x.v.y *= -0.3;
+        x.v.x *= 0.6;
+        x.v.z *= 0.6;
+        x.w.multiplyScalar(0.55);
+        if (x.v.length() < 0.4) x.rest = true;
+      }
+    }
+  }
   function resetStation(f) {
     for (const [name, o] of Object.entries(f.st.parts)) {
       const i = flying.findIndex((x) => x.o === o);
@@ -736,19 +731,20 @@ export async function createScene(root) {
     }
     f.st.face.color.setHex(0xc8d4ff);
     f.wrecked = false;
-    f.events.clear();
   }
 
   // the camera
   const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 140);
   // cut: true at the start, so the camera is in place from the first frame instead of drifting in
-  const cam = { mode: null, modeAt: 0, shake: 0, view: { ...WIDE }, shot: 'wide', step: 0, at: 0, cut: true, look: new THREE.Vector3(), was: null, shotAt: 0 };
+  const cam = { mode: null, modeAt: 0, shake: 0, fp: new THREE.Vector3(), view: { ...WIDE }, shot: 'wide', step: 0, at: 0, cut: true, look: new THREE.Vector3(), was: null, shotAt: 0 };
   const SHOTS = ['wide', 'red', 'wide', 'blue'];
   const camAt = new THREE.Vector3();
   const camLook = new THREE.Vector3();
   const camQ = new THREE.Quaternion();
   const camFront = new THREE.Vector3();
   const camUp = new THREE.Vector3();
+  const _ca = new THREE.Vector3();
+  const _cb = new THREE.Vector3();
   // the hall is drawn into a multisampled target (the canvas's own antialiasing would only smooth the
   // last pass): thin rails, ropes and truss stay clean; phones go without
   const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: small ? 0 : 4 }));
@@ -801,7 +797,8 @@ export async function createScene(root) {
   let slow = 1;
   let slowTo = 1;
   const now = () => clock;
-  // moments the page may want to hear of ('ropes', 'taunt', 'flip', 'land'), for the hall's voice
+  // moments the page may want to hear of ('ropes', 'taunt', 'flip', 'land', 'punch', 'crash'), for the
+  // hall's voice
   let onMoment = null;
   const moment = (name, side) => {
     try {
@@ -1287,15 +1284,17 @@ export async function createScene(root) {
         f.flip = 0;
       }
     }
-    // the winner, once the referee has let go of its arm: to its corner, up the ropes, and the backflip
-    if (!reduced && f.pose === 'win' && !f.act && !f.flipped && tt > 2.3) {
+    // the winner, once the referee has let go of its arm and the beaten one lies knocked out (or never
+    // came at it): to its corner, up the ropes, and the backflip
+    if (!reduced && f.pose === 'win' && !f.act && !f.flipped && tt > 2.3 && !fightHolds(f, other, tt)) {
       f.flipped = true;
       f.act = { kind: 'win', phase: 'go', since: t, gesture: 'pump' };
     }
-    const lead = f.act ? stepAct(f, side, t, dt) : null;
+    const lead = f.act ? stepAct(f, side, t, dt) : fightLead(f, side, t, dt);
     if (!lead?.place) {
-      f.lift = (f.lift ?? 0) * Math.max(0, 1 - dt * 9); // back on the floor
-      f.flip = 0;
+      // back on its feet and on the floor, eased (a body that lay down gets up, it does not pop up)
+      f.lift = (f.lift ?? 0) * Math.max(0, 1 - dt * 9);
+      f.flip = Math.abs(f.flip ?? 0) < 0.002 ? 0 : Math.atan2(Math.sin(f.flip), Math.cos(f.flip)) * Math.max(0, 1 - dt * 5);
     }
     // on its lap: an easy walk, with a few seconds of its own flair now and then
     const flair = !lead && f.pose === 'hype' && (f.flairUntil ?? 0) > t ? lap.flair : null;
@@ -1312,11 +1311,9 @@ export async function createScene(root) {
       if (lead.gesture && g.bounce) p.bounce = g.bounce * gw;
       if (lead.gesture && g.hop) p.hop = g.hop;
       p.seat = false;
+      if (lead.p) Object.assign(p, lead.p); // the act's own body values (the head, the lean, the arms)
     }
-    // the loser, beaten: where it goes (the nearest ropes), how it faces there, how its head hangs
-    if (p.ropes && !lead && !reduced) slumpStep(f, side, p, tt, t, dt);
-    else if (f.slump) f.slump.leaving = true;
-    const c = applyBody(bot, p, Math.min(1, dt * 10));
+    const c = applyBody(bot, p, Math.min(1, dt * (lead?.ease ?? 10)));
     // walk to the spot of the pose (or to the next corner of its lap), round the desk when the way
     // crosses it, on the side it is nearer to
     let goal;
@@ -1381,7 +1378,7 @@ export async function createScene(root) {
     const next = f.path[0];
     const d = next.clone().sub(f.pos);
     const dist = d.length();
-    const walking = !lead?.place && dist > 0.25 && !lead?.hold && !p.hold; // a real walk, not the small drift of a pose
+    const walking = !lead?.place && dist > 0.25 && !lead?.hold; // a real walk, not the small drift of a pose
     // full speed to a corner of the way round the desk; to the spot itself slowing down as it
     // nears, so a drifting spot is followed smoothly and not in stop-and-go jumps (which a close-up
     // camera, riding with the robot, turned into a shaking picture); it gathers speed and slows down
@@ -1406,19 +1403,18 @@ export async function createScene(root) {
     let facing = c.turn;
     if (walking) facing = Math.atan2(d.x, d.y);
     else if (lead?.face != null) facing = lead.face;
-    else if (p.face != null) facing = p.face;
     else if (showing) facing = yawOut(f);
     else if (f.pose === 'stand' && other.present && !raiseOf()) facing = yawAt(f, other) * 0.7; // squared up to the other, waiting
     if (!lead?.place) {
       // eased, and never faster than a person turns: no snap at a corner of its way
       const y0 = bot.yaw ?? c.turn;
       const want = turnTo(y0, facing, Math.min(1, dt * (lead ? 5 : walking ? 4 : 3.2))) - y0;
-      const cap = dt * (lead ? 4.5 : p.turnCap ?? 3.6);
+      const cap = dt * (lead ? (lead.turn ?? 4.5) : 3.6);
       bot.yaw = y0 + Math.max(-cap, Math.min(cap, want));
     }
     if (p.seat && !walking && Math.abs(turnTo(0, facing - (bot.yaw ?? facing), 1)) > 0.3) p.seat = false; // turned to its desk first, then down
 
-    // the body's rig for this frame: an act's own, or the pose's (a guard, hops, typing, the loser's rage)
+    // the body's rig for this frame: an act's own, or the pose's (a guard, hops, typing)
     const rig = lead?.rig ?? f.rig;
     if (!lead?.rig) {
       for (const x of [...rig.feet, ...rig.hands]) x.w = 0;
@@ -1441,7 +1437,7 @@ export async function createScene(root) {
     rig.breath = reduced ? 0 : 1;
     const standing = !walking && !p.seat && !lead?.place;
     // a light boxer's guard between acts: gloves up by the chin, the feet set, the knees soft
-    const guard = standing && !reduced && !f.act && (f.pose === 'hype' || f.pose === 'stand') && !f.gesture && !flair && !raiseOf();
+    const guard = standing && !reduced && ((!f.act && (f.pose === 'hype' || f.pose === 'stand') && !f.gesture && !flair && !raiseOf()) || !!lead?.guard);
     f.guardW = (f.guardW ?? 0) + ((guard ? 1 : 0) - (f.guardW ?? 0)) * Math.min(1, dt * 5);
     const gw = f.guardW;
     if (gw > 0.01 && !lead?.place) {
@@ -1460,7 +1456,7 @@ export async function createScene(root) {
     // standing: the weight drifts from foot to foot; the head looks about (at the other, at the stands)
     if (standing && !reduced) {
       rig.body.x += Math.sin(t * 0.47 + (side === 'red' ? 0 : 2)) * 0.035;
-      if (!rig.look && !p.ropes) {
+      if (!rig.look) {
         f.scan ??= { at: 0, yaw: 0, pitch: 0 };
         if (t > f.scan.at) {
           f.scan.at = t + 1.4 + Math.random() * 2.2;
@@ -1489,13 +1485,16 @@ export async function createScene(root) {
     // hops (the winner, an answer in time, fists pumping) and small bobs
     let hopLift = 0;
     if (!lead?.place && !p.seat && !reduced) {
-      if (p.hop) {
-        const h = hop(tt, p.hop);
-        hopLift = h.lift;
-        rig.body.y += h.dip;
-        rig.air = h.lift > 0.015;
+      // a hop fades out (an act that starts mid-hop lands it first, eased)
+      f.hopW = (f.hopW ?? 0) + ((p.hop ? 1 : 0) - (f.hopW ?? 0)) * Math.min(1, dt * 6);
+      if (p.hop) f.hopP = p.hop;
+      if (f.hopW > 0.01 && f.hopP) {
+        const h = hop(tt, f.hopP);
+        hopLift = h.lift * f.hopW;
+        rig.body.y += h.dip * f.hopW;
+        rig.air = hopLift > 0.015;
       } else if (c.bounce > 0.001) rig.body.y -= c.bounce * 1.2;
-    }
+    } else f.hopW = 0;
     c.bounce = 0;
     // the referee holds its arm up: the winner's near arm goes where the referee's grip takes it
     const raise = state.winner === side ? raiseOf() : null;
@@ -1554,197 +1553,440 @@ export async function createScene(root) {
       rig.look = f.st.g.localToWorld(new THREE.Vector3(Math.sin(t * 0.7) * 0.15, 1.35, 0.84));
       rig.lookW = 0.8;
     }
-    if (f.pose === 'lose') rage(f, tt, rig, c);
     f.tiltW = (f.tiltW ?? 0) + ((p.tilt ?? 0) - (f.tiltW ?? 0)) * Math.min(1, dt * 3); // the head leans over, eased
     rig.tilt = f.tiltW * (side === 'red' ? 1 : -1);
-    if (f.slump) slumpRig(f, side, t, dt, rig, c);
 
     // on the floor, up on the ropes, or turning over in the air about the middle of its body
     const lift = (f.lift ?? 0) + hopLift;
     const flip = f.flip ?? 0;
     bot.root.rotation.order = 'YXZ';
     bot.root.rotation.set(flip, bot.yaw, 0);
-    if (flip) {
-      // (stepAct put the root so that the middle of the body is where the flight has it)
-      bot.root.position.set(f.pos.x, lift / STATION, f.pos.y);
-    } else bot.root.position.set(f.pos.x, lift / STATION, f.pos.y);
+    bot.root.position.set(f.pos.x, lift / STATION, f.pos.y); // (an act in the air put the root where the body's middle should be)
     bot.pose(c, p, t, walking, dt, reach, rig); // on the way to its chair it walks; it sits down once there
   }
 
-  // ---- the loser's ending: it trudges to the nearest ropes, turns, backs into them and hangs there
+  // ---- the loser's ending: it snaps and charges the winner and throws a wild haymaker; the winner ducks
+  // under it and lands an uppercut on its jaw; the loser flies back onto its own desk, which breaks under
+  // it (the monitor, the keyboard, the computer and the chair go flying), and lies there knocked out. The
+  // winner stands over it a moment, turns to its stand with its fists up, and only then goes up the ropes
+  // for its backflip.
 
-  /** The ropes beside a loser's desk (the side of the ring its station stands against): the way along
-   *  them, the way out, where it waits to turn, where it leans (as the station's own x, z) and its yaw. */
-  function slumpEdge(f, side) {
-    if (!f.edge) {
-      const [kA, kB] = side === 'red' ? [3, 4] : [5, 0];
-      const post = corner(kA).multiplyScalar((RING - 0.08) / RING).setY(FLOOR);
-      const a = corner(kB).sub(corner(kA)).setY(0).normalize();
-      const out = new THREE.Vector3(a.z, 0, -a.x);
-      if (out.dot(post) < 0) out.negate();
-      const s0 = SIDE_LEN / 2;
-      const at = post.clone().addScaledVector(a, s0); // on the ropes' line, in the middle of the side
-      const spot = (back) => {
-        const o = own(f, _w.copy(at).addScaledVector(out, -back));
-        return new THREE.Vector2(o.x, o.z);
-      };
-      const left = new THREE.Vector3(-out.z, 0, out.x); // the robot's left when it faces in (up × in)
-      f.edge = { k: { post, a }, a, out, s0, at, lw: left.dot(a), yawL: Math.atan2(-out.x, -out.z) - SEAT[side].rot, wait: spot(SLUMP_BACK + 0.4), lean: spot(SLUMP_BACK) };
-    }
-    return f.edge;
+  // the fight's line, in the loser's station (its units): from the middle of its desk out into the ring,
+  // turned a little towards the near stands, clear of the referee beside the winner. The loser swings
+  // `at` out along it (its run ends `run` short of there), the winner meets it `gap` further out
+  const FIGHT = { skew: 0.21, at: 2.3, run: 0.4, gap: 1.3 };
+  const HIT = 0.74; // from the start of the haymaker to the uppercut on the jaw (s)
+  const FLY = 0.62; // the flight back onto the desk (s)
+  const LAND = 0.22; // the desk giving way under the body (s)
+  // the broken desk: its front legs buckle, the top tilts down to the front and sinks (the station's units)
+  const CRUSH = { tilt: 0.36, drop: 0.55, back: -0.25 };
+  const XV = new THREE.Vector3(1, 0, 0);
+  const _fq = new THREE.Quaternion();
+  const _fq2 = new THREE.Quaternion();
+  const _fm = new THREE.Matrix4();
+  const _fv = new THREE.Vector3();
+  const _fr = new THREE.Vector3();
+  const _fp = new THREE.Vector3();
+  const _v2 = new THREE.Vector2();
+
+  /** A point on a body's own axes (x to its left, y up from the canvas, z ahead; metres), from where it
+   *  stands (`base`, on the canvas) facing world yaw `yawW`. */
+  function onBody(base, yawW, x, y, z, out = new THREE.Vector3()) {
+    const c = Math.cos(yawW);
+    const sn = Math.sin(yawW);
+    return out.set(base.x + x * c + z * sn, base.y + y, base.z - x * sn + z * c);
   }
-  const SLUMP_BACK = 0.42; // how far in from the top rope the loser's middle stands when it leans back on it (m)
-
-  /** Where the beaten fighter goes and how it carries itself: a slow walk to the ropes (the head
-   *  hanging), a turn on the spot, a step back, and then it stays. Sets the pose's spot, turn and head. */
-  function slumpStep(f, side, p, tt, t, dt) {
-    const E = slumpEdge(f, side);
-    const S = (f.slump ??= { phase: 'walk', since: t, w: 0, hw: 0, lw: 0, rw: 0, t0: t, leaving: false });
-    S.leaving = false;
-    const at = t - S.since;
-    const where = () => (S.phase === 'walk' || S.phase === 'turn' ? E.wait : E.lean);
-    if (S.phase === 'walk' && f.pos.distanceTo(E.wait) < 0.12) Object.assign(S, { phase: 'turn', since: t });
-    else if (S.phase === 'turn') {
-      const off = Math.abs(turnTo(0, E.yawL - (f.bot.yaw ?? 0), 1));
-      if (off < 0.12 && at > 0.4) Object.assign(S, { phase: 'back', since: t });
-    } else if (S.phase === 'back' && f.pos.distanceTo(E.lean) < 0.03) Object.assign(S, { phase: 'hold', since: t });
-    const goal = where();
-    const dist = f.pos.distanceTo(goal);
-    p.spot = [goal.x, goal.y];
-    if (S.phase !== 'walk') {
-      p.hold = true;
-      p.face = E.yawL;
-      p.turnCap = 2.2;
-    }
-    p.speed = S.phase === 'back' ? 0.42 : 0.95;
-    // leaning share: from the step back, eased
-    const back = E.wait.distanceTo(E.lean);
-    S.lw = S.phase === 'hold' ? 1 : S.phase === 'back' ? smooth(1 - dist / back) : 0;
-    S.w = Math.min(1, S.w + dt / 0.6);
-    S.hw = smooth((t - S.t0 - 0.2) / 0.8);
-    // the head: hanging, sagging a little more with every breath out, a slow shake of "no" now and then
-    const ph = side === 'blue' ? 1.7 : 0;
-    const sag = 0.5 * (1 - Math.sin(t * SLUMP_RATE + ph));
-    const sigh = Math.sin(Math.PI * Math.min(1, Math.max(0, ((tt + 3) % 13 - 9.5) / 2.6))) ** 2; // a long sigh every 13 s
-    p.look += 0.1 * S.lw + 0.045 * sag + 0.05 * sigh;
-    p.lean += 0.025 * sag + 0.04 * sigh;
-    const sh = ((tt * 1 + 2) % 11) - 7.4; // a "no, no" of two slow turns every 11 s
-    p.shake = S.lw > 0.9 && sh > 0 && sh < 2.4 ? 0.3 * Math.sin((sh / 2.4) * Math.PI * 2) * Math.sin((sh / 2.4) * Math.PI) : 0;
+  /** Where a fighter stands (on the canvas, world). */
+  const baseOf = (f, out = new THREE.Vector3()) => f.st.g.localToWorld(out.set(f.pos.x, 0, f.pos.y));
+  /** Keyframes [time, ...values] read at `t`: a smooth curve through them (it keeps going through a key,
+   *  it eases in and out at the first and the last). */
+  function keys(K, t) {
+    const n = K.length - 1;
+    t = Math.min(K[n][0], Math.max(K[0][0], t));
+    let i = 0;
+    while (i < n - 1 && t > K[i + 1][0]) i++;
+    const a = K[i];
+    const b = K[i + 1];
+    const h = b[0] - a[0];
+    const x = (t - a[0]) / h;
+    const slope = (k, j) => (k <= 0 || k >= n ? 0 : (K[k + 1][j] - K[k - 1][j]) / (K[k + 1][0] - K[k - 1][0]));
+    const x2 = x * x;
+    const x3 = x2 * x;
+    return a.slice(1).map((v, j) => (2 * x3 - 3 * x2 + 1) * v + (x3 - 2 * x2 + x) * h * slope(i, j + 1) + (-2 * x3 + 3 * x2) * b[j + 1] + (x3 - x2) * h * slope(i + 1, j + 1));
   }
-  const SLUMP_RATE = 1.25; // breaths: about one every five seconds
+  /** The desk's place in the hall: as it stands, or broken (`k` of the way). */
+  function deskMatrix(f, k) {
+    const h = f.st.home.desk;
+    _fv.copy(h.p).add(_w2.set(0, -CRUSH.drop * k, CRUSH.back * k));
+    _fm.compose(_fv, _fq.copy(h.q).multiply(_fq2.setFromAxisAngle(XV, CRUSH.tilt * k)), h.s);
+    return _fm.premultiply(f.st.g.matrixWorld);
+  }
+  function crushDesk(f, k) {
+    const o = f.st.parts.desk;
+    const h = f.st.home.desk;
+    o.position.copy(h.p).add(_fv.set(0, -CRUSH.drop * k, CRUSH.back * k));
+    o.quaternion.copy(h.q).multiply(_fq.setFromAxisAngle(XV, CRUSH.tilt * k));
+  }
+  // how it lies: across the desk from its near front corner, the hips on the front edge, the head towards
+  // the far back corner, the legs hanging over the edge (the desk's own units: x across, z to the front)
+  const LIE = { hip: [0.3, 0.3], head: [-0.65, -0.76], top: 0.75 };
+  /** A point on the desk's top (desk units; `s` mirrors it across), lifted `up` metres, world (`k`: 0 as
+   *  it stands, 1 broken). */
+  const onDesk = (f, k, s, x, z, up = 0) => _fp.set(s * x, LIE.top, z).applyMatrix4(deskMatrix(f, k)).addScaledVector(UPV, up).clone();
+  /** The body's pitch lying on the desk (`k`: 0 as it stands, 1 broken): the head a little up the tilted top. */
+  const lieTilt = (k) => -(Math.PI / 2 - 0.1 - 0.18 * k);
 
-  /** The beaten fighter's rig: one glove at the head, the other hand and the back on the top rope (which
-   *  dips under it), the hips pushed back onto the rope, the head leaning to a side, slow breathing. */
-  function slumpRig(f, side, t, dt, rig, c) {
-    const S = f.slump;
-    if (S.leaving) S.w = Math.max(0, S.w - dt / 0.6);
-    if (S.leaving && S.w < 0.01) {
-      f.slump = null;
+  /** The beaten fighter snaps: the fight begins (the page's 'lose'). */
+  function startFight(f, side) {
+    const wside = side === 'red' ? 'blue' : 'red';
+    const s = side === 'red' ? -1 : 1; // the way to the near stands, across the station
+    const u = new THREE.Vector2(s * Math.sin(FIGHT.skew), Math.cos(FIGHT.skew));
+    const D = new THREE.Vector2(f.st.home.desk.p.x, f.st.home.desk.p.z);
+    const along = (k) => D.clone().addScaledVector(u, k);
+    const yawL = Math.atan2(u.x, u.y);
+    const W = along(FIGHT.at + FIGHT.gap);
+    const F = {
+      L: f, W: fighters[wside], side, wside, s, u, D, along,
+      Lc: along(FIGHT.at - FIGHT.run), Lrun: along(FIGHT.at + 0.3), Lp: along(FIGHT.at),
+      WpW: f.st.g.localToWorld(new THREE.Vector3(W.x, 0, W.y)),
+      yawL, yawW: yawL + f.st.g.rotation.y, yawLie: Math.atan2(-s * LIE.head[0], -LIE.head[1]),
+      phase: 'snap', since: now(), t0: now(), w: { near: false, set: false, free: false },
+    };
+    state.fight = F;
+    if (reduced) {
+      // less motion: straight to how it ends, the loser lying on its broken desk, the things that flew
+      // already lying where they fell
+      F.phase = 'down';
+      F.since = now() - 6;
+      F.crashAt = now() - 6;
+      F.w.free = true;
+      crash(F);
+      crushDesk(f, 1);
+      for (let i = 0; i < 300; i++) flyParts(1 / 60);
+    }
+  }
+  /** Whether the winner waits with its backflip: the beaten one has yet to come at it, or is still at it. */
+  function fightHolds(f, other, tt) {
+    if (!other.present) return false;
+    if (other.pose === 'sad') return tt < 14;
+    const F = state.fight;
+    return other.pose === 'lose' && !!F && F.W === f && !F.w.free;
+  }
+  /** The desk gives way: the things on it and round it fly. */
+  function crash(F) {
+    const f = F.L;
+    if (f.wrecked) return;
+    launch(f, 'monitor', new THREE.Vector3(F.s * 0.5, 2.7, -2.8), [-5, 2, 1.5]);
+    launch(f, 'keyboard', new THREE.Vector3(-F.s * 1.6, 3.0, 0.5), [6, 2, 7]);
+    launch(f, 'tower', new THREE.Vector3(1.5, 0.7, -0.3), [0, 1, -5]);
+    launch(f, 'chair', new THREE.Vector3(-F.s * 0.4, 1.1, -2.6), [-4, 1.5, 0.5]);
+    f.wrecked = true;
+  }
+
+  /** The fight's beats, once a frame: when the run starts, the swing, the blow, the crash. */
+  function fightTick(t) {
+    const F = state.fight;
+    if (!F) return;
+    if (F.L.pose !== 'lose' || !F.L.present) {
+      state.fight = null;
+      slowTo = 1;
       return;
     }
-    const E = slumpEdge(f, side);
-    const w = S.w;
-    const hw = S.hw * w;
-    const lw = S.lw * w;
-    const bot = f.bot;
-    const q = bot.root.getWorldQuaternion(new THREE.Quaternion());
-    const ws = bot.root.getWorldScale(new THREE.Vector3()).x;
-    const iHead = side === 'red' ? 0 : 1; // the hand at the head (red its right, blue its left)
-    const iRope = 1 - iHead;
-    // the head's frame (robot axes, pitched as the head is)
-    const pitch = c.lean + c.look;
-    const hu = new THREE.Vector3(0, Math.cos(pitch), Math.sin(pitch)).applyQuaternion(q);
-    const hf = new THREE.Vector3(0, -Math.sin(pitch), Math.cos(pitch)).applyQuaternion(q);
-    const hr = new THREE.Vector3(1, 0, 0).applyQuaternion(q); // its left
-    const H = bot.bones.Head.getWorldPosition(new THREE.Vector3());
-    const out = iHead ? 1 : -1; // the head hand's own side
-    const hand = rig.hands[iHead];
-    hand.at.copy(H).addScaledVector(hu, 0.16 * ws).addScaledVector(hf, 0.16 * ws).addScaledVector(hr, out * 0.02 * ws);
-    hand.w = Math.max(hand.w, hw);
-    hand.pole.set(out * 0.9, -0.5, -0.1);
-    // the other hand on the top rope, a little along from the middle (the way its own side lies)
-    const sgn = (iRope ? 1 : -1) * E.lw; // its side along the rope: + the way of a
-    const sRope = E.s0 + sgn * 0.62;
-    const rope = rig.hands[iRope];
-    const rp = ropeAt(E.k, sRope, 3, new THREE.Vector3()).addScaledVector(E.out, -0.02).addScaledVector(UPV, 0.05);
-    const rw = lw * smooth((S.lw - 0.5) / 0.5);
-    rp.y -= (0.05 * lw) * 0.5;
-    rope.at.copy(rp);
-    rope.w = Math.max(rope.w, rw);
-    rope.pole.set(iRope ? 0.8 : -0.8, -0.6, -0.9);
-    // the weight on the ropes
-    loadOn(E.k, E.s0, 3, 0.06 * lw);
-    loadOn(E.k, E.s0, 2, 0.03 * lw);
-    loadOn(E.k, sRope, 3, 0.015 * rw);
-    // the hips back onto the rope, the knees soft, the head over to a side
-    rig.body.z -= 0.13 * lw;
-    rig.body.y -= 0.05 * lw;
-    rig.tilt = (side === 'red' ? 1 : -1) * 0.22 * hw;
-    rig.breath = 1.7;
-    rig.breathRate = SLUMP_RATE;
-    rig.wide = 0.06 * lw;
-    rig.feetFwd = 0.2 * lw;
-    rig.toeOut = 0.1;
-    rig.planted = 0.1;
-  }
-
-  // the loser's rage, with weight: a wind-up before each blow, the hands on what it throws
-  function rage(f, tt, rig, c) {
-    const st = f.st;
-    const grab = (name, local, w, i) => {
-      const o = st.parts[name];
-      o.updateMatrixWorld(true);
-      rig.hands[i].at.copy(local).applyMatrix4(o.matrixWorld);
-      rig.hands[i].w = w;
-      rig.hands[i].pole.set(i ? 0.7 : -0.7, -0.7, -0.5);
+    const age = t - F.since;
+    const next = (phase) => {
+      F.phase = phase;
+      F.since = t;
     };
-    if (tt > 0.5 && tt < 1.15) {
-      // the monitor: wound up, the chest turned away, then the blow through it
-      const wind = smooth((tt - 0.5) / 0.32) * (1 - smooth((tt - 0.86) / 0.1));
-      rig.twist = 0.45 * wind - 0.4 * smooth((tt - 0.86) / 0.12) * (1 - smooth((tt - 1.05) / 0.1));
-      rig.body.y = -0.12 * smooth((tt - 0.84) / 0.12);
-    } else if (tt >= 1.15 && tt < 1.95) {
-      // the keyboard: both fists up, a breath, down with the whole body
-      const up = smooth((tt - 1.15) / 0.32);
-      const hit = smooth((tt - 1.5) / 0.1);
-      rig.body.y = lerp(0.03 * up, -0.22, hit) * (1 - smooth((tt - 1.75) / 0.2));
-    } else if (tt >= 1.95 && tt < 2.85) {
-      // the desk: down low, the hands under its edge, up from the legs and over
-      const low = smooth((tt - 1.95) / 0.3);
-      const up = smooth((tt - 2.32) / 0.28);
-      rig.body.y = lerp(-0.38 * low, 0.04, up);
-      const hold = low * (1 - smooth((tt - 2.62) / 0.12));
-      if (hold > 0.01) {
-        grab('desk', new THREE.Vector3(-0.42, 0.7, -0.32), hold, 0);
-        grab('desk', new THREE.Vector3(0.42, 0.7, -0.32), hold, 1);
+    const W = F.W;
+    const L = F.L;
+    if (F.phase === 'snap') {
+      if (age > 0.95 && W.present && W.pose === 'win' && !W.act && F.w.near) next('charge');
+    } else if (F.phase === 'charge') {
+      const a0 = _v2.copy(L.pos).sub(F.D).dot(F.u);
+      if (F.w.set && age > 0.3 && a0 >= FIGHT.at - FIGHT.run - 0.02) {
+        next('swing');
+        F.sw = {
+          a0, perp: L.pos.clone().sub(F.D).addScaledVector(F.u, -a0), v0: Math.min(L.spd ?? 0, (3 * Math.max(0.05, FIGHT.at - a0)) / 0.42), yaw0: L.bot.yaw ?? F.yawL,
+          feet: L.bot.feet.map((x) => x.at.clone()), feetYaw: L.bot.feet.map((x) => x.yaw), wpos: W.pos.clone(), wyaw: W.bot.yaw ?? 0, wfeet: W.bot.feet.map((x) => x.at.clone()), wfeetYaw: W.bot.feet.map((x) => x.yaw),
+        };
       }
-    } else if (tt >= 2.85 && tt < 3.9) {
-      // the chair: turned round, hands on its back, wound up, thrown
-      const take = smooth((tt - 3.05) / 0.3) * (1 - smooth((tt - 3.64) / 0.08));
-      const wind = smooth((tt - 3.2) / 0.2) * (1 - smooth((tt - 3.45) / 0.15));
-      rig.twist = 0.35 * wind;
-      rig.body.y = -0.15 * wind;
-      if (take > 0.01) {
-        grab('chair', new THREE.Vector3(-0.3, 0.62, 0.02), take, 0);
-        grab('chair', new THREE.Vector3(0.3, 0.62, 0.02), take, 1);
+    } else if (F.phase === 'swing') {
+      if (age >= HIT) {
+        next('fly');
+        F.hitAt = t;
+        F.chin = chinOf(L);
+        F.by0 = L.fightRig?.body.y ?? 0;
+        F.hip0 = baseOf(L).add(_fv.set(0, hipW(L) + F.by0, 0));
+        F.Hi = onDesk(L, 0, F.s, LIE.hip[0], LIE.hip[1], 0.26);
+        moment('punch', F.wside);
+        state.exc[F.wside] = 1;
+        if (!reduced) {
+          slowTo = 0.2;
+          cam.shake = 0.32;
+        }
       }
+    } else if (F.phase === 'fly') {
+      if (age > FLY * 0.34) slowTo = 1;
+      if (age >= FLY) {
+        next('crash');
+        F.crashAt = t;
+        crash(F);
+        burst(F.Hi.clone().addScaledVector(UPV, 0.2));
+        moment('crash', F.side);
+        state.exc[F.wside] = 1;
+        if (!reduced) cam.shake = 0.42;
+      }
+    } else if (F.phase === 'crash') {
+      crushDesk(L, easeOut(age / LAND));
+      if (age >= 0.75) next('down');
     }
-    c.bounce = 0;
+  }
+  /** The point of a fighter's jaw (world). */
+  function chinOf(f) {
+    const h = f.bot.bones?.Head?.getWorldPosition(new THREE.Vector3()) ?? baseOf(f).setY(FLOOR + 2.5);
+    const yawW = (f.bot.yaw ?? 0) + f.st.g.rotation.y;
+    return h.add(_fv.set(Math.sin(yawW) * 0.17, 0.02, Math.cos(yawW) * 0.17));
+  }
+  /** A fighter's rig while the fight leads it, cleared for this frame. */
+  function fightRigOf(f) {
+    const r = (f.fightRig ??= newRig());
+    Object.assign(r, { legs: null, hug: 0, air: false, lean: 0, twist: 0, arms: null, look: null, lookW: 1, wide: 0, feetFwd: 0, toeOut: 0, planted: null, breathRate: null });
+    r.body.set(0, 0, 0);
+    for (const x of [...r.feet, ...r.hands]) x.w = 0;
+    return r;
+  }
+  /** A foot on the canvas: from `a` (turned `ya`) to `b` (turned `yb`), share `k` of its step (lifted
+   *  on the way). */
+  function footAt(ft, a, b, k, ya, yb) {
+    const e = smooth(k);
+    ft.at.lerpVectors(a, b, e).addScaledVector(UPV, Math.sin(Math.PI * Math.min(1, Math.max(0, k))) * 0.13);
+    ft.w = 1;
+    ft.yaw = turnTo(ya, yb, e);
   }
 
-  function wreck(f, tt) {
-    const once = (name, at, fn) => {
-      if (tt >= at && !f.events.has(name)) {
-        f.events.add(name);
-        fn();
+  /** Leads a fighter's body while the fight is on: what it does this frame, or null. */
+  function fightLead(f, side, t) {
+    const F = state.fight;
+    if (!F || (F.L !== f && F.W !== f)) return null;
+    const age = t - F.since;
+    if (F.L === f) return loserLead(F, f, age, t);
+    if (F.w.free || f.pose !== 'win' || !F.L.present) return null;
+    return winnerLead(F, f, age, t);
+  }
+
+  function loserLead(F, f, age, t) {
+    const W = F.W;
+    if (F.phase === 'snap') {
+      // the snap: a shudder as the fists clench, the head comes up, the chest out, heaving, staring the
+      // winner down
+      const clench = smooth(age / 0.25);
+      const up = smooth((age - 0.2) / 0.35);
+      const shake = Math.sin(t * 38) * 0.035 * clench * (1 - up * 0.6);
+      const heave = Math.sin(t * 5.2) * 0.04 * up;
+      return {
+        hold: true, face: W.present ? yawAt(f, W) : f.bot.yaw, turn: 3, lookAt: W.present ? W : null,
+        arms: { w: 1, a0x: lerp(-0.05, -0.7, up) + shake, a0z: -0.3, e0: lerp(-0.7, -2.15, up), a1x: lerp(-0.05, -0.75, up) - shake, a1z: 0.3, e1: lerp(-0.7, -2.1, up) },
+        body: { y: -0.06 * clench * (1 - up) + 0.04 * up + heave * 0.5, lean: lerp(0.35, -0.1, up) + heave },
+        p: { look: lerp(0.45, -0.05, up) },
+      };
+    }
+    if (F.phase === 'charge') {
+      // a dip, and it runs at the winner, the right fist cocked by its ear
+      const dip = Math.sin(Math.PI * Math.min(1, age / 0.3));
+      const arms = { w: 1, a0x: -0.85, a0z: -0.5, e0: -2.3, a1x: -1.0, a1z: 0.3, e1: -1.9 };
+      if (age < 0.22) return { hold: true, face: yawAt(f, W), lookAt: W, arms, body: { y: -0.16 * dip, lean: 0.1 + 0.25 * smooth(age / 0.22) } };
+      return { goal: F.w.set ? F.Lrun : F.Lc, speed: 2.7, lookAt: W, arms, body: { y: -0.16 * dip, lean: 0.36 } };
+    }
+    const r = fightRigOf(f);
+    const lead = { hold: true, place: true, rig: r, p: {}, ease: F.phase === 'swing' ? 10 : 6 };
+    if (F.phase === 'swing') {
+      // the haymaker: the front foot plants, the right fist drawn back with the chest turned away, then
+      // round with the whole body, over the ducking winner's head, and on, off balance
+      const S = F.sw;
+      const x = Math.min(1, age / 0.42);
+      const span = FIGHT.at - S.a0;
+      const along = (x * x * x - 2 * x * x + x) * S.v0 * 0.42 + (-2 * x * x * x + 3 * x * x) * span;
+      f.pos.copy(F.D).addScaledVector(F.u, S.a0 + along).addScaledVector(S.perp, 1 - smooth(x));
+      f.bot.yaw = turnTo(S.yaw0, F.yawL, smooth(age / 0.2));
+      f.lift = 0;
+      f.flip = 0;
+      const ankle = (f.bot.ankleY ?? 0.1) * SIZE * STATION;
+      const base = baseOf(f);
+      const Lp = f.st.g.localToWorld(new THREE.Vector3(F.Lp.x, 0, F.Lp.y));
+      footAt(r.feet[0], S.feet[0], onBody(Lp, F.yawW, 0.22, ankle, 0.5), (age - 0.04) / 0.26, S.feetYaw[0], F.yawW + 0.1);
+      footAt(r.feet[1], S.feet[1], onBody(Lp, F.yawW, -0.24, ankle, -0.34), (age - 0.48) / 0.22, S.feetYaw[1], F.yawW - 0.25);
+      const [tw, ln, by] = keys([[0, -0.1, 0.2, -0.05], [0.2, -0.65, 0.04, -0.02], [0.36, -0.15, 0.26, -0.1], [0.5, 0.65, 0.5, -0.2], [HIT, 0.72, 0.56, -0.26]], age);
+      r.twist = tw;
+      r.body.set(0, by, 0);
+      lead.p.lean = ln;
+      // the fists, on its own axes from where it stands
+      const R = keys([[0, -0.3, 2.15, 0.3], [0.2, -0.95, 2.3, -0.4], [0.34, -0.95, 2.5, 0.55], [0.43, -0.05, 2.5, 1.2], [0.53, 0.7, 2.3, 0.75], [HIT, 0.6, 2.0, 0.4]], age);
+      const [lx, lz, le] = keys([[0, -0.85, 0.3, -1.9], [0.2, -1.25, 0.35, -1.2], [0.45, 0.45, 0.3, -2.0], [HIT, 0.5, 0.35, -1.9]], age);
+      Object.assign(lead.p, { a1x: lx, a1z: lz, e1: le });
+      onBody(base, F.yawW, R[0], R[1] + by, R[2], r.hands[0].at);
+      r.hands[0].w = 1;
+      r.hands[0].pole.set(-1, 0.25, -0.35);
+      r.look = W.bot.bones?.Head?.getWorldPosition(new THREE.Vector3()) ?? null;
+      r.lookW = 0.7;
+      return lead;
+    }
+    // knocked out: flung back off its feet and round in the air, onto the desk; the desk breaks under it,
+    // and there it lies
+    let hip;
+    let th;
+    let yaw = F.yawLie;
+    if (F.phase === 'fly') {
+      const u = Math.min(1, age / FLY);
+      const vy = (F.Hi.y - F.hip0.y + 4.9 * FLY * FLY) / FLY;
+      const tau = u * FLY;
+      hip = _fv.lerpVectors(F.hip0, F.Hi, u).setY(F.hip0.y + vy * tau - 4.9 * tau * tau);
+      th = lieTilt(0) * (0.3 * u + 0.7 * smooth(u));
+      yaw = turnTo(F.yawL, F.yawLie, smooth((u - 0.15) / 0.8));
+      r.body.y = F.by0 * (1 - smooth(u / 0.4));
+      r.air = true;
+      const k = smooth(u / 0.45);
+      r.legs = { hip: -0.55 * k, knee: 0.9 * k, w: smooth(u / 0.2) };
+      Object.assign(lead.p, { lean: lerp(0.44, -0.3, smooth(u / 0.3)), look: -0.6 * smooth(u / 0.12), a0x: -2.3, a0z: -1.1, e0: -0.35, a1x: -2.1, a1z: 1.2, e1: -0.45 });
+    } else {
+      // on the desk: it gives way (crushDesk, on the same clock), the body drops with it and bounces once
+      const tc = t - F.crashAt;
+      const k = easeOut(tc / LAND);
+      const b = tc > LAND ? Math.max(0, Math.sin(((tc - LAND) / 0.34) * Math.PI)) * 0.08 * (1 - smooth((tc - LAND) / 0.5)) : 0;
+      hip = onDesk(f, 0, F.s, ...LIE.hip, 0.26).lerp(onDesk(f, 1, F.s, ...LIE.hip, 0.26), k).addScaledVector(UPV, b);
+      th = lerp(lieTilt(0), lieTilt(1), k);
+      const flop = smooth(tc / 0.45);
+      // limp: the legs over the front edge, the knees bent down to the canvas; the head rolled over to the
+      // near side; one hand out on the desk by the head, the other by its side, sliding off the back edge
+      // and hanging; a twitch
+      r.legs = { hip: lerp(-0.55, 0.6, flop), knee: lerp(0.9, 0.5, flop), left: { hip: lerp(-0.55, 0.3, flop), knee: lerp(0.9, 0.95, flop) }, splay: 0.14 * flop, w: 1 };
+      const td = F.phase === 'down' ? age : 0;
+      const twitch = td > 1.5 && td < 1.85 ? Math.sin(((td - 1.5) / 0.35) * Math.PI) : 0;
+      const slide = smooth((td - 2.6) / 1.2);
+      // the body's frame on the desk (desk units): its middle line towards the head, its left
+      const [hx, hz] = LIE.hip;
+      const al = Math.hypot(...LIE.head);
+      const ax = (F.s * LIE.head[0]) / al;
+      const az = LIE.head[1] / al;
+      const lx = -az;
+      const lz = ax;
+      const sx = F.s * hx + ax * 0.68;
+      const sz = hz + az * 0.68;
+      const iOff = F.s > 0 ? 1 : 0; // the near side's arm (the robot's left is the desk's +x as it lies)
+      const sideOf = (i) => (i ? 1 : -1);
+      const on = r.hands[1 - iOff];
+      const so = sideOf(1 - iOff);
+      on.at.copy(onDesk(f, k, 1, sx + lx * so * 0.6 + ax * 0.2, sz + lz * so * 0.6 + az * 0.2, 0.06 + 0.1 * twitch));
+      on.w = flop;
+      on.pole.set(so, 0, -0.5);
+      const off = r.hands[iOff];
+      const sf = sideOf(iOff);
+      off.at.copy(onDesk(f, k, 1, sx + lx * sf * 0.5 - ax * 0.25, sz + lz * sf * 0.5 - az * 0.25, 0.06));
+      if (slide > 0) {
+        // along the top to the edge behind it, over, and down
+        const edge = onDesk(f, k, 1, sx + lx * sf * 0.55 + ax * 0.05, -0.4, 0.04);
+        off.at.lerp(edge, smooth(slide / 0.5));
+        if (slide > 0.5) off.at.lerp(edge.setY(Math.max(FLOOR + 0.2, edge.y - 0.7)).addScaledVector(_fv.copy(edge).sub(hip).setY(0).normalize(), 0.12), smooth((slide - 0.5) / 0.5));
       }
-    };
-    once('monitor', 1.0, () => launch(f, 'monitor', new THREE.Vector3(0.6, 3.2, 3.8), [3, 6, 2]));
-    once('keyboard', 1.62, () => launch(f, 'keyboard', new THREE.Vector3(-0.8, 4.2, 1.2), [8, 3, 5]));
-    once('desk', 2.6, () => launch(f, 'desk', new THREE.Vector3(0, 3.6, 2.6), [-5.5, 0.6, 0.4]));
-    once('chair', 3.62, () => launch(f, 'chair', new THREE.Vector3(1.8, 3.4, -2.6), [2, 7, 3]));
-    once('tower', 3.75, () => launch(f, 'tower', new THREE.Vector3(2.4, 1.6, 1.2), [0, 4, 6]));
-    f.wrecked = true;
+      off.w = flop;
+      off.pole.set(sf, 0, -0.5);
+      Object.assign(lead.p, {
+        lean: lerp(-0.3, 0.06, flop), look: lerp(-0.6, -0.15, flop), shake: -0.6 * F.s * flop, tilt: 0,
+        a0x: lerp(-2.3, 0, flop), a0z: lerp(-1.1, -0.9, flop), e0: lerp(-0.35, -0.6, flop),
+        a1x: lerp(-2.1, 0, flop), a1z: lerp(1.2, 0.9, flop), e1: lerp(-0.45, -0.6, flop),
+      });
+      // the visor flickers and goes dark
+      const dim = tc < 0.6 ? (Math.sin(tc * 70) > 0 ? 0.35 : 0.1) : 0.08;
+      for (const e of f.bot.eyes) e.scale.y = (e.userData.base ?? 1) * dim;
+    }
+    // the root (at its feet) from where the hips are and how the body is turned over
+    f.bot.yaw = yaw;
+    const yawW = yaw + f.st.g.rotation.y;
+    const Heff = hipW(f) + r.body.y;
+    const root = _fr.set(Math.sin(th) * Math.sin(yawW), Math.cos(th), Math.sin(th) * Math.cos(yawW)).multiplyScalar(-Heff).add(hip);
+    const o = own(f, root);
+    f.pos.set(o.x, o.z);
+    f.lift = root.y - FLOOR;
+    f.flip = th;
+    return lead;
+  }
+
+  function winnerLead(F, f, age, t) {
+    const L = F.L;
+    const faceL = yawAt(f, L);
+    if (F.phase === 'snap' || F.phase === 'charge') {
+      // it sees the other coming: turns, steps out to meet it, the guard up
+      if (t - F.t0 < 0.3) return null;
+      const o = own(f, F.WpW);
+      const goal = new THREE.Vector2(o.x, o.z);
+      const d = f.pos.distanceTo(goal);
+      F.w.near = d < 0.8;
+      F.w.set = d < 0.08 && Math.abs(turnTo(0, faceL - (f.bot.yaw ?? 0), 1)) < 0.15;
+      return { goal, speed: 1.9, face: faceL, guard: true, arms: { w: 1, ...GUARD_ARMS }, lookAt: L, ease: 4 };
+    }
+    const S = F.sw;
+    const hitAge = F.hitAt != null ? t - F.hitAt : -1;
+    if (F.phase === 'swing' || (F.hitAt != null && hitAge < 0.6)) {
+      // the dodge and the counter, its feet set: down and under the swing, then up through the legs, the
+      // hips turning, the right fist driven up into the jaw, and on up after it
+      const r = fightRigOf(f);
+      const tt = F.phase === 'swing' ? age : HIT + hitAge;
+      // set feet, and a step in with the front foot as it comes up
+      S.wface ??= faceL;
+      const step = smooth((tt - 0.48) / 0.24);
+      f.pos.copy(S.wpos).add(_v2.set(Math.sin(S.wface), Math.cos(S.wface)).multiplyScalar(0.25 * step));
+      f.bot.yaw = turnTo(S.wyaw, S.wface, smooth(tt / 0.2));
+      f.lift = 0;
+      f.flip = 0;
+      const yw = f.bot.yaw + f.st.g.rotation.y;
+      const base = baseOf(f);
+      r.feet[1].at.copy(S.wfeet[1]);
+      r.feet[1].w = 1;
+      r.feet[1].yaw = S.wfeetYaw[1];
+      const fwd = _fv.set(Math.sin(yw), 0, Math.cos(yw)).multiplyScalar(0.25 * STATION);
+      footAt(r.feet[0], S.wfeet[0], S.wfeet[0].clone().add(fwd), (tt - 0.46) / 0.2, S.wfeetYaw[0], yw - 0.1);
+      const [by, bx, ln, tw] = keys([[0, -0.06, 0, 0.08, -0.22], [0.26, -0.06, 0, 0.08, -0.22], [0.42, -0.52, -0.14, 0.26, -0.42], [0.5, -0.54, -0.14, 0.28, -0.5], [HIT, -0.12, 0.04, 0.14, 0.45], [HIT + 0.3, 0.04, 0.02, -0.04, 0.35], [HIT + 0.6, -0.04, 0, 0.06, -0.2]], tt);
+      r.body.set(bx, by, 0);
+      r.twist = tw;
+      const guardAt = (i, out = new THREE.Vector3()) => onBody(base, yw, GUARD[i].x, GUARD[i].y + by, GUARD[i].z, out);
+      guardAt(1, r.hands[1].at);
+      r.hands[1].w = 1;
+      r.hands[1].pole.copy(GUARD_POLE[1]);
+      const h = r.hands[0];
+      h.w = 1;
+      h.pole.set(-0.45, -1, -0.1);
+      if (tt < 0.42) {
+        guardAt(0, h.at);
+        h.pole.copy(GUARD_POLE[0]);
+      } else if (tt < HIT) {
+        // loaded low by the hip, then up along a curve into the jaw, faster and faster
+        const low = onBody(base, yw, -0.3, 1.45 + by * 0.3, 0.22);
+        if (tt < 0.5) h.at.lerpVectors(guardAt(0), low, smooth((tt - 0.42) / 0.08));
+        else {
+          const k = ((tt - 0.5) / (HIT - 0.5)) ** 1.5;
+          const mid = onBody(base, yw, -0.22, 1.65, 0.55);
+          h.at.copy(low).multiplyScalar((1 - k) * (1 - k)).addScaledVector(mid, 2 * k * (1 - k)).addScaledVector(chinOf(L).addScaledVector(UPV, -0.06), k * k);
+        }
+      } else {
+        // the follow-through, up past where the jaw was, then back to the guard
+        const up = onBody(F.chin, yw, 0, 0.45, -0.12);
+        h.at.lerpVectors(F.chin, up, easeOut(hitAge / 0.16)).lerp(guardAt(0), smooth((hitAge - 0.3) / 0.3));
+      }
+      r.look = chinOf(L);
+      r.lookW = 0.8;
+      return { hold: true, place: true, rig: r, p: { lean: ln, look: 0 } };
+    }
+    // the knockout landed: guard up, it watches the other go down, walks over and looks down at it, then
+    // turns to its own stand with its fists up
+    const ct = F.crashAt != null ? t - F.crashAt : -1;
+    const over = F.along(2.05);
+    const spot = f.st.g.worldToLocal(L.st.g.localToWorld(new THREE.Vector3(over.x, 0, over.y)));
+    const goal = ct > 0.5 ? new THREE.Vector2(spot.x, spot.z) : f.pos.clone();
+    if (ct < 2.2) return { goal, speed: 1.1, face: faceL, guard: ct < 0.5, lookAt: L, arms: { w: 1, a0x: -0.25, a0z: -0.2, e0: -1.2, a1x: -0.25, a1z: 0.2, e1: -1.2 } };
+    const sx = F.wside === 'red' ? -1 : 1;
+    const stand = f.st.g.worldToLocal(new THREE.Vector3(sx * 14, FLOOR, 2));
+    state.exc[F.wside] = 1;
+    if (ct > 4.4) F.w.free = true;
+    return { hold: true, face: Math.atan2(stand.x - f.pos.x, stand.z - f.pos.y), turn: 2.6, gesture: 'pump', gestureW: smooth((ct - 2.5) / 0.4) * (1 - smooth((ct - 3.9) / 0.5)), p: { look: -0.25 }, ease: 5 };
   }
 
   function moveReferee(t, dt) {
@@ -1863,11 +2105,11 @@ export async function createScene(root) {
 
     // robots, the referee, flying furniture, sparks
     loads.length = 0;
+    if (xg) fightTick(t);
     for (const side of ['red', 'blue']) {
       const f = fighters[side];
       if (!f.present) continue;
       if (xg) moveFighter(f, side, t, dt);
-      if (xg && f.pose === 'lose') wreck(f, t - f.since);
       if (f.screen === 'code') f.st.screens.code.offset.y = (t * 0.35) % 1;
     }
     if (xg) moveReferee(t, dt);
@@ -1883,23 +2125,7 @@ export async function createScene(root) {
       ROPE_LOAD.at.value[i].set(at.x, FLOOR + ROPES[L.rope], at.z, reduced ? 0 : L.amount);
       ROPE_LOAD.side.value[i].set(L.k.post.x, L.k.post.z, ROPE0, SIDE_LEN - ROPE0);
     }
-    for (const x of flying) {
-      if (x.rest) continue;
-      x.v.y -= 9.8 * dt;
-      x.o.position.addScaledVector(x.v, dt);
-      x.o.rotation.x += x.w.x * dt;
-      x.o.rotation.y += x.w.y * dt;
-      x.o.rotation.z += x.w.z * dt;
-      const ground = Math.hypot(x.o.position.x, x.o.position.z) < RING ? FLOOR : 0;
-      if (x.o.position.y < ground) {
-        x.o.position.y = ground;
-        x.v.y *= -0.3;
-        x.v.x *= 0.6;
-        x.v.z *= 0.6;
-        x.w.multiplyScalar(0.55);
-        if (x.v.length() < 0.4) x.rest = true;
-      }
-    }
+    flyParts(dt);
     for (let i = 0; i < sparkN; i++) {
       if (sparkLife[i] <= 0) {
         sparkPos[i * 3 + 1] = -50;
@@ -1975,9 +2201,23 @@ export async function createScene(root) {
     const actor = !cam.fixed && !still ? ['red', 'blue'].map((s) => fighters[s]).find((f) => f.present && f.act && ((f.act.kind === 'climb' && f.act.phase !== 'go') || (f.act.kind === 'win' && f.act.phase !== 'go'))) : null;
     const actorSide = actor ? (actor === fighters.red ? 'red' : 'blue') : null;
     const airborne = actor && ['crouch', 'push', 'air', 'land'].includes(actor.act.phase);
+    // the fight at the end: a tight two-shot from the side of its line (in close as the blow lands in slow
+    // motion), the fall onto the desk from in front of it, then the wide shot again
+    const F = state.fight;
+    let fightShot = null;
+    if (F && !still && !cam.fixed) {
+      if (['snap', 'charge', 'swing'].includes(F.phase) || (F.phase === 'fly' && t - F.since < FLY * 0.36)) fightShot = 'fight';
+      else if (F.crashAt == null || t - F.crashAt < 2.2) fightShot = 'fall';
+      else if (!F.camDone) {
+        F.camDone = true;
+        cam.shot = 'wide';
+        cam.at = t;
+      }
+    }
     let shot = cam.shot;
     if (actor) shot = airborne ? 'flip' : 'hero';
     else if (cam.fixed) shot = cam.fixed;
+    else if (fightShot) shot = fightShot;
     else if (state.lights === 'focus' && !still) {
       // like a broadcast: while a round runs, cut between the wide shot and a shot over each robot's shoulder
       if (t - cam.at > (cam.shot === 'wide' ? 12 : 3.5)) {
@@ -2061,6 +2301,42 @@ export async function createScene(root) {
       camera.position.copy(camAt);
       camera.lookAt(cam.look);
       close = 0.4;
+      beamsOn = false;
+    } else if (shot === 'fight') {
+      // the two side by side, from the near side of the line between them (the referee beyond them);
+      // once the swing starts, framed on the spots where they fight
+      const A = F.sw ? F.L.st.g.localToWorld(_ca.set(F.Lp.x, 0, F.Lp.y)) : F.L.bot.root.getWorldPosition(_ca).setY(FLOOR);
+      const B = F.sw ? _cb.copy(F.WpW) : F.W.bot.root.getWorldPosition(_cb).setY(FLOOR);
+      const ax = camFront.subVectors(B, A).setY(0);
+      const sep = ax.length();
+      ax.normalize();
+      const n = camUp.set(-ax.z, 0, ax.x);
+      if (n.z < 0) n.negate();
+      const tight = 1 - slow;
+      const mid = A.add(B).multiplyScalar(0.5);
+      camAt.copy(mid).addScaledVector(n, Math.max(4.6, 2.8 + sep) * (1 - 0.14 * tight)).setY(FLOOR + 1.85 - 0.15 * tight);
+      camLook.copy(mid).setY(FLOOR + 1.9);
+      if (cam.cut) {
+        cam.fp.copy(camAt);
+        cam.look.copy(camLook);
+      }
+      cam.fp.lerp(camAt, Math.min(1, realDt * 3));
+      cam.look.lerp(camLook, Math.min(1, realDt * 3));
+      lensFov((portrait ? 62 : 42) - 4 * tight);
+      camera.position.copy(cam.fp);
+      camera.lookAt(cam.look);
+      close = 0.6;
+      beamsOn = false;
+    } else if (shot === 'fall') {
+      // the loser's desk from in front, a little to the near side: the body comes down onto it
+      const g = F.L.st.g;
+      const u = push(4);
+      g.localToWorld(camAt.set(F.s * (3.6 - 0.25 * u), 2.6 - 0.1 * u, 2.0));
+      g.localToWorld(camLook.set(F.s * 0.2, 0.6, 0.45));
+      lensFov(portrait ? 58 : 36);
+      camera.position.copy(camAt);
+      camera.lookAt(camLook);
+      close = 0.5;
       beamsOn = false;
     } else if (shot === 'winClose' && state.winner) {
       // the winner (and the referee raising its arm), from in front, a slow push in
@@ -2209,9 +2485,11 @@ export async function createScene(root) {
         const b = e.userData.base ?? 1; // an armoured robot's eyes sit on its head bone, in that bone's units
         e.scale.set(b, b * eyeScale, b);
       });
+      if (pose === 'lose' && xg) startFight(f, side); // it snaps: the fight
     },
     poseOf: (side) => fighters[side]?.pose,
-    /** Calls fn(name, side) at 'ropes' (up on the ropes), 'taunt', 'flip' (the winner leaves the top rope) and 'land'. */
+    /** Calls fn(name, side) at 'ropes' (up on the ropes), 'taunt', 'flip' (the winner leaves the top rope), 'land',
+     *  'punch' (the winner's uppercut lands on the loser's jaw) and 'crash' (the loser breaks its desk). */
     onMoment(fn) {
       onMoment = fn;
     },
@@ -2220,7 +2498,7 @@ export async function createScene(root) {
       const f = fighters[side];
       const at = f.bot.root.getWorldPosition(new THREE.Vector3());
       const facing = f.bot.root.getWorldDirection(new THREE.Vector3());
-      return { x: at.x, y: at.y, z: at.z, fx: facing.x, fz: facing.z, pose: f.pose, gesture: f.gesture ?? null, act: f.act ? `${f.act.kind}${f.act.phase ? ':' + f.act.phase : ''}` : null, lift: f.lift ?? 0, flip: f.flip ?? 0, slow };
+      return { x: at.x, y: at.y, z: at.z, fx: facing.x, fz: facing.z, pose: f.pose, gesture: f.gesture ?? null, act: f.act ? `${f.act.kind}${f.act.phase ? ':' + f.act.phase : ''}` : state.fight && (state.fight.L === f || state.fight.W === f) ? `fight:${state.fight.phase}` : null, lift: f.lift ?? 0, flip: f.flip ?? 0, slow };
     },
     excite(side, amount) {
       for (const s of side ? [side] : ['red', 'blue']) state.exc[s] = Math.min(1, Math.max(state.exc[s], amount));

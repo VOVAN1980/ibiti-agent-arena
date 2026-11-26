@@ -7,7 +7,7 @@
 // and back lights breathe a little. They ride the skeleton of the X Bot model from Mixamo (Adobe; free
 // to use in one's own projects, commercial ones included): the same bones, rest pose and clips, so they
 // walk and stand with its animations. Everything else (sitting at the desk, typing, arms up, the
-// loser's rage, the referee's verdict) is posed here through the skeleton, from the scene's pose values, and
+// fight at the end, the referee's verdict) is posed here through the skeleton, from the scene's pose values, and
 // the hands reach the keyboard or the head by solving the arm (two-bone IK).
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -251,7 +251,8 @@ export function makeXRobot(kind, models) {
    *  ankle, world), w, yaw (world) }, body { x, y, z } (the hips moved, in metres on the robot's own
    *  axes), look (a world point the head turns to) and lookW, twist (the chest turned, radians), tilt (the head leaned to one side, radians), breath,
    *  stance (0..1: the feet set as a boxer's), feetFwd (the feet set this far ahead of the body, robot units), wide (the feet further apart), ground (the floor's height), air (off the ground: nothing
-   *  planted), legs { hip, knee, w } (both legs bent by angles), hug (the hands round the shins). */
+   *  planted), legs { hip, knee, w, left?: { hip, knee }, splay? } (the legs bent by angles: both alike, or the
+   *  left its own way, spread apart by `splay`), hug (the hands round the shins). */
   function pose(c, p, t, walking, dt, reach, rig = NO_RIG) {
     root.updateMatrixWorld(true);
     const ws = root.getWorldScale(tmp).x; // world metres in one of the robot's own units
@@ -378,11 +379,14 @@ export function makeXRobot(kind, models) {
 
     // the legs: bent by angles (on the chair, on the floor, tucked in the air), else planted by IK
     if (legsW > 0.01) {
-      const hip = legs?.w ? legs.hip : floor > 0.5 ? -2.05 : -1.5;
-      const knee = legs?.w ? legs.knee : floor > 0.5 ? 2.15 : 1.5;
       for (const side of ['Left', 'Right']) {
-        const thigh = DOWN.clone().applyEuler(_e.set(hip, 0, 0)).applyQuaternion(rootQ);
-        const shinDir = DOWN.clone().applyEuler(_e.set(hip + knee, 0, 0)).applyQuaternion(rootQ);
+        // the left leg may have its own angles (legs.left), and both may be spread apart (legs.splay)
+        const L = side === 'Left' && legs?.left ? legs.left : legs;
+        const hip = legs?.w ? L.hip : floor > 0.5 ? -2.05 : -1.5;
+        const knee = legs?.w ? L.knee : floor > 0.5 ? 2.15 : 1.5;
+        const splay = (legs?.w ? legs.splay ?? 0 : 0) * (side === 'Left' ? 1 : -1);
+        const thigh = DOWN.clone().applyEuler(_e.set(hip, 0, splay)).applyQuaternion(rootQ);
+        const shinDir = DOWN.clone().applyEuler(_e.set(hip + knee, 0, splay)).applyQuaternion(rootQ);
         aim(B[`${side}UpLeg`], AX[`${side}UpLeg`], thigh, legsW);
         aim(B[`${side}Leg`], AX[`${side}Leg`], shinDir, legsW);
       }
@@ -395,9 +399,12 @@ export function makeXRobot(kind, models) {
     const restYaw = (f) => rootYaw + f.s * (0.08 + (rig.toeOut ?? 0)) * (1 - stance) - 0.3 * stance;
     for (const f of feet) {
       if (tracking || !f.ready) {
-        // following the clip (or the pose): ready to be planted where the foot is when it stops
-        B[`${f.side}Foot`].getWorldPosition(f.at);
-        f.at.y = ground + ankleY * ws;
+        // following the clip (or the pose), closely but never in a jump: ready to be planted where the
+        // foot is when it stops
+        B[`${f.side}Foot`].getWorldPosition(tmp);
+        tmp.y = ground + ankleY * ws;
+        if (f.ready) f.at.lerp(tmp, 1 - Math.exp(-dt * 30));
+        else f.at.copy(tmp);
         f.yaw = rootYaw;
         f.u = 1;
         f.ready = true;

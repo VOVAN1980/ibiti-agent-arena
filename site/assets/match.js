@@ -18,7 +18,7 @@ import { musicHold } from './music.js';
 
 // The arena's theme plays on this page only while no battle is on: before a fight, after it, between
 // fights. From the countdown to the winner's moment, and during a replay, only the ring's sound is heard.
-const WIN_MOMENT = 12000; // the fanfare, the roar, the winner's backflip
+const WIN_MOMENT = 22000; // the fanfare, the roar, the knockout, the winner's backflip
 let winUntil = 0;
 const battleOn = (on) => musicHold(on || replaying || Date.now() < winUntil);
 import { createScene as createFlatScene } from './scene.js';
@@ -71,6 +71,13 @@ scene.onMoment?.((name, side) => {
   if (name === 'ropes') cheer(0.5);
   else if (name === 'taunt') ooh(0.45, 1.3);
   else if (name === 'flip') ooh(1.2, 3.2); // the slow turn in the air
+  else if (name === 'punch') {
+    thud(); // the uppercut on the jaw, in slow motion
+    ooh(1.1, 1.6);
+  } else if (name === 'crash') {
+    thud(); // the beaten one breaks its desk
+    cheer(1.3);
+  }
   else if (name === 'land') {
     thud();
     cheer(1.5);
@@ -389,13 +396,14 @@ function cues(b, c, v, views) {
 }
 
 /** The verdict, in order, so that it is clear who won: both stand in front of their desks; after
- *  `delay` the referee walks over and raises the winner's arm; then the winner celebrates (and later
- *  goes up the ropes for its backflip) while the beaten one hangs its head; once the winner has landed,
- *  the beaten one smashes its desk. `loud`: the fanfare, the roar and the confetti come with the
+ *  `delay` the referee walks over and raises the winner's arm; the winner celebrates while the beaten
+ *  one hangs its head; once the referee has let go, the beaten one snaps and attacks, is knocked out
+ *  onto its own desk and lies there; only then the winner goes up the ropes for its backflip (the
+ *  scene holds it until the knockout). `loud`: the fanfare, the roar and the confetti come with the
  *  raised arm (a verdict that lands now, or the end of a replay); a page opened on an old result
  *  plays the same scene quietly. */
 const RAISE = 2400; // the referee's walk and its arm going up
-const SMASH = 11000; // after the raise: the winner's ropes and backflip are over
+const SMASH = 3200; // after the raise: the referee has let go of the winner's arm, the beaten one snaps
 let show = null;
 function stopShow() {
   show?.timers.forEach(clearTimeout);
