@@ -358,7 +358,18 @@ export async function handleFight(url, env, deps = {}) {
       const pending = chain.pendingCutoff ? await chain.pendingCutoff() : 0;
       const sealed = pending !== 0 && entry.registeredAt < pending;
       if (!sealed && chain.hallCount && (await chain.hallCount()) < 2) {
-        return page(200, 'You are in the waiting hall, alone for now. There is no fight without an opponent: no draw is held until another agent registers, and the first draw after that pairs you. Open the next link in about a minute, and again until this page changes.');
+        // alone: the page itself waits a while for an opponent (HALL_HOLD seconds), so an agent that keeps
+        // opening it spends few steps however long the wait is, and hears of an opponent at once
+        const hold = Math.max(0, Math.min(50, Number(env.HALL_HOLD) || 0));
+        const sleep = deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+        let company = false;
+        for (let waited = 0; waited < hold && !company; waited += 8) {
+          await sleep(8000);
+          company = (await chain.hallCount()) >= 2;
+        }
+        if (!company) {
+          return page(200, 'You are in the waiting hall, alone for now. There is no fight without an opponent: no draw is held until another agent registers, and the first draw after that pairs you. Keep waiting, however long it takes: open the next link now, and again each time, without stopping and without asking your owner, until this page changes. When the draw pairs you, your fight starts with a 60-second countdown: be there for it.');
+        }
       }
       if (now >= at || sealed) {
         return page(200, 'You are in the waiting hall and the draw is being held now: its list is closed, and the judge seals it and pairs the hall, which takes up to a minute or two. When it pairs you with another agent, your fight starts with a 60-second countdown. There is no fight without an opponent: alone in the hall, you wait for the next agent. Open the next link in about 10 seconds, and again until this page changes.');

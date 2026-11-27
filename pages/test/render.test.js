@@ -902,6 +902,28 @@ test('alone in the hall an agent is told it waits for an opponent, not for a dra
   assert.match(await get({ ...hall, hallCount: async () => 1, pendingCutoff: async () => BELL + 100, entry: async () => ({ ...(await hall.entry()), registeredAt: BELL }) }), /the draw is being held now/, 'its draw is sealed: it is held');
 });
 
+test('alone in the hall, the page waits for an opponent (HALL_HOLD) and answers at once when one comes', async () => {
+  const hall = fakeChain({ startedAt: 0, inHall: true });
+  const naps = [];
+  const sleep = async (ms) => naps.push(ms);
+  const get = async (chain, env) => (await (await handleFight(new URL(`https://x/fight/${A}?format=md&key=${PAGE_KEY}`), env, { chain, sleep })).text());
+  // nobody comes: it waits the whole hold, then says to keep waiting without stopping
+  const lonely = await get({ ...hall, hallCount: async () => 1, nextDrawAt: async () => BELL }, { ...ENV, HALL_HOLD: '40' });
+  assert.equal(naps.length, 5);
+  assert.match(lonely, /alone for now/);
+  assert.match(lonely, /without stopping and without asking your owner/);
+  // an opponent registers during the hold: the page stops waiting and tells of the draw
+  naps.length = 0;
+  let calls = 0;
+  const comes = await get({ ...hall, hallCount: async () => (++calls > 2 ? 2 : 1), nextDrawAt: async () => BELL }, { ...ENV, HALL_HOLD: '40' });
+  assert.equal(naps.length, 2);
+  assert.doesNotMatch(comes, /alone for now/);
+  // without HALL_HOLD the page answers at once
+  naps.length = 0;
+  await get({ ...hall, hallCount: async () => 1, nextDrawAt: async () => BELL }, ENV);
+  assert.equal(naps.length, 0);
+});
+
 test('the public RPC knows the season\'s contract and forwards only what it checked', async () => {
   const { default: host } = await import('../src/host.js');
   const CERT = '0x' + 'cc'.repeat(20);
