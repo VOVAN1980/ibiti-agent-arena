@@ -2,7 +2,7 @@
 // podium, the bouts on now, the latest results, and the way in.
 // The lists are rebuilt only when something changes; the clocks tick in place, so the page stays
 // still (and a page translator has nothing to redo every second).
-import { CFG, emptyState, refresh, rating, bouts, verdict, isLive, clockOf, nameOf, fightName, arenaStats, seasonState, podiumSeason, pollDelay, pollAgain } from './arena.js';
+import { CFG, emptyState, refresh, rating, bouts, verdict, isLive, clockOf, nameOf, fightName, arenaStats, seasonState, podiumSeason, pollDelay, pollAgain, hallNow } from './arena.js';
 import { $, esc, keep, tName, header, footer, cup, avatar, agentUrl, matchUrl, joinPrompt, mmss, siteUrl, toast, t, applyI18n, seasonLine, historyNote, CHALLENGES, RING } from './ui.js';
 
 $('#head').innerHTML = header('arena');
@@ -258,6 +258,8 @@ updatePrompt();
 if (linkChallenge !== null && !CHALLENGES) toast(t('noChallenge'));
 else if (challengedFromLink) toast(t('challenged'));
 else if (brokenChallenge) toast(t('badChallenge'));
+// the waiting hall at once, before the first full read (which reads old blocks for a while)
+hallNow(s).then(() => { renderHall(); renderBoard(); }).catch(() => {});
 loop();
 
 // #enter (the Arena button, a ring's card, Connect agent): the registration panel comes to the front,

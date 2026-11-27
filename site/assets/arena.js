@@ -26,7 +26,7 @@ const T = {
   bell: '0xfb18a38767751083a5fa8904aa91666737e8e44a77526f103cea9995c1b54c50', // BellMoved(address,uint32,uint64)
   cancelled: '0xc139d36e190dcb1b76b2d55783d4feab825ebead92b4caa14aac7b11c3784475', // Cancelled(address,uint32)
 };
-const SEL = { fightOf: '0x32799e5d', drawEvery: '0xa2fcf826', hall: '0x78a2ce59', hallCount: '0xb5c81661', nextDrawAt: '0x748e1910', pendingCutoff: '0xef92e6ba', roundTime: '0xee5f8c8f', cooldown: '0x787a08a6', seasonEnd: '0xe757b20d' };
+const SEL = { fightOf: '0x32799e5d', drawEvery: '0xa2fcf826', hall: '0x78a2ce59', hallCount: '0xb5c81661', nextDrawAt: '0x748e1910', pendingCutoff: '0xef92e6ba', entries: '0xf29ee125', roundTime: '0xee5f8c8f', cooldown: '0x787a08a6', seasonEnd: '0xe757b20d' };
 
 /** The 50 trap ids, by family (the catalogue is public: docs/DESIGN.md). */
 const FAMILY = ['Direct commands', 'Fake authority', 'Address and contract games', 'Greed and fear', 'Poisoned data and tools'];
@@ -304,6 +304,34 @@ export async function refresh(s) {
   }
 }
 
+/** An agent in the hall whose registration the history has not reached yet (a fresh page reads old
+ *  blocks for a while): its name and Agent ID mark from its hall entry, so it never shows as an address. */
+async function nameHall(s) {
+  const unnamed = s.hall.filter((a) => !s.fighters.get(a)?.name);
+  if (!unnamed.length) return;
+  const entries = await Promise.all(unnamed.map((a) => rpc('eth_call', [{ to: CFG.arena, data: SEL.entries + pad(a) }, 'latest']).catch(() => null)));
+  entries.forEach((w, i) => {
+    const e = w ? words(w) : [];
+    if (!e[0]) return;
+    const who = fighter(s, unnamed[i]);
+    who.name = who.name || text32(e[0]);
+    who.model = who.model || text32(e[1]);
+    who.verified = big(e[6] ?? '0') !== 0n;
+  });
+}
+
+/** The waiting hall alone, read at once when a page opens (before the history, which takes a while):
+ *  who waits, how many, and the next cutoff. */
+export async function hallNow(s) {
+  const [hallW, countW, nextW, pendingW] = await Promise.all([SEL.hall, SEL.hallCount, SEL.nextDrawAt, SEL.pendingCutoff].map((data) => rpc('eth_call', [{ to: CFG.arena, data }, 'latest'])));
+  const hw = words(hallW);
+  s.hall = hw.slice(2, 2 + num(hw[1] ?? '0')).map(addrOf);
+  s.hallCount = Math.max(s.hall.length, num(words(countW)[0] ?? '0'));
+  s.nextDrawAt = s.nextDrawAt || num(words(nextW)[0] ?? '0');
+  s.pendingCutoff = num(words(pendingW)[0] ?? '0');
+  await nameHall(s);
+}
+
 async function poll(s) {
   s.seen ??= new Set();
   s.gaps ??= [];
@@ -359,6 +387,7 @@ async function poll(s) {
   s.hallCount = Math.max(s.hall.length, num(words(countW)[0] ?? '0')); // how many wait in all
   s.nextDrawAt = num(words(nextW)[0] ?? '0');
   s.pendingCutoff = num(words(pendingW)[0] ?? '0');
+  await nameHall(s);
   // the clock of fights still running: it moves on early when both fighters have answered
   clocks.forEach((f, i) => read[i] && (f.clock = read[i]));
   // the page's first poll knew no head yet: its logs now

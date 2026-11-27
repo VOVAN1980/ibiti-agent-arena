@@ -194,7 +194,8 @@ export function historyNote(s) {
     el = document.createElement('div');
     el.id = 'historyNote';
     el.setAttribute('role', 'status');
-    Object.assign(el.style, { position: 'fixed', left: '12px', bottom: '12px', zIndex: '30', maxWidth: 'calc(100vw - 24px)', padding: '7px 13px', borderRadius: '999px', background: 'rgba(14,19,34,.9)', color: '#e9ecf2', border: '1px solid rgba(233,236,242,.28)', font: '12px/1.3 Inter, system-ui, sans-serif', pointerEvents: 'none', backdropFilter: 'blur(6px)' });
+    // bottom centre: the music button sits in a bottom corner
+    Object.assign(el.style, { position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: '12px', whiteSpace: 'nowrap', zIndex: '30', maxWidth: 'calc(100vw - 24px)', padding: '7px 13px', borderRadius: '999px', background: 'rgba(14,19,34,.9)', color: '#e9ecf2', border: '1px solid rgba(233,236,242,.28)', font: '12px/1.3 Inter, system-ui, sans-serif', pointerEvents: 'none', backdropFilter: 'blur(6px)' });
     document.body.append(el);
   }
   const text = state === 'waiting' ? t('historyWaiting') : t('historyLoading');

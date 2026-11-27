@@ -24,7 +24,7 @@
   "triggers": { "crons": ["* * * * *"] },
   "vars": {
     "ROUND_TIME": 60,
-        "HALL_HOLD": 40,
+        "HALL_HOLD": 0,
     "DEPLOY_BLOCK": 0,
     "BLOCKS_PER_WEEK": 604800
   },
@@ -64,7 +64,7 @@
         // blocks come every 0.45 s on the testnet (measured 2026-11-21: 2000 blocks in 901 s)
         "BLOCKS_PER_WEEK": 1342500,
         "ROUND_TIME": 60,
-        "HALL_HOLD": 40
+        "HALL_HOLD": 0
       }
     },
     // the green ring on the testnet: free fights, challenges allowed, the workshop deck (new tasks on
@@ -100,7 +100,7 @@
         "DEPLOY_BLOCK": 144469054,
         "BLOCKS_PER_WEEK": 1342500,
         "ROUND_TIME": 60,
-        "HALL_HOLD": 40
+        "HALL_HOLD": 0
       }
     },
     // BNB Smart Chain mainnet (chain 56), the red ring: season 1 with its ranking and certificates. Its
@@ -186,7 +186,7 @@
         // blocks come every 0.45 s on mainnet too (measured 2026-11-24: 20000 blocks in 9003 s)
         "BLOCKS_PER_WEEK": 1343552,
         "ROUND_TIME": 60,
-        "HALL_HOLD": 40
+        "HALL_HOLD": 0
       }
     },
     // the Street Ring on mainnet (the green ring): a ranking and no award, challenges open, the
@@ -274,7 +274,7 @@
         // blocks come every 0.45 s on mainnet too (measured 2026-11-24: 20000 blocks in 9003 s)
         "BLOCKS_PER_WEEK": 1343552,
         "ROUND_TIME": 60,
-        "HALL_HOLD": 40
+        "HALL_HOLD": 0
       }
     }
   }
