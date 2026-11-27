@@ -13,3 +13,6 @@ deployments/local-*.json
 # Cloudflare local runs: settings and secrets stay out of git
 .dev.vars*
 .wrangler/
+
+# local working files (models, renders, videos, notes): never on GitHub
+local/
