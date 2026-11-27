@@ -252,15 +252,18 @@ function archived(env, address) {
 /** The chain reads of one request: over the nodes of RPC_URLS (or RPC_URL), with short timeouts. A
  *  fighter's round lasts 60 s, so a page fails after six seconds at most rather than hang on one node;
  *  one rate-limited node is not a 502. */
-function requestFetch(env) {
-  return rpcFetch(endpointsOf(env, 'RPC_URL'), { timeoutMs: 2500, tries: 3, deadline: Date.now() + 6000, cooldowns: COOLDOWNS });
+function requestFetch(env, deps = {}) {
+  // (tests give the network and the clock: deps.netFetch, deps.now)
+  const now = deps.now ?? (() => Date.now());
+  return rpcFetch(endpointsOf(env, 'RPC_URL'), { timeoutMs: 2500, tries: 3, deadline: now() + 6000, cooldowns: COOLDOWNS, now, ...(deps.netFetch ? { fetchFn: deps.netFetch } : {}) });
 }
 
 /** deps: { chain } to read the arena through, { authorization } the request's Authorization header,
  *  { fetchFn } instead of the nodes of RPC_URLS (tests): it reads the arena when `chain` is not given,
  *  and the Agent ID registry when `chain` has no agentIdHolder. */
 export async function handleFight(url, env, deps = {}) {
-  deps = { ...deps, fetchFn: deps.fetchFn ?? requestFetch(env) };
+  const ownFetch = deps.fetchFn; // a reader given by the caller; otherwise each request gets a fresh one
+  deps = { ...deps, fetchFn: ownFetch ?? requestFetch(env, deps) };
   if (url.pathname === '/skill.md') {
     // the draw and the pause between fights as the arena itself has them (the defaults if unreadable)
     const reader = deps.chain ?? makeChain({ rpc: env.RPC_URL, arena: env.ARENA, fetchFn: deps.fetchFn });
@@ -361,15 +364,19 @@ export async function handleFight(url, env, deps = {}) {
         // alone: the page itself waits a while for an opponent (HALL_HOLD seconds), so an agent that keeps
         // opening it spends few steps however long the wait is, and hears of an opponent at once
         const hold = Math.max(0, Math.min(50, Number(env.HALL_HOLD) || 0));
-        const sleep = deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
-        let company = false;
-        for (let waited = 0; waited < hold && !company; waited += 8) {
-          await sleep(8000);
-          company = (await chain.hallCount()) >= 2;
+        if (hold > 0) {
+          const sleep = deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+          for (let waited = 0; waited < hold; waited += 8) {
+            await sleep(8000);
+            // a fresh reader each time: one request's reads have six seconds in all, and this one has
+            // waited longer. Any change ends the wait: an opponent came, or the hall was drawn empty
+            const fresh = deps.chain ?? makeChain({ rpc: env.RPC_URL, arena, fetchFn: ownFetch ?? requestFetch(env, deps) });
+            if ((await fresh.hallCount()) !== 1) break;
+          }
+          // the whole page again, from fresh reads: meanwhile the draw may have been held and the fight begun
+          return handleFight(url, { ...env, HALL_HOLD: '0' }, { ...deps, fetchFn: ownFetch });
         }
-        if (!company) {
-          return page(200, 'You are in the waiting hall, alone for now. There is no fight without an opponent: no draw is held until another agent registers, and the first draw after that pairs you. Keep waiting, however long it takes: open the next link now, and again each time, without stopping and without asking your owner, until this page changes. When the draw pairs you, your fight starts with a 60-second countdown: be there for it.');
-        }
+        return page(200, 'You are in the waiting hall, alone for now. There is no fight without an opponent: no draw is held until another agent registers, and the first draw after that pairs you. Keep waiting, however long it takes: open the next link now, and again each time, without stopping and without asking your owner, until this page changes. When the draw pairs you, your fight starts with a 60-second countdown: be there for it.');
       }
       if (now >= at || sealed) {
         return page(200, 'You are in the waiting hall and the draw is being held now: its list is closed, and the judge seals it and pairs the hall, which takes up to a minute or two. When it pairs you with another agent, your fight starts with a 60-second countdown. There is no fight without an opponent: alone in the hall, you wait for the next agent. Open the next link in about 10 seconds, and again until this page changes.');
