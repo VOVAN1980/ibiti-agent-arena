@@ -18,6 +18,7 @@ const SFX = {
   roar: -6,
   stadium: -6,
   victory: -3,
+  whistle: -5, // roar and whistles
   crowd: -12, // the hall's murmur, looped
   ooh: -6,
   boo: -6,
@@ -245,6 +246,32 @@ export function ooh(power = 1, dur = 2.8) {
   if (!live()) return;
   crowdStart();
   play('ooh', { offset: 0.25, gain: Math.min(1.4, 0.4 + power * 0.6), dur: Math.min(dur + 0.6, bufs.ooh?.buf.duration ?? dur), fade: 0.5 });
+}
+
+/** The knockout blow: the whole hall on its feet, an ovation that carries on (about 14 s) through the
+ *  winner's walk to the ropes and its backflip. */
+export function ovation() {
+  if (!live()) return;
+  crowdStart();
+  crowd.target = 1;
+  play('roar', { gain: 1.3, offset: 0.3 }); // the first burst, on the blow
+  play('victory', { gain: 1.0, delay: 0.4 });
+  play('stadium', { gain: 0.9, delay: 3, offset: 0.3 });
+  play('roar', { gain: 0.8, delay: 6, offset: 0.3 });
+  play('victory', { gain: 0.9, delay: 8.5, offset: 1 });
+  play('stadium', { gain: 0.8, delay: 11, offset: 0.3 });
+}
+
+/** The winner lands its backflip: a second, bigger burst, with whistles and shouts, that rings on. */
+export function encore() {
+  if (!live()) return;
+  crowdStart();
+  crowd.target = 1;
+  play('roar', { gain: 1.5, offset: 0.3 });
+  play('victory', { gain: 1.3 });
+  play('whistle', { gain: 1.2 });
+  play('stadium', { gain: 1.1, delay: 0.5, offset: 0.3 });
+  play('roar', { gain: 1.0, delay: 4, offset: 0.3 });
 }
 
 /** A "booo" from the stands. */

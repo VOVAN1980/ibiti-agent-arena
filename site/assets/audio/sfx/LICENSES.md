@@ -17,6 +17,7 @@ redistributed on their own as sound files.
 | roar.mp3 | the hall roars | Mixkit 459, "Male crowd cheering short" |
 | stadium.mp3 | the hall roars | Mixkit 2110, "Crowd yelling at stadium" |
 | victory.mp3 | the winner | Mixkit 462, "Huge crowd cheering victory" |
+| whistle.mp3 | the winner's landing: roar and whistles | Mixkit 610, "Cheering crowd loud whistle" |
 | crowd.mp3 | the hall's murmur | Pixabay 435357, "Crowd Cheering in Stadium" (vishiv) |
 | ooh.mp3 | "oooh" | Pixabay 352766, "Crowd Shocked Reaction" (Universfield) |
 | boo.mp3 | "booo" | Pixabay 494319, "Crowd Booing" (DRAGON-STUDIO) |

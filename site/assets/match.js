@@ -13,7 +13,7 @@ import { LANG } from './i18n.js';
 const foulsOf = (j) => (j.empty ? '—' : j.fouls);
 import { $, esc, keep, tName, header, footer, avatar, shareButtons, mmss, siteUrl, agentUrl, matchUrl, t, applyI18n, challengeButton, historyNote, CHALLENGES } from './ui.js';
 import { forFight, loadTheme, loadAll, themeName, themePlain, themesKnown } from './themes.js';
-import { gong, beep, ding, thud, punch, crash, land, cheer, boo, ooh, crowdLevel, setMusic, soundOn, soundRunning, setSound } from './sound.js';
+import { gong, beep, ding, thud, punch, crash, land, ovation, encore, cheer, boo, ooh, crowdLevel, setMusic, soundOn, soundRunning, setSound } from './sound.js';
 import { musicHold } from './music.js';
 
 // The arena's theme plays on this page only while no battle is on: before a fight, after it, between
@@ -72,16 +72,21 @@ scene.onMoment?.((name, side) => {
   else if (name === 'taunt') ooh(0.45, 1.3);
   else if (name === 'flip') ooh(1.2, 3.2); // the slow turn in the air
   else if (name === 'punch') {
-    punch(); // the uppercut on the jaw, in slow motion
-    ooh(1.1, 1.6);
+    punch(); // the uppercut on the jaw, in slow motion: the hall rises, a long ovation begins
+    ovation();
+    scene.excite(null, 0.9);
   } else if (name === 'crash') {
     crash(); // the beaten one breaks its desk
-    cheer(1.3);
   }
   else if (name === 'land') {
     land();
-    cheer(1.5);
+    encore();
+    // the landing: a flash over the ring, the cameras in the stands, bursts from every post, the winner's fountains
+    boom();
+    cameraFlashes();
+    scene.pyro('round');
     scene.pyro('win', side);
+    scene.bump();
     scene.excite(side, 1);
   }
 });
@@ -226,6 +231,30 @@ function fists() {
   el.querySelector('.fists')?.remove();
   el.insertAdjacentHTML('beforeend', `<div class="fists"><div class="fist red">${FIST('#ef4444', '#7f1d1d')}</div><div class="clash"></div><div class="fist blue">${FIST('#22c55e', '#14532d')}</div></div>`);
   setTimeout(() => el.querySelector('.fists')?.remove(), 2600);
+}
+
+/** A bright flash over the whole ring (the winner's landing). */
+function boom() {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const st = $('#stage');
+  st.classList.remove('boom');
+  void st.offsetWidth;
+  st.classList.add('boom');
+}
+
+/** Cameras flashing in the stands, here and there for a few seconds. */
+function cameraFlashes() {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const st = $('#stage');
+  for (let i = 0; i < 26; i++) {
+    const f = document.createElement('i');
+    f.className = 'camflash';
+    f.style.left = `${4 + Math.random() * 92}%`;
+    f.style.top = `${6 + Math.random() * 52}%`;
+    f.style.animationDelay = `${(Math.random() ** 1.4 * 3.2).toFixed(2)}s`;
+    st.append(f);
+    setTimeout(() => f.remove(), 4200);
+  }
 }
 
 function flash(side) {
