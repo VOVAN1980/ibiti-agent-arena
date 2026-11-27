@@ -1,7 +1,7 @@
 // The ranking's effects. A row that climbs cracks, shatters into real pieces of itself (copies of the
 // row cut into shards) and a cloud of dust where it was; at its new place the dust gathers, the shards
 // fly back in and lock together, and the whole row lands with a flash. The rows it passes slide down.
-// The sounds are made here (no files): a crack, the scatter of debris, the rush of the pieces coming
+// The sounds are real recordings (assets/audio/sfx): glass shattering, the rush of the pieces coming
 // back and a metal strike as the row lands, deeper for first place. They play only when the arena's
 // sound is on in the gear menu, at its volume, and never before the visitor has touched the page.
 import { musicOn, musicVolume } from './music.js';
@@ -12,132 +12,73 @@ export const reduced = REDUCED;
 // ------------------------------------------------------------------ sound
 let ctx = null;
 let touched = false;
-addEventListener('pointerdown', () => (touched = true), { once: true, capture: true });
-addEventListener('keydown', () => (touched = true), { once: true, capture: true });
+const DIR = new URL('./audio/sfx/', import.meta.url);
+const bufs = {}; // name → { buf, lead: where its sound begins, peak }
+let loading = null;
 
 function audio() {
   if (!touched || !musicOn()) return null;
   try {
     ctx ??= new AudioContext();
     if (ctx.state === 'suspended') ctx.resume();
+    loading ??= Promise.all(['shatter', 'whoosh', 'lock'].map(async (name) => {
+      try {
+        const r = await fetch(new URL(`${name}.mp3`, DIR));
+        if (!r.ok) return;
+        const buf = await ctx.decodeAudioData(await r.arrayBuffer());
+        const d = buf.getChannelData(0);
+        let peak = 0;
+        for (const v of d) peak = Math.max(peak, Math.abs(v));
+        const first = d.findIndex((v) => Math.abs(v) > peak * 0.05);
+        bufs[name] = { buf, lead: Math.max(0, first / buf.sampleRate - 0.01), peak };
+      } catch {
+        // not heard
+      }
+    }));
     return ctx;
   } catch {
     return null;
   }
 }
 
-function noise(c, seconds) {
-  const b = c.createBuffer(1, Math.ceil(c.sampleRate * seconds), c.sampleRate);
-  const d = b.getChannelData(0);
-  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-  const n = c.createBufferSource();
-  n.buffer = b;
-  return n;
-}
+// the first touch lets the page sound, and fetches the recordings so the first row already has them
+const touch = () => {
+  touched = true;
+  audio();
+};
+addEventListener('pointerdown', touch, { once: true, capture: true });
+addEventListener('keydown', touch, { once: true, capture: true });
 
-function out(c, level) {
+/** Plays a recording from where its sound begins, `at` seconds from now, at the arena's volume. */
+function playSfx(name, { at = 0, level = 0.8, rate = 1 } = {}) {
+  const c = audio();
+  const b = bufs[name];
+  if (!c || !b) return;
+  const t = c.currentTime + Math.max(0, at);
+  const s = c.createBufferSource();
+  s.buffer = b.buf;
+  s.playbackRate.value = rate;
   const g = c.createGain();
-  g.gain.value = musicVolume() * level;
-  g.connect(c.destination);
-  return g;
+  g.gain.value = (musicVolume() * level * 0.7) / Math.max(0.2, b.peak);
+  s.connect(g).connect(c.destination);
+  s.start(t, b.lead + Math.max(0, -at) * rate);
 }
 
-/** One short burst of filtered noise: a crack, a chip, a click. */
-function snap(c, dest, t, { freq = 3000, q = 0.8, len = 0.06, gain = 0.8, type = 'bandpass' } = {}) {
-  const n = noise(c, len + 0.02);
-  const f = c.createBiquadFilter();
-  f.type = type;
-  f.frequency.value = freq;
-  f.Q.value = q;
-  const g = c.createGain();
-  g.gain.setValueAtTime(gain, t);
-  g.gain.exponentialRampToValueAtTime(0.0001, t + len);
-  n.connect(f).connect(g).connect(dest);
-  n.start(t);
-  n.stop(t + len + 0.02);
-}
-
-/** The row breaking: a hard crack, then debris raining for half a second. */
+/** The row breaking: glass that gives way and rains down. */
 export function soundShatter(big = false) {
-  const c = audio();
-  if (!c) return;
-  const t = c.currentTime;
-  const o = out(c, big ? 0.95 : 0.75);
-  snap(c, o, t, { freq: 1800, q: 0.5, len: 0.09, gain: 1 });
-  snap(c, o, t + 0.01, { freq: 5200, q: 1.5, len: 0.05, gain: 0.7 });
-  // the crack spreading: a few dry ticks before it gives way
-  for (let i = 1; i <= 5; i++) snap(c, o, t + i * 0.06, { freq: 3000 + i * 500, q: 6, len: 0.02, gain: 0.35 });
-  snap(c, o, t + CRACK / 1000, { freq: 1400, q: 0.6, len: 0.12, gain: 0.95 });
-  // a low thud under the crack
-  const th = c.createOscillator();
-  th.type = 'sine';
-  th.frequency.setValueAtTime(160, t);
-  th.frequency.exponentialRampToValueAtTime(50, t + 0.18);
-  const tg = c.createGain();
-  tg.gain.setValueAtTime(0.7, t);
-  tg.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
-  th.connect(tg).connect(o);
-  th.start(t);
-  th.stop(t + 0.2);
-  // debris: many small bright chips, thinning out
-  for (let i = 0; i < 26; i++) {
-    const at = t + CRACK / 1000 + Math.random() ** 1.6 * 1.2;
-    snap(c, o, at, { freq: 2500 + Math.random() * 6500, q: 4 + Math.random() * 8, len: 0.015 + Math.random() * 0.03, gain: 0.25 + Math.random() * 0.35 });
-  }
+  playSfx('shatter', { at: CRACK / 1000 - 0.25, level: big ? 1 : 0.8 });
 }
 
-/** The pieces coming back: a rising rush that stops sharply. */
+/** The pieces coming back: a rush that ends as they lock. */
 export function soundGather(delay = 0) {
-  const c = audio();
-  if (!c) return;
-  const t = c.currentTime + delay;
-  const o = out(c, 0.55);
-  const n = noise(c, 0.6);
-  const f = c.createBiquadFilter();
-  f.type = 'bandpass';
-  f.Q.value = 1.4;
-  f.frequency.setValueAtTime(600, t);
-  f.frequency.exponentialRampToValueAtTime(6000, t + 0.5);
-  const g = c.createGain();
-  g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(0.9, t + 0.45);
-  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.56);
-  n.connect(f).connect(g).connect(o);
-  n.start(t);
-  n.stop(t + 0.6);
+  const b = bufs.whoosh;
+  if (!b) return void audio();
+  playSfx('whoosh', { at: delay + 0.56 - (b.buf.duration - b.lead), level: 0.6 });
 }
 
-/** A metal strike as the row locks together: a click and ringing partials, a deep hit for first place. */
+/** A metal strike as the row locks together, deeper for first place. */
 export function soundLand(place = 9) {
-  const c = audio();
-  if (!c) return;
-  const t = c.currentTime;
-  const o = out(c, 0.75);
-  snap(c, o, t, { freq: 3500, type: 'highpass', len: 0.05, gain: 0.8 });
-  const base = place === 1 ? 520 : place <= 3 ? 600 : 700;
-  for (const [mul, amp, len] of [[1, 0.35, 1.0], [2.76, 0.18, 0.7], [5.4, 0.08, 0.4]]) {
-    const osc = c.createOscillator();
-    osc.type = 'sine';
-    osc.frequency.value = base * mul;
-    const g = c.createGain();
-    g.gain.setValueAtTime(amp, t);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + len);
-    osc.connect(g).connect(o);
-    osc.start(t);
-    osc.stop(t + len);
-  }
-  if (place === 1) {
-    const osc = c.createOscillator();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(110, t);
-    osc.frequency.exponentialRampToValueAtTime(40, t + 0.55);
-    const g = c.createGain();
-    g.gain.setValueAtTime(0.9, t);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
-    osc.connect(g).connect(o);
-    osc.start(t);
-    osc.stop(t + 0.6);
-  }
+  playSfx('lock', { level: place === 1 ? 1 : 0.75, rate: place === 1 ? 0.8 : place <= 3 ? 0.9 : 1 });
 }
 
 // ------------------------------------------------------------------ dust (a canvas over the page)

@@ -13,7 +13,7 @@ import { LANG } from './i18n.js';
 const foulsOf = (j) => (j.empty ? '—' : j.fouls);
 import { $, esc, keep, tName, header, footer, avatar, shareButtons, mmss, siteUrl, agentUrl, matchUrl, t, applyI18n, challengeButton, historyNote, CHALLENGES } from './ui.js';
 import { forFight, loadTheme, loadAll, themeName, themePlain, themesKnown } from './themes.js';
-import { gong, beep, ding, thud, cheer, boo, ooh, crowdLevel, setMusic, soundOn, soundRunning, setSound } from './sound.js';
+import { gong, beep, ding, thud, punch, crash, land, cheer, boo, ooh, crowdLevel, setMusic, soundOn, soundRunning, setSound } from './sound.js';
 import { musicHold } from './music.js';
 
 // The arena's theme plays on this page only while no battle is on: before a fight, after it, between
@@ -72,14 +72,14 @@ scene.onMoment?.((name, side) => {
   else if (name === 'taunt') ooh(0.45, 1.3);
   else if (name === 'flip') ooh(1.2, 3.2); // the slow turn in the air
   else if (name === 'punch') {
-    thud(); // the uppercut on the jaw, in slow motion
+    punch(); // the uppercut on the jaw, in slow motion
     ooh(1.1, 1.6);
   } else if (name === 'crash') {
-    thud(); // the beaten one breaks its desk
+    crash(); // the beaten one breaks its desk
     cheer(1.3);
   }
   else if (name === 'land') {
-    thud();
+    land();
     cheer(1.5);
     scene.pyro('win', side);
     scene.excite(side, 1);
@@ -453,8 +453,7 @@ function verdictShow(b, v, delay, loud) {
 function celebrate(b, v) {
   winUntil = Date.now() + WIN_MOMENT;
   battleOn(true);
-  setMusic('victory');
-  cheer(1.4);
+  setMusic('victory'); // the whole hall roars
   if (b.blue) confetti();
   const wn = b.blue && v.winner !== 'draw' ? v.winner : null;
   scene.pyro('win', wn ?? 'red');
